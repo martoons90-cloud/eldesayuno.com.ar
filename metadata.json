@@ -1,0 +1,6 @@
+{
+  "name": "El Desayuno - Gestión de Estadías Fideicomiso",
+  "description": "Plataforma privada y exclusiva para la reserva de turnos y gestión de estadías de la casa de veraneo de El Desayuno Sociedad.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
