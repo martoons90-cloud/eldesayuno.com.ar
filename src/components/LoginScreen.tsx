@@ -83,9 +83,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
             {/* Error Message */}
             {error && (
-              <div className="mt-6 p-3 bg-red-50 border border-red-200 text-red-800 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
-                <span>{error}</span>
+              <div className="mt-6 p-3.5 bg-red-50 border border-red-200 text-red-800 text-xs space-y-1.5 animate-fade-in">
+                <div className="flex items-start gap-2 font-semibold">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+                <p className="text-[11px] text-red-700 pl-6 leading-relaxed">
+                  💡 <strong>¿Usas Microsoft Edge o Chrome?</strong> Si el navegador autocompletó tu clave anterior guardada, borra el campo de contraseña e ingresa manualmente tu nuevo código de 6 dígitos. Luego haz clic en "Actualizar contraseña" en la ventana emergente del navegador.
+                </p>
               </div>
             )}
 

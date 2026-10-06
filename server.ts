@@ -784,8 +784,37 @@ app.get('/api/r2/file', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// VITE DEV / PRODUCTION MIDDLEWARE
+// SERVER-SIDE SHARED STATE PERSISTENCE (CROSS-BROWSER SYNC)
 // -------------------------------------------------------------
+import fs from 'fs';
+
+const STATE_FILE_PATH = path.resolve(process.cwd(), 'app-server-state.json');
+
+app.get('/api/app-state', (_req, res) => {
+  try {
+    if (fs.existsSync(STATE_FILE_PATH)) {
+      const raw = fs.readFileSync(STATE_FILE_PATH, 'utf-8');
+      const data = JSON.parse(raw);
+      return res.json({ success: true, data });
+    }
+    return res.json({ success: false, message: 'Sin estado guardado en servidor' });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error leyendo estado en servidor' });
+  }
+});
+
+app.post('/api/app-state', (req, res) => {
+  try {
+    const data = req.body;
+    if (data && typeof data === 'object') {
+      fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+      return res.json({ success: true, message: 'Estado actualizado en servidor' });
+    }
+    return res.status(400).json({ success: false, error: 'Datos no válidos' });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando estado en servidor' });
+  }
+});
 async function bootstrap() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

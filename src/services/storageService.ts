@@ -472,6 +472,47 @@ class StorageService {
     const bookings = this.getBookings();
     const updatedUsers = recalculateUsersUsedDays(users, bookings);
     localStorage.setItem(USERS_KEY, JSON.stringify(updatedUsers));
+
+    // Hydrate server state for cross-browser synchronization
+    this.hydrateFromAppStateAsync();
+  }
+
+  public async hydrateFromAppStateAsync() {
+    if (typeof window === 'undefined') return;
+    try {
+      const res = await fetch('/api/app-state');
+      const data = await res.json();
+      if (data.success && data.data) {
+        if (data.data.users && Array.isArray(data.data.users) && data.data.users.length > 0) {
+          localStorage.setItem(USERS_KEY, JSON.stringify(data.data.users));
+        }
+        if (data.data.bookings && Array.isArray(data.data.bookings)) {
+          localStorage.setItem(BOOKINGS_KEY, JSON.stringify(data.data.bookings));
+        }
+        if (data.data.fees && Array.isArray(data.data.fees)) {
+          localStorage.setItem(FEES_KEY, JSON.stringify(data.data.fees));
+        }
+        if (data.data.settings) {
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.data.settings));
+        }
+        this.notify(false);
+      }
+    } catch {
+      // Offline fallback
+    }
+  }
+
+  private async syncToAppStateAsync() {
+    if (typeof window === 'undefined') return;
+    try {
+      await fetch('/api/app-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.getAllDataPackage()),
+      });
+    } catch {
+      // Offline fallback
+    }
   }
 
   // Asynchronous background hydration from live Cloudflare D1
@@ -552,6 +593,7 @@ class StorageService {
     });
     if (syncD1) {
       this.syncToD1Async();
+      this.syncToAppStateAsync();
     }
   }
 
@@ -604,8 +646,7 @@ class StorageService {
         uUsername === normInput ||
         uName === normInput ||
         uId === normInput ||
-        (normInput.length >= 3 && (uId.includes(normInput) || uName.includes(normInput) || uUsername.includes(normInput))) ||
-        uPass === normInput
+        (normInput.length >= 3 && (uId.includes(normInput) || uName.includes(normInput) || uUsername.includes(normInput)))
       );
     });
 
