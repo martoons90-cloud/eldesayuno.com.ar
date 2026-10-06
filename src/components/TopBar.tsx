@@ -56,7 +56,6 @@ export const TopBar: React.FC<TopBarProps> = ({
         { id: 'dashboard', label: 'Resumen' },
         { id: 'calendar', label: 'Calendario' },
         { id: 'reservations', label: 'Reservas' },
-        { id: 'blocks', label: 'Bloqueos' },
         { id: 'inventory', label: 'Inventario' },
         { id: 'incidents', label: 'Novedades' },
         { id: 'settings', label: 'Ajustes' },

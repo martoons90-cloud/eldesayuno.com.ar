@@ -139,7 +139,7 @@ export default function App() {
     .filter((b) => b.status === 'confirmed' || b.status === 'completed')
     .reduce((sum, b) => sum + b.totalDays, 0);
   const totalQuotaAllOwners = users
-    .filter((u) => u.role === 'owner')
+    .filter((u) => u.active !== false)
     .reduce((sum, u) => sum + u.annualQuotaDays, 0);
 
   return (
@@ -301,7 +301,7 @@ export default function App() {
                         Copropietarios
                       </span>
                       <div className="text-2xl font-bold font-mono tabular-nums text-[#19231A] mt-1">
-                        {users.filter((u) => u.role === 'owner' && u.active).length}
+                        {users.filter((u) => u.active !== false).length}
                       </div>
                       <p className="text-[10px] text-[#7A8E7E] mt-0.5">4 partes indivisas</p>
                     </div>

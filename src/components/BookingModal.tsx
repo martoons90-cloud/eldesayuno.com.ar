@@ -40,7 +40,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [guestsCount, setGuestsCount] = useState(4);
   const [arrivalTime, setArrivalTime] = useState('14:00');
   const [notes, setNotes] = useState('');
-  const [applyCleaningBuffer, setApplyCleaningBuffer] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -80,15 +79,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     // Check with bookings
     for (const b of bookings) {
       if (b.status === 'cancelled') continue;
-      // Also consider existing booking's cleaning buffer if applied
-      const bEffectiveEnd =
-        b.cleaningBufferApplied && b.cleaningBufferEndDate ? b.cleaningBufferEndDate : b.checkOutDate;
+      const bEffectiveEnd = b.checkOutDate;
 
       const overlap = !(requestedEnd < b.checkInDate || requestedStart > bEffectiveEnd);
       if (overlap) {
-        return `Conflicto de fechas: el período se solapa con la reserva de ${b.userName} (${b.checkInDate} al ${b.checkOutDate}${
-          b.cleaningBufferApplied ? ' + sanitización' : ''
-        }).`;
+        return `Conflicto de fechas: el período se solapa con la reserva de ${b.userName} (${b.checkInDate} al ${b.checkOutDate}).`;
       }
     }
 
@@ -120,14 +115,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     setLoading(true);
 
-    // Calculate buffer end date (day after check-out)
-    let bufferEndStr: string | undefined = undefined;
-    if (applyCleaningBuffer && checkOutDate) {
-      const nextDay = new Date(checkOutDate + 'T00:00:00');
-      nextDay.setDate(nextDay.getDate() + 1);
-      bufferEndStr = nextDay.toISOString().split('T')[0];
-    }
-
     setTimeout(() => {
       try {
         const newBooking = storageService.createBooking({
@@ -142,8 +129,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           guestsCount,
           arrivalTime,
           notes: notes.trim() || undefined,
-          cleaningBufferApplied: applyCleaningBuffer,
-          cleaningBufferEndDate: bufferEndStr,
+          cleaningBufferApplied: false,
         });
 
         // Trigger native push notification
@@ -291,26 +277,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
               <span className="text-[10px] text-[#7A8E7E] block mt-1">Para recepción por casero</span>
             </div>
-          </div>
-
-          {/* Automatic Cleaning Buffer option */}
-          <div className="p-3.5 bg-[#F6F4EB] border border-[#E3DFC8] flex items-start gap-3 mt-2">
-            <input
-              type="checkbox"
-              id="cleaningBuffer"
-              checked={applyCleaningBuffer}
-              onChange={(e) => setApplyCleaningBuffer(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-[#1B3B2B] cursor-pointer"
-            />
-            <label htmlFor="cleaningBuffer" className="text-xs text-[#2D4534] cursor-pointer">
-              <span className="font-bold flex items-center gap-1.5 text-[#163323]">
-                <Sparkles className="w-3.5 h-3.5 text-[#BFA270]" />
-                Bloqueo operativo automático de 24 hs posteriores (Sanitización)
-              </span>
-              <span className="text-[11px] text-[#55695C] block mt-0.5 leading-relaxed">
-                Inhabilita automáticamente el día siguiente a su check-out para el recambio integral de sábanas, toallas, limpieza profunda del quincho y acondicionamiento por parte del personal.
-              </span>
-            </label>
           </div>
 
           {/* Notes / Special requests */}

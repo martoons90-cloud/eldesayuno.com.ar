@@ -95,7 +95,33 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   const [passwordModalUser, setPasswordModalUser] = useState<User | null>(null);
   const [isTransferAdminOpen, setIsTransferAdminOpen] = useState(false);
   const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
+  const [copiedAllSuccess, setCopiedAllSuccess] = useState(false);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  const handleCopyAllCredentials = () => {
+    const lines = [
+      '=====================================================',
+      'ESTANCIA EL DESAYUNO - PADRÓN DE COPROPIETARIOS Y ACCESOS',
+      '=====================================================',
+      '',
+    ];
+
+    users.forEach((u, idx) => {
+      lines.push(`${idx + 1}. ${u.name}`);
+      lines.push(`   • Usuario: ${u.username || u.email.split('@')[0]}`);
+      lines.push(`   • Contraseña: ${u.password || '******'}`);
+      lines.push(`   • Parte: ${u.partName}`);
+      lines.push(`   • Rol: ${u.role === 'admin' ? 'Administrador' : 'Copropietario'}`);
+      lines.push('');
+    });
+
+    lines.push('=====================================================');
+
+    const textToCopy = lines.join('\n');
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedAllSuccess(true);
+    setTimeout(() => setCopiedAllSuccess(false), 3000);
+  };
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
@@ -260,27 +286,52 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     settings.logoUrl || (typeof window !== 'undefined' ? localStorage.getItem('el_desayuno_custom_logo') || '' : '')
   );
   const [logoInputUrl, setLogoInputUrl] = useState<string>(currentLogoUrl);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
-  const handleFileUploadLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 8 * 1024 * 1024) {
-      alert('El archivo es demasiado grande. Por favor seleccione una imagen menor a 8MB.');
+    if (file.size > 15 * 1024 * 1024) {
+      alert('El archivo es demasiado grande. Por favor seleccione una imagen menor a 15MB.');
       return;
     }
 
+    setIsUploadingLogo(true);
+
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       if (base64) {
-        localStorage.setItem('el_desayuno_custom_logo', base64);
-        setCurrentLogoUrl(base64);
-        setLogoInputUrl(base64);
-        const updated = { ...settingsFormData, logoUrl: base64 };
+        let finalLogoUrl = base64;
+
+        try {
+          // Upload directly to Cloudflare R2 Bucket 'el-desayuno'
+          const r2Res = await r2Service.uploadPhoto(base64, file.name || 'logo-oficial-el-desayuno', 'marca');
+          if (r2Res.success && r2Res.url) {
+            finalLogoUrl = r2Res.url;
+          }
+        } catch {
+          // Fallback to base64 if R2 is unavailable
+        }
+
+        localStorage.setItem('el_desayuno_custom_logo', finalLogoUrl);
+        setCurrentLogoUrl(finalLogoUrl);
+        setLogoInputUrl(finalLogoUrl);
+        const updated = { ...settingsFormData, logoUrl: finalLogoUrl };
         setSettingsFormData(updated);
         storageService.saveSettings(updated);
-        showSuccess('Logo actualizado desde archivo y guardado permanentemente.');
+
+        if (d1Service.isConnected()) {
+          try {
+            await d1Service.pushLocalDataToD1(storageService.getAllDataPackage());
+          } catch {
+            // ignore
+          }
+        }
+
+        setIsUploadingLogo(false);
+        showSuccess('¡Logo oficial subido a la nube (Cloudflare R2)! Guardado para todos los usuarios y dispositivos.');
       }
     };
     reader.readAsDataURL(file);
@@ -678,7 +729,26 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyAllCredentials}
+                    className="px-3.5 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    title="Copiar lista completa de usuarios, accesos y contraseñas al portapapeles"
+                  >
+                    {copiedAllSuccess ? (
+                      <>
+                        <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>¡Copiado al Portapapeles!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-[#BFA270]" />
+                        <span>Copiar Usuarios y Contraseñas</span>
+                      </>
+                    )}
+                  </button>
+
                   <button
                     onClick={() => setIsTransferAdminOpen(true)}
                     className="px-3.5 py-2 bg-[#F4EFE6] hover:bg-[#EDE6D8] border border-[#D5CDBC] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
@@ -716,7 +786,6 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
                     <tr>
                       <th className="py-3 px-3">Copropietario</th>
-                      <th className="py-3 px-3">Cabeza / Grupo</th>
                       <th className="py-3 px-3">Color Calendario</th>
                       <th className="py-3 px-3">Contraseña de Acceso</th>
                       <th className="py-3 px-3">Administración</th>
@@ -743,12 +812,11 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                   {u.name}
                                 </span>
                                 <span className="text-[10px] text-[#7A8E7E] font-mono">
-                                  {u.email}
+                                  {u.username || u.email.split('@')[0]}
                                 </span>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-3 font-medium text-[#2E4233]">{u.partName}</td>
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-1.5">
                               <span
@@ -1444,8 +1512,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     </p>
                     <label className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold uppercase tracking-wider cursor-pointer shadow-xs">
                       <Upload className="w-3.5 h-3.5 text-[#BFA270]" />
-                      <span>Seleccionar Archivo de Logo</span>
-                      <input type="file" accept="image/*" onChange={handleFileUploadLogo} className="hidden" />
+                      <span>{isUploadingLogo ? 'Subiendo Logo a Cloudflare R2...' : 'Seleccionar Archivo de Logo'}</span>
+                      <input type="file" accept="image/*" onChange={handleFileUploadLogo} disabled={isUploadingLogo} className="hidden" />
                     </label>
                   </div>
 

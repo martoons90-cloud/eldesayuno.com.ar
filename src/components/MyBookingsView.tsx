@@ -160,15 +160,6 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                       <span className="text-[#637568]">
                         Check-out: {b.checkOutDate} (11:00 hs)
                       </span>
-                      {b.cleaningBufferApplied && (
-                        <>
-                          <span className="text-[#7A8E7E]">·</span>
-                          <span className="text-emerald-800 flex items-center gap-1 font-medium">
-                            <Sparkles className="w-3 h-3 text-emerald-600" />
-                            Sanitización 24h incluida
-                          </span>
-                        </>
-                      )}
                     </div>
 
                     <div className="text-lg font-bold text-[#163323] flex items-center gap-2">

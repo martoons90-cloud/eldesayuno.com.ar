@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Booking, DateBlock, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
+import { r2Service } from '../services/r2Service';
 import { pushService } from '../services/notificationService';
 import { d1Service, D1Config, D1_SCHEMA_SQL } from '../services/d1Service';
 import { BrandLogo } from './BrandLogo';
@@ -76,7 +77,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [passwordModalUser, setPasswordModalUser] = useState<User | null>(null);
   const [isTransferAdminOpen, setIsTransferAdminOpen] = useState(false);
   const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
+  const [copiedAllSuccess, setCopiedAllSuccess] = useState(false);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  const handleCopyAllCredentials = () => {
+    const lines = [
+      '=====================================================',
+      'ESTANCIA EL DESAYUNO - PADRÓN DE COPROPIETARIOS Y ACCESOS',
+      '=====================================================',
+      '',
+    ];
+
+    users.forEach((u, idx) => {
+      lines.push(`${idx + 1}. ${u.name}`);
+      lines.push(`   • Usuario: ${u.username || u.email.split('@')[0]}`);
+      lines.push(`   • Contraseña: ${u.password || '******'}`);
+      lines.push(`   • Parte: ${u.partName}`);
+      lines.push(`   • Rol: ${u.role === 'admin' ? 'Administrador' : 'Copropietario'}`);
+      lines.push('');
+    });
+
+    lines.push('=====================================================');
+
+    const textToCopy = lines.join('\n');
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedAllSuccess(true);
+    setTimeout(() => setCopiedAllSuccess(false), 3000);
+  };
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
@@ -315,16 +342,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         const base64 = ev.target?.result as string;
         if (base64) {
-          localStorage.setItem('el_desayuno_custom_logo', base64);
-          setCurrentLogoUrl(base64);
-          setLogoInputUrl(base64);
-          // Save in settings
+          // Upload to Cloudflare R2 bucket el-desayuno for global availability
+          const r2Res = await r2Service.uploadPhoto(base64, `logo_${Date.now()}`, 'logo');
+          const finalUrl = r2Res.success && r2Res.url ? r2Res.url : base64;
+          localStorage.setItem('el_desayuno_custom_logo', finalUrl);
+          setCurrentLogoUrl(finalUrl);
+          setLogoInputUrl(finalUrl);
+          // Save in shared settings
           storageService.saveSettings({
             ...settings,
-            logoUrl: base64,
+            logoUrl: finalUrl,
           });
           setLogoSavedSuccess(true);
           setTimeout(() => setLogoSavedSuccess(false), 3000);
@@ -484,16 +514,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             }`}
           >
             Consolidado Reservas
-          </button>
-          <button
-            onClick={() => onNavigateSection('blocks')}
-            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
-              activeSection === 'blocks'
-                ? 'bg-[#1B3B2B] text-white shadow-xs'
-                : 'text-[#4F6254] hover:text-[#19231A]'
-            }`}
-          >
-            Bloqueos Mantenimiento
           </button>
           <button
             onClick={() => onNavigateSection('logo')}
@@ -1021,7 +1041,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 Directorio de beneficiarios, contraseñas de acceso y administración de poderes fiduciarios.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyAllCredentials}
+                className="px-3.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Copiar lista completa de usuarios, accesos y contraseñas al portapapeles"
+              >
+                {copiedAllSuccess ? (
+                  <>
+                    <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>¡Copiado al Portapapeles!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-[#BFA270]" />
+                    <span>Copiar Usuarios y Contraseñas</span>
+                  </>
+                )}
+              </button>
+
               <button
                 onClick={() => setIsTransferAdminOpen(true)}
                 className="px-3.5 py-1.5 bg-[#F4EFE6] hover:bg-[#EDE6D8] border border-[#D5CDBC] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
@@ -1038,7 +1077,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
                 <tr>
                   <th className="py-3 px-3">Copropietario</th>
-                  <th className="py-3 px-3">Cabeza / Grupo</th>
                   <th className="py-3 px-3">Color Calendario</th>
                   <th className="py-3 px-3">Contraseña de Acceso</th>
                   <th className="py-3 px-3">Administración</th>
@@ -1063,12 +1101,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <span className="font-semibold text-[#163323] block leading-tight">
                               {u.name}
                             </span>
-                            <span className="text-[11px] text-[#7A8E7E] block">{u.email}</span>
+                            <span className="text-[11px] text-[#7A8E7E] block font-mono">
+                              {u.username || u.email.split('@')[0]}
+                            </span>
                           </div>
                         </div>
-                      </td>
-                      <td className="py-3 px-3 font-medium text-[#4F6254]">
-                        {u.partName}
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2">
@@ -1218,13 +1255,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 className="w-full px-2.5 py-1.5 bg-white border border-[#DCD4C0] text-xs focus:outline-none"
               >
                 <option value="all">Todos los propietarios</option>
-                {users
-                  .filter((u) => u.role === 'owner')
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.partName})
-                    </option>
-                  ))}
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.partName})
+                  </option>
+                ))}
               </select>
             </div>
 
