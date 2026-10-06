@@ -172,6 +172,7 @@ export interface TrustSettings {
   cuitFideicomiso?: string;
   bancoNombre?: string;
   titularCuenta?: string;
+  wifiCoverageNotes?: string;
 }
 
 // -------------------------------------------------------------

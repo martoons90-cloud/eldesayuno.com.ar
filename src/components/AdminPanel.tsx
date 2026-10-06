@@ -495,61 +495,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Admin Sub Navigation Bar */}
+      {/* Admin Section Title Header */}
       <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 p-1 bg-[#F4EFE6] border border-[#DCD4C0] flex-wrap">
-          <button
-            onClick={() => onNavigateSection('owners')}
-            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
-              activeSection === 'owners'
-                ? 'bg-[#1B3B2B] text-white shadow-xs'
-                : 'text-[#4F6254] hover:text-[#19231A]'
-            }`}
-          >
-            Gestión Copropietarios
-          </button>
-          <button
-            onClick={() => onNavigateSection('reservations')}
-            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
-              activeSection === 'reservations'
-                ? 'bg-[#1B3B2B] text-white shadow-xs'
-                : 'text-[#4F6254] hover:text-[#19231A]'
-            }`}
-          >
-            Consolidado Reservas
-          </button>
-          <button
-            onClick={() => onNavigateSection('logo')}
-            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
-              activeSection === 'logo'
-                ? 'bg-[#1B3B2B] text-white shadow-xs'
-                : 'text-[#4F6254] hover:text-[#19231A]'
-            }`}
-          >
-            <ImageIcon className="w-3.5 h-3.5 text-[#BFA270]" />
-            <span>Identidad & Logo</span>
-          </button>
-          <button
-            onClick={() => onNavigateSection('d1')}
-            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
-              activeSection === 'd1'
-                ? 'bg-[#1B3B2B] text-white shadow-xs'
-                : 'text-[#4F6254] hover:text-[#19231A]'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5 text-[#BFA270]" />
-            <span>Cloudflare D1</span>
-          </button>
-          <button
-            onClick={() => onNavigateSection('settings')}
-            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
-              activeSection === 'settings'
-                ? 'bg-[#1B3B2B] text-white shadow-xs'
-                : 'text-[#4F6254] hover:text-[#19231A]'
-            }`}
-          >
-            Parámetros
-          </button>
+        <div>
+          <h2 className="text-base font-bold text-[#163323] flex items-center gap-2">
+            {activeSection === 'reservations' && (
+              <>
+                <FileSpreadsheet className="w-4 h-4 text-emerald-800" />
+                <span>Consolidado General de Reservas</span>
+              </>
+            )}
+            {activeSection === 'blocks' && (
+              <>
+                <Lock className="w-4 h-4 text-amber-800" />
+                <span>Bloqueos Administrativos de Mantenimiento</span>
+              </>
+            )}
+            {activeSection === 'owners' && (
+              <>
+                <Users className="w-4 h-4 text-[#1B3B2B]" />
+                <span>Padrón de Copropietarios</span>
+              </>
+            )}
+            {activeSection === 'logo' && (
+              <>
+                <ImageIcon className="w-4 h-4 text-[#BFA270]" />
+                <span>Identidad Institucional e Isologotipo</span>
+              </>
+            )}
+            {activeSection === 'd1' && (
+              <>
+                <Database className="w-4 h-4 text-[#BFA270]" />
+                <span>Base de Datos Cloudflare D1</span>
+              </>
+            )}
+            {activeSection === 'settings' && (
+              <>
+                <Sliders className="w-4 h-4 text-[#1B3B2B]" />
+                <span>Parámetros de Configuración</span>
+              </>
+            )}
+          </h2>
+          <p className="text-xs text-[#637568] mt-0.5">
+            {activeSection === 'reservations' && 'Planilla, filtros y reporte oficial de ocupación.'}
+            {activeSection === 'blocks' && 'Períodos bloqueados para reparaciones y mantenimiento de la estancia.'}
+            {activeSection === 'owners' && 'Gestión de usuarios y credenciales del fideicomiso.'}
+            {activeSection === 'logo' && 'Logotipo y branding oficial.'}
+            {activeSection === 'd1' && 'Conexión y sincronización con Cloudflare D1.'}
+            {activeSection === 'settings' && 'Ajustes del fideicomiso.'}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">

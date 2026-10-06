@@ -314,8 +314,8 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                 <div className="p-3 bg-[#F8F5EE] border border-[#E6E0CF] text-xs text-[#526657]">
                   <p className="font-semibold text-[#163323] mb-1">Cobertura del Servicio:</p>
                   <p>
-                    La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y
-                    Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.
+                    {settings.wifiCoverageNotes ||
+                      'La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.'}
                   </p>
                 </div>
               </div>

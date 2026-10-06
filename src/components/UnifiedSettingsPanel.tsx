@@ -1248,6 +1248,25 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   />
                 </div>
 
+                <div className="md:col-span-2">
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1 flex items-center gap-1.5">
+                    <Wifi className="w-3.5 h-3.5 text-[#1B3B2B]" />
+                    <span>Cobertura del Servicio & Detalles de la Red Wi-Fi</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural."
+                    value={settingsFormData.wifiCoverageNotes || ''}
+                    onChange={(e) =>
+                      setSettingsFormData({ ...settingsFormData, wifiCoverageNotes: e.target.value })
+                    }
+                    className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] text-xs text-[#163323] focus:outline-none focus:border-[#163323]"
+                  />
+                  <span className="text-[10px] text-[#7A8E7E] mt-1 block">
+                    Modifique este texto para actualizar la información sobre alcance, repetidores y velocidad que leen todos los usuarios en la sección de Wi-Fi & Reglamento.
+                  </span>
+                </div>
+
                 <div className="md:col-span-2 pt-4 border-t border-[#EFEAE0]">
                   <h4 className="font-bold text-sm text-[#163323] uppercase tracking-wider mb-3 flex items-center gap-2">
                     <Building className="w-4 h-4 text-[#BFA270]" />

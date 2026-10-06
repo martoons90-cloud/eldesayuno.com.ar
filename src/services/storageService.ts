@@ -325,6 +325,7 @@ export const DEFAULT_SETTINGS: TrustSettings = {
   cuitFideicomiso: '30-71829304-5',
   bancoNombre: 'Banco Galicia (Cuenta Corriente Pesos)',
   titularCuenta: 'Fideicomiso Estancia El Desayuno',
+  wifiCoverageNotes: 'La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.',
 };
 
 export const DEFAULT_BOOKINGS: Booking[] = [];
