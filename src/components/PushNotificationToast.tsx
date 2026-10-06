@@ -55,29 +55,6 @@ export const PushNotificationToast: React.FC = () => {
     <>
       {/* Toast container */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-3 sm:px-0">
-        {/* Permission banner prompt if not determined */}
-        {permission === 'default' && (
-          <div className="pointer-events-auto bg-[#17341B] text-[#FAF8F5] border border-[#2D4E35] p-3 shadow-xl text-xs flex items-center justify-between gap-3 animate-fade-in">
-            <div className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-[#BFA270] shrink-0 animate-bounce" />
-              <div>
-                <p className="font-semibold text-[11px] uppercase tracking-wider text-[#FAF8F5]">
-                  Notificaciones Push
-                </p>
-                <p className="text-[10px] text-[#D5CEB8]">
-                  Active las alertas para confirmaciones de reservas en tiempo real.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleRequestNative}
-              className="px-2.5 py-1 bg-[#BFA270] hover:bg-[#A68853] text-[#17341B] font-bold text-[10px] uppercase tracking-wider whitespace-nowrap cursor-pointer transition-colors"
-            >
-              Activar
-            </button>
-          </div>
-        )}
-
         {/* Active Push Toasts */}
         {activeToasts.map((toast) => (
           <div
