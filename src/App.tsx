@@ -49,6 +49,18 @@ export default function App() {
   // Navigation state
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [adminSection, setAdminSection] = useState<AdminSectionType>('reservations');
+  const [adminViewMode, setAdminViewMode] = useState<'admin' | 'owner'>(() => {
+    if (typeof window === 'undefined') return 'admin';
+    return (localStorage.getItem('el_desayuno_admin_view_mode') as 'admin' | 'owner') || 'admin';
+  });
+
+  const handleToggleAdminViewMode = (mode: 'admin' | 'owner') => {
+    setAdminViewMode(mode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('el_desayuno_admin_view_mode', mode);
+    }
+    setActiveTab('dashboard');
+  };
 
   // Booking Modal State
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
@@ -118,7 +130,8 @@ export default function App() {
     );
   }
 
-  const isAdmin = currentUser.role === 'admin';
+  const isUserAdmin = currentUser.role === 'admin';
+  const effectiveIsAdmin = isUserAdmin && adminViewMode === 'admin';
 
   // Metrics for Admin Dashboard
   const activeBookingsCount = bookings.filter((b) => b.status === 'confirmed').length;
@@ -136,6 +149,8 @@ export default function App() {
         currentUser={currentUser}
         activeTab={activeTab}
         logoUrl={settings.logoUrl}
+        adminViewMode={adminViewMode}
+        onToggleAdminViewMode={handleToggleAdminViewMode}
         onSelectTab={(tab) => {
           setActiveTab(tab);
           if (
@@ -157,10 +172,30 @@ export default function App() {
 
       {/* Main Viewport Container (1440px target, zero collapse) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Banner indicating Copropietario Mode for Administrators */}
+        {isUserAdmin && adminViewMode === 'owner' && (
+          <div className="mb-6 p-3 bg-blue-50 border border-blue-200 text-blue-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="p-1 bg-blue-600 text-white font-bold text-[10px] uppercase tracking-wider">
+                👤 MODO COPROPIETARIO
+              </span>
+              <span>
+                Estás navegando como usuario copropietario: <strong>{currentUser.name}</strong> ({currentUser.partName}). Podés realizar reservas personales, consultar tus días y ver tus estadías.
+              </span>
+            </div>
+            <button
+              onClick={() => handleToggleAdminViewMode('admin')}
+              className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-[11px] uppercase tracking-wider shrink-0 cursor-pointer shadow-2xs"
+            >
+              Volver a Modo Admin ⚙️
+            </button>
+          </div>
+        )}
+
         {/* ========================================================= */}
-        {/* OWNER VIEWS */}
+        {/* OWNER VIEWS (ACTIVE FOR STANDARD USERS OR ADMINS IN OWNER MODE) */}
         {/* ========================================================= */}
-        {!isAdmin && (
+        {!effectiveIsAdmin && (
           <>
             {activeTab === 'dashboard' && (
               <OwnerQuotaSummary
@@ -210,9 +245,9 @@ export default function App() {
         )}
 
         {/* ========================================================= */}
-        {/* ADMINISTRATOR VIEWS */}
+        {/* ADMINISTRATOR VIEWS (ACTIVE WHEN ADMIN MODE IS ON) */}
         {/* ========================================================= */}
-        {isAdmin && (
+        {effectiveIsAdmin && (
           <>
             {activeTab === 'dashboard' && (
               <div className="space-y-6">

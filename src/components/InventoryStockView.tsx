@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { InventoryItem, InventoryCategory, InventoryCondition, User, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
+import { r2Service } from '../services/r2Service';
 import {
   Boxes,
   Search,
@@ -21,6 +22,8 @@ import {
   Shirt,
   Info,
   Layers,
+  Camera,
+  Upload,
 } from 'lucide-react';
 
 interface InventoryStockViewProps {
@@ -49,6 +52,34 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
     notes: '',
     lastCheckedDate: new Date().toISOString().split('T')[0],
   });
+
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const handleInventoryPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string;
+      if (base64) {
+        setIsUploadingPhoto(true);
+        try {
+          const r2Res = await r2Service.uploadPhoto(base64, file.name || 'inventario', 'inventario');
+          if (r2Res.success && r2Res.url) {
+            setFormData((prev) => ({ ...prev, imageUrl: r2Res.url }));
+          } else {
+            setFormData((prev) => ({ ...prev, imageUrl: base64 }));
+          }
+        } catch {
+          setFormData((prev) => ({ ...prev, imageUrl: base64 }));
+        } finally {
+          setIsUploadingPhoto(false);
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const categories: Array<{ id: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'all', label: 'Todo el Inventario', icon: Boxes },
@@ -492,6 +523,30 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                   placeholder="Detalles sobre mantenimiento, fecha de compra o cuidado especial..."
                   className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">Foto del Ítem (Cloudflare R2)</label>
+                <div className="flex items-center gap-3">
+                  {formData.imageUrl && (
+                    <img
+                      src={formData.imageUrl}
+                      alt="Vista previa"
+                      className="w-12 h-12 object-cover border border-[#DCD4C0]"
+                    />
+                  )}
+                  <label className="px-3 py-1.5 bg-[#FAF8F5] hover:bg-[#EFEAE0] border border-[#DCD4C0] font-semibold uppercase text-[11px] text-[#163323] cursor-pointer flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-[#BFA270]" />
+                    <span>{isUploadingPhoto ? 'Subiendo a R2...' : 'Subir Foto a R2'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleInventoryPhotoUpload}
+                      disabled={isUploadingPhoto}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="pt-4 flex items-center justify-end gap-2 border-t border-[#EFEAE0]">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { IncidentReport, IncidentStatus, IncidentUrgency, User, Booking, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
+import { r2Service } from '../services/r2Service';
 import {
   AlertTriangle,
   Camera,
@@ -72,20 +73,33 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
     isAdmin ? true : b.userId === currentUser.id
   );
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 8 * 1024 * 1024) {
-      alert('La foto es demasiado grande. Seleccione una imagen de hasta 8MB.');
+    if (file.size > 15 * 1024 * 1024) {
+      alert('La foto es demasiado grande. Seleccione una imagen de hasta 15MB.');
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const base64 = ev.target?.result as string;
       if (base64) {
         setPhotoPreview(base64);
+        setIsUploadingPhoto(true);
+        try {
+          const r2Res = await r2Service.uploadPhoto(base64, file.name || 'incidente', 'incidentes');
+          if (r2Res.success && r2Res.url) {
+            setPhotoPreview(r2Res.url);
+          }
+        } catch {
+          // fallback to base64 preview
+        } finally {
+          setIsUploadingPhoto(false);
+        }
       }
     };
     reader.readAsDataURL(file);

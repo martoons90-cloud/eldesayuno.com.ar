@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem } from '../types';
 import { storageService } from '../services/storageService';
 import { d1Service, D1Config } from '../services/d1Service';
+import { r2Service, R2Config } from '../services/r2Service';
 import { BrandLogo } from './BrandLogo';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { TransferAdminModal } from './TransferAdminModal';
@@ -307,7 +308,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   // -------------------------------------------------------------
-  // 7. CLOUDFLARE D1 & BACKUP STATE
+  // 7. CLOUDFLARE D1, R2 & BACKUP STATE
   // -------------------------------------------------------------
   const [d1ConfigForm, setD1ConfigForm] = useState<D1Config>(d1Service.getConfig());
   const [d1Loading, setD1Loading] = useState(false);
@@ -320,9 +321,21 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   const [sqlResults, setSqlResults] = useState<Record<string, unknown>[] | null>(null);
   const [sqlError, setSqlError] = useState<string | null>(null);
 
+  // Cloudflare R2 State
+  const [r2ConfigForm, setR2ConfigForm] = useState<R2Config>(r2Service.getConfig());
+  const [r2Status, setR2Status] = useState<{ configured: boolean; connected: boolean; message?: string } | null>(null);
+
   useEffect(() => {
     d1Service.checkServerStatus().then((info) => setD1StatusInfo(info));
+    r2Service.checkServerStatus().then((info) => setR2Status(info));
   }, []);
+
+  const handleSaveR2Config = (e: React.FormEvent) => {
+    e.preventDefault();
+    r2Service.saveConfig(r2ConfigForm);
+    showSuccess("Configuración de Cloudflare R2 (Bucket 'el-desayuno') guardada.");
+    r2Service.checkServerStatus().then((info) => setR2Status(info));
+  };
 
   const handleTestD1Connection = async () => {
     setD1Loading(true);
@@ -1573,6 +1586,81 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
 
                     <span className="text-[11px] text-[#7A8E7E]">
                       {d1StatusInfo?.message || 'Verificado con el servidor.'}
+                    </span>
+                  </div>
+                </form>
+              </div>
+
+              {/* Cloudflare R2 Object Storage Card (Bucket: el-desayuno) */}
+              <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4 text-xs">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-[#163323] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-[#BFA270]" />
+                    <span>Almacenamiento de Fotos: Cloudflare R2 (Bucket: el-desayuno)</span>
+                  </h4>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
+                      r2Status?.connected
+                        ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                        : 'bg-amber-100 text-amber-900 border-amber-300'
+                    }`}
+                  >
+                    {r2Status?.connected ? 'R2 Activo' : 'R2 Pendiente de Credenciales'}
+                  </span>
+                </div>
+
+                <form onSubmit={handleSaveR2Config} className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-semibold uppercase text-[#35483A] mb-1">Nombre del Bucket</label>
+                    <input
+                      type="text"
+                      value={r2ConfigForm.bucketName || 'el-desayuno'}
+                      onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, bucketName: e.target.value.trim() })}
+                      placeholder="el-desayuno"
+                      required
+                      className="w-full p-2 bg-white border border-[#DCD4C0] font-mono text-xs font-bold text-[#163323]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold uppercase text-[#35483A] mb-1">Account ID</label>
+                    <input
+                      type="text"
+                      value={r2ConfigForm.accountId}
+                      onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, accountId: e.target.value.trim() })}
+                      placeholder="b36aef318f..."
+                      className="w-full p-2 bg-white border border-[#DCD4C0] font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold uppercase text-[#35483A] mb-1">R2 Access Key ID</label>
+                    <input
+                      type="text"
+                      value={r2ConfigForm.accessKeyId}
+                      onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, accessKeyId: e.target.value.trim() })}
+                      placeholder="e.j. 4a2b8c9..."
+                      className="w-full p-2 bg-white border border-[#DCD4C0] font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold uppercase text-[#35483A] mb-1">R2 Secret Access Key</label>
+                    <input
+                      type="password"
+                      value={r2ConfigForm.secretAccessKey}
+                      onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, secretAccessKey: e.target.value.trim() })}
+                      placeholder="••••••••••••••••"
+                      className="w-full p-2 bg-white border border-[#DCD4C0] font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="md:col-span-4 pt-2 flex items-center justify-between gap-2 border-t border-[#E8E2D2]">
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold uppercase tracking-wider cursor-pointer"
+                    >
+                      Guardar R2 Bucket 'el-desayuno'
+                    </button>
+                    <span className="text-[11px] text-[#7A8E7E]">
+                      {r2Status?.message || "Conexión S3-compatible lista para el Bucket 'el-desayuno'."}
                     </span>
                   </div>
                 </form>

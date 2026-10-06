@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 
 dotenv.config();
 
@@ -571,6 +572,214 @@ app.post('/api/d1/sync-pull', async (req, res) => {
       success: false,
       error: err instanceof Error ? err.message : 'Error en pull desde D1',
     });
+  }
+});
+
+// -------------------------------------------------------------
+// CLOUDFLARE R2 OBJECT STORAGE ENDPOINTS (BUCKET: el-desayuno)
+// -------------------------------------------------------------
+
+function createR2S3Client(accountId: string, accessKeyId: string, secretAccessKey: string) {
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
+}
+
+// 1. R2 Status Check
+app.get('/api/r2/status', async (_req, res) => {
+  try {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'el-desayuno';
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      return res.json({
+        configured: false,
+        connected: false,
+        bucketName,
+        message: 'Credenciales de Cloudflare R2 no configuradas en variables de entorno.',
+      });
+    }
+
+    const s3 = createR2S3Client(accountId, accessKeyId, secretAccessKey);
+    await s3.send(new ListObjectsV2Command({ Bucket: bucketName, MaxKeys: 1 }));
+
+    return res.json({
+      configured: true,
+      connected: true,
+      bucketName,
+      message: `Conexión activa con el bucket '${bucketName}' en Cloudflare R2.`,
+    });
+  } catch (err: unknown) {
+    return res.json({
+      configured: true,
+      connected: false,
+      bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME || 'el-desayuno',
+      error: err instanceof Error ? err.message : 'Error conectando con Cloudflare R2',
+    });
+  }
+});
+
+// 2. Upload Photo to Cloudflare R2 Bucket 'el-desayuno'
+app.post('/api/r2/upload', async (req, res) => {
+  try {
+    const { image, filename, folder = 'fotos', config } = req.body;
+    const accountId = config?.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const accessKeyId = config?.accessKeyId || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const secretAccessKey = config?.secretAccessKey || process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const bucketName = config?.bucketName || process.env.CLOUDFLARE_R2_BUCKET_NAME || 'el-desayuno';
+    const publicUrl = config?.publicUrl || process.env.CLOUDFLARE_R2_PUBLIC_URL || '';
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      return res.status(400).json({
+        success: false,
+        error: 'Credenciales de Cloudflare R2 incompletas.',
+      });
+    }
+
+    if (!image) {
+      return res.status(400).json({ success: false, error: 'No se envió imagen en base64.' });
+    }
+
+    // Process Base64 string
+    const match = image.match(/^data:(image\/\w+);base64,(.+)$/);
+    let buffer: Buffer;
+    let contentType = 'image/jpeg';
+
+    if (match) {
+      contentType = match[1];
+      buffer = Buffer.from(match[2], 'base64');
+    } else {
+      buffer = Buffer.from(image, 'base64');
+    }
+
+    const ext = contentType.split('/')[1] || 'jpg';
+    const cleanFilename = (filename || `foto-${Date.now()}`).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const objectKey = `${folder}/${Date.now()}_${cleanFilename}.${ext}`;
+
+    const s3 = createR2S3Client(accountId, accessKeyId, secretAccessKey);
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucketName,
+        Key: objectKey,
+        Body: buffer,
+        ContentType: contentType,
+      })
+    );
+
+    // Construct final URL
+    const fileUrl = publicUrl
+      ? `${publicUrl.replace(/\/$/, '')}/${objectKey}`
+      : `/api/r2/file?key=${encodeURIComponent(objectKey)}`;
+
+    return res.json({
+      success: true,
+      url: fileUrl,
+      key: objectKey,
+      bucketName,
+      message: `Foto subida exitosamente al bucket '${bucketName}'.`,
+    });
+  } catch (err: unknown) {
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Error subiendo foto a Cloudflare R2',
+    });
+  }
+});
+
+// 3. List Photos in Cloudflare R2 Bucket 'el-desayuno'
+app.post('/api/r2/list', async (req, res) => {
+  try {
+    const { folder = 'fotos', config } = req.body;
+    const accountId = config?.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const accessKeyId = config?.accessKeyId || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const secretAccessKey = config?.secretAccessKey || process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const bucketName = config?.bucketName || process.env.CLOUDFLARE_R2_BUCKET_NAME || 'el-desayuno';
+    const publicUrl = config?.publicUrl || process.env.CLOUDFLARE_R2_PUBLIC_URL || '';
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      return res.status(400).json({
+        success: false,
+        error: 'Credenciales de Cloudflare R2 incompletas.',
+      });
+    }
+
+    const s3 = createR2S3Client(accountId, accessKeyId, secretAccessKey);
+    const result = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: folder ? `${folder}/` : undefined,
+        MaxKeys: 100,
+      })
+    );
+
+    const objects = (result.Contents || []).map((obj) => ({
+      key: obj.Key,
+      url: publicUrl
+        ? `${publicUrl.replace(/\/$/, '')}/${obj.Key}`
+        : `/api/r2/file?key=${encodeURIComponent(obj.Key || '')}`,
+      size: obj.Size,
+      lastModified: obj.LastModified?.toISOString(),
+    }));
+
+    return res.json({
+      success: true,
+      bucketName,
+      objects,
+    });
+  } catch (err: unknown) {
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Error listando objetos en R2',
+    });
+  }
+});
+
+// 4. Serve File / Photo directly from Cloudflare R2 Proxy
+app.get('/api/r2/file', async (req, res) => {
+  try {
+    const key = req.query.key as string;
+    if (!key) {
+      return res.status(400).send('Falta parámetro key');
+    }
+
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'el-desayuno';
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      return res.status(400).send('Credenciales Cloudflare R2 no configuradas');
+    }
+
+    const s3 = createR2S3Client(accountId, accessKeyId, secretAccessKey);
+    const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
+    const response = await s3.send(command);
+
+    if (response.ContentType) {
+      res.setHeader('Content-Type', response.ContentType);
+    } else {
+      res.setHeader('Content-Type', 'image/jpeg');
+    }
+    if (response.ContentLength) {
+      res.setHeader('Content-Length', response.ContentLength);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+    const byteArray = await response.Body?.transformToByteArray();
+    if (byteArray) {
+      return res.send(Buffer.from(byteArray));
+    } else {
+      return res.status(404).send('Archivo vacío o no encontrado en R2');
+    }
+  } catch (err: unknown) {
+    return res.status(404).send('Archivo no encontrado en Cloudflare R2');
   }
 });
 
