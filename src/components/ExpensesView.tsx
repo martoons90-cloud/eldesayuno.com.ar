@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation } from '../types';
+import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import {
@@ -85,7 +85,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [transferDueDate, setTransferDueDate] = useState(
     new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
-  const [transferDistributionMode, setTransferDistributionMode] = useState<'equal_cabezas' | 'equal_owners'>('equal_cabezas');
+  const [transferDistributionMode, setTransferDistributionMode] = useState<DistributionMode>('equal_cabezas');
+  const [transferCustomPercentages, setTransferCustomPercentages] = useState<Record<string, number>>({});
+  const [transferCustomAmounts, setTransferCustomAmounts] = useState<Record<string, number>>({});
   const [transferSuccessMsg, setTransferSuccessMsg] = useState(false);
 
   const loadExpenses = () => {
@@ -127,6 +129,24 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     .filter((e) => e.status === 'paid')
     .reduce((sum, e) => sum + e.amount, 0);
   const periodPendingAmount = periodTotalAmount - periodPaidAmount;
+
+  // Breakdown per Category
+  const categoryTotals: Record<ExpenseCategory, number> = {
+    servicios: 0,
+    personal_casero: 0,
+    mantenimiento: 0,
+    impuestos: 0,
+    insumos: 0,
+    otro: 0,
+  };
+
+  filteredExpenses.forEach((e) => {
+    if (categoryTotals[e.category] !== undefined) {
+      categoryTotals[e.category] += e.amount;
+    } else {
+      categoryTotals.otro += e.amount;
+    }
+  });
 
   // Projections
   const costPerCabeza = Math.round(periodTotalAmount / 4);
@@ -236,24 +256,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }
   };
 
-  // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES)
-  const handleTransferToCobranza = () => {
-    if (periodTotalAmount <= 0) {
-      alert('No hay gastos acumulados en el período seleccionado para trasladar a cobranza.');
-      return;
-    }
-
+  // Calculate allocations for transfer modal
+  const calculateTransferAllocations = (): OwnerFeeAllocation[] => {
     const activeUsers = storageService.getUsers().filter((u) => u.active !== false);
+    if (activeUsers.length === 0) return [];
 
-    // Build itemized bullet list of expenses
-    const itemizedList = filteredExpenses
-      .map((e) => `• ${e.concept}: $${e.amount.toLocaleString()} ARS (${e.provider || 'S/D'})`)
-      .join('\n');
-
-    const formattedPeriodLabel = selectedPeriod === '2026-10' ? 'Octubre 2026' : selectedPeriod;
-
-    // Calculate allocations according to selected distribution mode
-    let allocations: OwnerFeeAllocation[] = [];
     if (transferDistributionMode === 'equal_cabezas') {
       const cabezaGroups: Record<number, User[]> = { 1: [], 2: [], 3: [], 4: [] };
       activeUsers.forEach((u) => {
@@ -262,6 +269,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         cabezaGroups[cNum].push(u);
       });
 
+      const allocations: OwnerFeeAllocation[] = [];
       const amountPerCabeza = periodTotalAmount / 4;
       const pctPerCabeza = 100 / 4;
 
@@ -279,17 +287,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               percentage: pctPerMember,
               assignedAmount: amtPerMember,
               paidAmount: 0,
-              status: 'pending' as const,
+              status: 'pending',
             });
           });
         }
       }
-    } else {
-      // equal_owners (15 parts)
+      return allocations;
+    } else if (transferDistributionMode === 'equal_owners') {
       const N = activeUsers.length;
       const amtPerOwner = Math.round((periodTotalAmount / N) * 100) / 100;
       const pctPerOwner = Math.round((100 / N) * 10000) / 10000;
-      allocations = activeUsers.map((m) => ({
+      return activeUsers.map((m) => ({
         userId: m.id,
         userName: m.name,
         partName: m.partName,
@@ -297,9 +305,60 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         percentage: pctPerOwner,
         assignedAmount: amtPerOwner,
         paidAmount: 0,
-        status: 'pending' as const,
+        status: 'pending',
       }));
+    } else if (transferDistributionMode === 'percentage') {
+      return activeUsers.map((m) => {
+        const pct = transferCustomPercentages[m.id] ?? Math.round((100 / activeUsers.length) * 10000) / 10000;
+        const assigned = Math.round((periodTotalAmount * (pct / 100)) * 100) / 100;
+        return {
+          userId: m.id,
+          userName: m.name,
+          partName: m.partName,
+          cabezaNumber: m.cabezaNumber,
+          percentage: pct,
+          assignedAmount: assigned,
+          paidAmount: 0,
+          status: 'pending',
+        };
+      });
+    } else {
+      // custom_amount
+      return activeUsers.map((m) => {
+        const assigned = transferCustomAmounts[m.id] ?? Math.round(periodTotalAmount / activeUsers.length);
+        const pct = periodTotalAmount > 0 ? Math.round((assigned / periodTotalAmount) * 10000) / 100 : 0;
+        return {
+          userId: m.id,
+          userName: m.name,
+          partName: m.partName,
+          cabezaNumber: m.cabezaNumber,
+          percentage: pct,
+          assignedAmount: assigned,
+          paidAmount: 0,
+          status: 'pending',
+        };
+      });
     }
+  };
+
+  const liveTransferAllocations = calculateTransferAllocations();
+  const liveTransferTotalPct = liveTransferAllocations.reduce((s, a) => s + a.percentage, 0);
+  const liveTransferTotalAmt = liveTransferAllocations.reduce((s, a) => s + a.assignedAmount, 0);
+
+  // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES)
+  const handleTransferToCobranza = () => {
+    if (periodTotalAmount <= 0) {
+      alert('No hay gastos acumulados en el período seleccionado para trasladar a cobranza.');
+      return;
+    }
+
+    // Build itemized bullet list of expenses
+    const itemizedList = filteredExpenses
+      .map((e) => `• ${e.concept}: $${e.amount.toLocaleString()} ARS (${e.provider || 'S/D'})`)
+      .join('\n');
+
+    const formattedPeriodLabel = selectedPeriod === '2026-10' ? 'Octubre 2026' : selectedPeriod;
+    const allocations = calculateTransferAllocations();
 
     const newFeeCollection: FeeCollection = {
       id: 'fee-expenses-' + Date.now(),
@@ -401,63 +460,98 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       </div>
 
       {/* KPI Financial Metric Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#637568] font-semibold uppercase tracking-wider mb-2">
-            <span>Total Gastos ({selectedPeriod})</span>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+        {/* Card 1: Total Gastos */}
+        <div className="md:col-span-3 bg-white border border-[#E3DFC8] p-4 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-[#637568] font-bold uppercase tracking-wider mb-2">
+            <span>Total Gastos ({selectedPeriod === 'all' ? 'Todos' : selectedPeriod})</span>
             <Receipt className="w-4 h-4 text-[#163323]" />
           </div>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
+          <div className="text-2xl sm:text-3xl font-bold font-mono text-[#163323]">
             ${periodTotalAmount.toLocaleString()} <span className="text-xs font-sans text-[#7A8E7E]">ARS</span>
           </div>
-          <p className="text-[11px] text-[#7A8E7E] mt-1">
+          <p className="text-[11px] text-[#7A8E7E] mt-1 font-medium">
             {filteredExpenses.length} facturas/gastos registrados
           </p>
         </div>
 
-        <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
-            <span>Cuota por Cabeza (4 Partes)</span>
-            <PieChart className="w-4 h-4 text-[#BFA270]" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-[#1B3B2B]">
-            ${costPerCabeza.toLocaleString()} <span className="text-xs font-sans text-[#7A8E7E]">ARS/Cabeza</span>
-          </div>
-          <p className="text-[11px] text-[#637568] mt-1">
-            Dividido en 4 partes iguales ($ / Cabeza)
-          </p>
-        </div>
-
-        <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
-            <span>Cuota por Copropietario (15 Partes)</span>
-            <Users className="w-4 h-4 text-[#BFA270]" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-[#1B3B2B]">
-            ${costPerOwner.toLocaleString()} <span className="text-xs font-sans text-[#7A8E7E]">ARS/Socio</span>
-          </div>
-          <p className="text-[11px] text-[#637568] mt-1">
-            Dividido en 15 partes iguales ($ / Copropietario)
-          </p>
-        </div>
-
-        <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
+        {/* Card 2: Estado de Pago de Facturas */}
+        <div className="md:col-span-3 bg-[#FAF8F5] border border-[#DDD5BF] p-4 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-[#163323] font-bold uppercase tracking-wider mb-2">
             <span>Estado de Pago de Facturas</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-sm font-bold font-mono text-emerald-800">
-            ${periodPaidAmount.toLocaleString()} pagados
+          <div>
+            <div className="text-sm sm:text-base font-bold font-mono text-emerald-800">
+              ${periodPaidAmount.toLocaleString()} pagados
+            </div>
+            {periodPendingAmount > 0 ? (
+              <p className="text-xs text-amber-700 font-mono font-bold mt-1">
+                ${periodPendingAmount.toLocaleString()} pendiente de pago
+              </p>
+            ) : (
+              <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                ✓ Todas las facturas del mes están pagadas
+              </p>
+            )}
           </div>
-          {periodPendingAmount > 0 ? (
-            <p className="text-[11px] text-amber-700 font-bold mt-1">
-              ${periodPendingAmount.toLocaleString()} pendiente de pago
-            </p>
-          ) : (
-            <p className="text-[11px] text-emerald-700 font-medium mt-1">
-              ✓ Todas las facturas del mes están pagadas
-            </p>
-          )}
+          <span className="text-[10px] text-[#7A8E7E] block mt-1">
+            Control de liquidación de proveedores
+          </span>
+        </div>
+
+        {/* Card 3: Gastos por Categoría (Compacto) */}
+        <div className="md:col-span-6 bg-white border border-[#E3DFC8] p-3.5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-[#637568] font-bold uppercase tracking-wider mb-2">
+            <span>Gastos por Categoría</span>
+            <Tag className="w-3.5 h-3.5 text-[#BFA270]" />
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-blue-900 truncate">Servicios (Luz/Agua/WiFi)</span>
+              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
+                ${categoryTotals.servicios.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-purple-900 truncate">Personal / Casero</span>
+              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
+                ${categoryTotals.personal_casero.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-amber-900 truncate">Mantenimiento</span>
+              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
+                ${categoryTotals.mantenimiento.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-red-900 truncate">Impuestos & Tasas</span>
+              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
+                ${categoryTotals.impuestos.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-emerald-900 truncate">Insumos & Limpieza</span>
+              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
+                ${categoryTotals.insumos.toLocaleString()}
+              </span>
+            </div>
+
+            {categoryTotals.otro > 0 && (
+              <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
+                <span className="text-[10px] font-bold text-neutral-800 truncate">Otros Gastos</span>
+                <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
+                  ${categoryTotals.otro.toLocaleString()}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -864,15 +958,114 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[#163323] mb-1">Modo de División de Expensas</label>
+                  <label className="block font-bold text-[#163323] mb-1">Modo de División de Expensas *</label>
                   <select
                     value={transferDistributionMode}
-                    onChange={(e) => setTransferDistributionMode(e.target.value as any)}
+                    onChange={(e) => setTransferDistributionMode(e.target.value as DistributionMode)}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   >
                     <option value="equal_cabezas">Por Cabezas (4 partes iguales de 25%)</option>
                     <option value="equal_owners">Por Copropietario (15 partes iguales de 1/15)</option>
+                    <option value="percentage">Porcentaje Personalizado (% para cada socio)</option>
+                    <option value="custom_amount">Monto Fijo Personalizado ($ para cada socio)</option>
                   </select>
+                </div>
+
+                {/* Custom Percentage Editor */}
+                {transferDistributionMode === 'percentage' && (
+                  <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2 max-h-48 overflow-y-auto">
+                    <div className="flex justify-between items-center font-bold text-[#163323]">
+                      <span>Ingresar Porcentajes por Socio (%):</span>
+                      <span className={`font-mono text-xs ${Math.abs(liveTransferTotalPct - 100) < 0.1 ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}`}>
+                        Total: {liveTransferTotalPct.toFixed(2)}% / 100%
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {storageService.getUsers().filter((u) => u.active !== false).map((u) => (
+                        <div key={u.id} className="flex items-center gap-1.5 bg-white p-1.5 border border-[#DDD5BF]">
+                          <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
+                          <input
+                            type="number"
+                            step={0.1}
+                            min={0}
+                            max={100}
+                            value={transferCustomPercentages[u.id] ?? (100 / 15).toFixed(2)}
+                            onChange={(e) =>
+                              setTransferCustomPercentages({
+                                ...transferCustomPercentages,
+                                [u.id]: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-16 px-1 py-0.5 font-mono text-right text-xs border border-[#DDD5BF] focus:outline-none focus:border-[#1B3B2B]"
+                          />
+                          <span className="text-[10px] text-[#7A8E7E]">%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Amount Editor */}
+                {transferDistributionMode === 'custom_amount' && (
+                  <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2 max-h-48 overflow-y-auto">
+                    <div className="flex justify-between items-center font-bold text-[#163323]">
+                      <span>Ingresar Montos Fijos por Socio ($):</span>
+                      <span className={`font-mono text-xs ${liveTransferTotalAmt === periodTotalAmount ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}`}>
+                        Suma: ${liveTransferTotalAmt.toLocaleString()} / ${periodTotalAmount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {storageService.getUsers().filter((u) => u.active !== false).map((u) => (
+                        <div key={u.id} className="flex items-center gap-1.5 bg-white p-1.5 border border-[#DDD5BF]">
+                          <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
+                          <input
+                            type="number"
+                            step={1000}
+                            min={0}
+                            value={transferCustomAmounts[u.id] ?? Math.round(periodTotalAmount / 15)}
+                            onChange={(e) =>
+                              setTransferCustomAmounts({
+                                ...transferCustomAmounts,
+                                [u.id]: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-20 px-1 py-0.5 font-mono text-right text-xs border border-[#DDD5BF] focus:outline-none focus:border-[#1B3B2B]"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Preview Table */}
+                <div>
+                  <label className="block font-bold text-[#163323] mb-1">
+                    Previsualización de Cuotas por Copropietario ({liveTransferAllocations.length} Socios)
+                  </label>
+                  <div className="border border-[#E3DFC8] max-h-36 overflow-y-auto bg-white">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#1B3B2B] text-white font-mono text-[10px] sticky top-0">
+                        <tr>
+                          <th className="p-1.5">Copropietario</th>
+                          <th className="p-1.5">Parte</th>
+                          <th className="p-1.5 text-right">% Asignado</th>
+                          <th className="p-1.5 text-right">Monto Cuota ($)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E3DFC8]">
+                        {liveTransferAllocations.map((alloc) => (
+                          <tr key={alloc.userId} className="hover:bg-[#FAF8F5]">
+                            <td className="p-1.5 font-semibold text-[#163323]">{alloc.userName}</td>
+                            <td className="p-1.5 text-[#56685B]">{alloc.partName}</td>
+                            <td className="p-1.5 text-right font-mono text-[#56685B]">{alloc.percentage.toFixed(2)}%</td>
+                            <td className="p-1.5 text-right font-mono font-bold text-[#163323]">
+                              ${alloc.assignedAmount.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <div>
