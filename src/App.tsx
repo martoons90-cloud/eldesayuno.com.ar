@@ -303,7 +303,7 @@ export default function App() {
                       <div className="text-2xl font-bold font-mono tabular-nums text-[#19231A] mt-1">
                         {users.filter((u) => u.active !== false).length}
                       </div>
-                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">4 partes indivisas</p>
+                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">4 Cabezas</p>
                     </div>
 
                     <div className="border-l-2 border-emerald-700 pl-3">

@@ -25,14 +25,14 @@ const NOTIFICATIONS_KEY = 'el_desayuno_notifications_v3';
 const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
 
 export const DEFAULT_USERS: User[] = [
-  // PARTE I (Color Rojo)
+  // CABEZA 1 (Color Rojo)
   {
     id: 'user-c1-jose',
     name: 'José Casares',
     username: 'jose.casares',
     email: 'jose.casares@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte I (25%)',
+    partName: 'Cabeza 1',
     cabezaNumber: 1,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -50,7 +50,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'arturo.casares',
     email: 'arturo.casares@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte I (25%)',
+    partName: 'Cabeza 1',
     cabezaNumber: 1,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -68,7 +68,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'marcos.montaldi',
     email: 'marcos.montaldi@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte I (25%)',
+    partName: 'Cabeza 1',
     cabezaNumber: 1,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -86,7 +86,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'hugo.tobchi',
     email: 'hugo.tobchi@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte I (25%)',
+    partName: 'Cabeza 1',
     cabezaNumber: 1,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -99,14 +99,14 @@ export const DEFAULT_USERS: User[] = [
     createdAt: '2026-01-01',
   },
 
-  // PARTE II (Color Verde)
+  // CABEZA 2 (Color Verde)
   {
     id: 'user-c2-alejandro',
     name: 'Alejandro Guerrero',
     username: 'alejandro.guerrero',
     email: 'alejandro.guerrero@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte II (25%)',
+    partName: 'Cabeza 2',
     cabezaNumber: 2,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -124,7 +124,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'natalia.guerrero',
     email: 'natalia.guerrero@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte II (25%)',
+    partName: 'Cabeza 2',
     cabezaNumber: 2,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -137,14 +137,14 @@ export const DEFAULT_USERS: User[] = [
     createdAt: '2026-01-01',
   },
 
-  // PARTE III (Color Azul)
+  // CABEZA 3 (Color Azul)
   {
     id: 'user-c3-roberto',
     name: 'Roberto Condori',
     username: 'roberto.condori',
     email: 'roberto.condori@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte III (25%)',
+    partName: 'Cabeza 3',
     cabezaNumber: 3,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -157,14 +157,14 @@ export const DEFAULT_USERS: User[] = [
     createdAt: '2026-01-01',
   },
 
-  // PARTE IV (Color Ámbar)
+  // CABEZA 4 (Color Ámbar)
   {
     id: 'user-c4-efrain',
     name: 'Efraín Rodríguez',
     username: 'efrain.rodriguez',
     email: 'efrain.rodriguez@eldesayuno.com.ar',
     role: 'admin',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -182,7 +182,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'rafael.huespe',
     email: 'rafael.huespe@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -200,7 +200,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'fairuz.kuncar',
     email: 'fairuz.kuncar@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -218,7 +218,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'daniel.pederiva',
     email: 'daniel.pederiva@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -236,7 +236,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'gonzalo.lamas',
     email: 'gonzalo.lamas@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -254,7 +254,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'german.jimenez',
     email: 'german.jimenez@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -272,7 +272,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'gabriela.zadir',
     email: 'gabriela.zadir@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -290,7 +290,7 @@ export const DEFAULT_USERS: User[] = [
     username: 'arturo.tezanos',
     email: 'arturo.tezanos@eldesayuno.com.ar',
     role: 'owner',
-    partName: 'Parte IV (25%)',
+    partName: 'Cabeza 4',
     cabezaNumber: 4,
     annualQuotaDays: 30,
     usedDays: 0,
@@ -577,9 +577,11 @@ class StorageService {
       const merged = DEFAULT_USERS.map((defUser) => {
         const found = parsed.find((p) => p.id === defUser.id || p.email === defUser.email);
         if (!found) return defUser;
+        const cleanPartName = (found.partName && !found.partName.includes('%')) ? found.partName : defUser.partName;
         return {
           ...defUser,
           ...found,
+          partName: cleanPartName,
           active: true,
           role: defUser.id === 'user-c4-efrain' ? ('admin' as const) : (found.role || defUser.role),
         };

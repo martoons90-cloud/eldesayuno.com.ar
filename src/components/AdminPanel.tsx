@@ -108,7 +108,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     name: '',
     email: '',
     phone: '',
-    partName: 'Cabeza 1 (Parte I - 25%)',
+    partName: 'Cabeza 1',
     annualQuotaDays: 30,
     color: '#DC2626',
     password: '',
@@ -558,7 +558,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   name: '',
                   email: '',
                   phone: '',
-                  partName: 'Cabeza 1 (Parte I - 25%)',
+                  partName: 'Cabeza 1',
                   annualQuotaDays: 30,
                   color: '#DC2626',
                   password: '',
@@ -1640,7 +1640,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="text"
                     value={userFormData.partName}
                     onChange={(e) => setUserFormData({ ...userFormData, partName: e.target.value })}
-                    placeholder="Parte I (25%)"
+                    placeholder="Cabeza 1"
                     required
                     className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
                   />
