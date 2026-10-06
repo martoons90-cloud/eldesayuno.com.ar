@@ -307,6 +307,24 @@ export const DEFAULT_USERS: User[] = [
     active: true,
     createdAt: '2026-01-01',
   },
+  {
+    id: 'user-c4-franco',
+    name: "Franco D'Michel",
+    username: 'franco.dmichel',
+    email: 'franco.dmichel@eldesayuno.com.ar',
+    role: 'owner',
+    partName: 'Cabeza 4',
+    cabezaNumber: 4,
+    annualQuotaDays: 30,
+    usedDays: 0,
+    pendingDays: 0,
+    color: '#D97706',
+    avatarInitials: 'FD',
+    phone: '',
+    password: 'F9D4M2',
+    active: true,
+    createdAt: '2026-01-01',
+  },
 ];
 
 export const DEFAULT_SETTINGS: TrustSettings = {
@@ -834,11 +852,13 @@ class StorageService {
     if (!raw) return DEFAULT_USERS;
     try {
       const parsed: User[] = JSON.parse(raw);
-      // Ensure all DEFAULT_USERS exist and are active in parsed list
-      const merged = DEFAULT_USERS.map((defUser) => {
-        const found = parsed.find((p) => p.id === defUser.id || p.email === defUser.email);
+      // 1. Merge DEFAULT_USERS with stored updates
+      const defaultMerged = DEFAULT_USERS.map((defUser) => {
+        const found = parsed.find(
+          (p) => p.id === defUser.id || p.email === defUser.email || (p.username && p.username === defUser.username)
+        );
         if (!found) return defUser;
-        const cleanPartName = (found.partName && !found.partName.includes('%')) ? found.partName : defUser.partName;
+        const cleanPartName = found.partName && !found.partName.includes('%') ? found.partName : defUser.partName;
         return {
           ...defUser,
           ...found,
@@ -847,7 +867,16 @@ class StorageService {
           role: defUser.id === 'user-c4-efrain' ? ('admin' as const) : (found.role || defUser.role),
         };
       });
-      return merged;
+
+      // 2. Preserve all newly created custom users not present in DEFAULT_USERS
+      const customUsers = parsed.filter(
+        (p) =>
+          !DEFAULT_USERS.some(
+            (def) => def.id === p.id || def.email === p.email || (p.username && p.username === def.username)
+          )
+      );
+
+      return [...defaultMerged, ...customUsers];
     } catch {
       return DEFAULT_USERS;
     }
@@ -855,11 +884,13 @@ class StorageService {
 
   public saveUser(user: User) {
     const users = this.getUsers();
-    const index = users.findIndex((u) => u.id === user.id);
+    const index = users.findIndex(
+      (u) => u.id === user.id || u.email === user.email || (u.username && u.username === user.username)
+    );
     let updated: User[];
     if (index >= 0) {
       updated = [...users];
-      updated[index] = user;
+      updated[index] = { ...users[index], ...user };
     } else {
       updated = [...users, user];
     }
