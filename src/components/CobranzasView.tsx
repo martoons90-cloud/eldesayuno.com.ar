@@ -57,6 +57,39 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<FeeCollection | null>(null);
 
+  // Bank Details Editing Modal (Admin)
+  const [isEditBankModalOpen, setIsEditBankModalOpen] = useState(false);
+  const [bankFormData, setBankFormData] = useState({
+    cbu: settings.cbu || '',
+    aliasBancario: settings.aliasBancario || '',
+    cuitFideicomiso: settings.cuitFideicomiso || '',
+    bancoNombre: settings.bancoNombre || '',
+    titularCuenta: settings.titularCuenta || 'Fideicomiso Estancia El Desayuno',
+  });
+
+  useEffect(() => {
+    setBankFormData({
+      cbu: settings.cbu || '',
+      aliasBancario: settings.aliasBancario || '',
+      cuitFideicomiso: settings.cuitFideicomiso || '',
+      bancoNombre: settings.bancoNombre || '',
+      titularCuenta: settings.titularCuenta || 'Fideicomiso Estancia El Desayuno',
+    });
+  }, [settings]);
+
+  const handleSaveBankDetails = (e: React.FormEvent) => {
+    e.preventDefault();
+    storageService.saveSettings({
+      ...settings,
+      cbu: bankFormData.cbu.trim(),
+      aliasBancario: bankFormData.aliasBancario.trim(),
+      cuitFideicomiso: bankFormData.cuitFideicomiso.trim(),
+      bancoNombre: bankFormData.bancoNombre.trim(),
+      titularCuenta: bankFormData.titularCuenta.trim(),
+    });
+    setIsEditBankModalOpen(false);
+  };
+
   // Payment Recording Modal
   const [recordPaymentState, setRecordPaymentState] = useState<{
     open: boolean;
@@ -355,6 +388,17 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          {isAdmin && (
+            <button
+              onClick={() => setIsEditBankModalOpen(true)}
+              className="px-3 py-1.5 bg-[#F4EFE6] border border-[#DDD5BF] hover:border-[#1B3B2B] text-xs font-semibold text-[#163323] flex items-center gap-1 transition-colors cursor-pointer"
+              title="Editar CBU, Alias y datos de la cuenta"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-[#BFA270]" />
+              <span>Editar Datos</span>
+            </button>
+          )}
+
           {settings.cbu && (
             <button
               onClick={() => handleCopyText(settings.cbu!, 'cbu')}
@@ -870,7 +914,74 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
             </div>
 
             <div className="space-y-4 text-xs">
-              <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-1">
+              {/* Transfer Details Card for easy copy */}
+              <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2">
+                <div className="flex items-center justify-between border-b border-[#E3DFC8] pb-1.5">
+                  <span className="font-bold text-[#163323] text-[11px] uppercase tracking-wider flex items-center gap-1">
+                    <Building className="w-3.5 h-3.5 text-[#BFA270]" />
+                    Datos para Transferencia
+                  </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditBankModalOpen(true)}
+                      className="text-[10px] text-[#2563EB] hover:underline font-semibold cursor-pointer"
+                    >
+                      Editar CBU / Alias
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-[11px] text-[#46574B] space-y-1">
+                  <p>
+                    Titular: <strong>{settings.titularCuenta || 'Fideicomiso Estancia El Desayuno'}</strong>
+                    {settings.cuitFideicomiso && <span className="ml-1">• CUIT: {settings.cuitFideicomiso}</span>}
+                  </p>
+                  {settings.bancoNombre && <p>Banco: <strong>{settings.bancoNombre}</strong></p>}
+                </div>
+
+                {settings.cbu && (
+                  <div className="flex items-center justify-between text-[11px] bg-white p-2 border border-[#DDD5BF]">
+                    <span>CBU: <strong className="font-mono text-[#163323]">{settings.cbu}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyText(settings.cbu!, 'modal_cbu')}
+                      className="text-[10px] font-bold text-[#1B3B2B] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedField === 'modal_cbu' ? (
+                        <span className="text-emerald-700 font-bold">¡Copiado!</span>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3 text-[#BFA270]" />
+                          <span>Copiar CBU</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {settings.aliasBancario && (
+                  <div className="flex items-center justify-between text-[11px] bg-[#1B3B2B] text-white p-2">
+                    <span>ALIAS: <strong className="font-mono text-[#FAF8F5]">{settings.aliasBancario}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyText(settings.aliasBancario!, 'modal_alias')}
+                      className="text-[10px] font-bold text-[#BFA270] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedField === 'modal_alias' ? (
+                        <span className="text-emerald-300 font-bold">¡Copiado!</span>
+                      ) : (
+                        <>
+                          <Wallet className="w-3 h-3 text-[#BFA270]" />
+                          <span>Copiar Alias</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-[#FFFFFF] border border-[#DDD5BF] p-3 space-y-1">
                 <div className="flex justify-between">
                   <span className="text-[#637568]">Cuota Asignada:</span>
                   <span className="font-mono font-bold text-[#163323]">
@@ -978,6 +1089,107 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Bank Details (Admin) */}
+      {isEditBankModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
+          <div className="bg-white border border-[#E3DFC8] max-w-lg w-full p-6 shadow-xl relative">
+            <button
+              onClick={() => setIsEditBankModalOpen(false)}
+              className="absolute top-4 right-4 p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-4 border-b border-[#E3DFC8] pb-3">
+              <div className="w-8 h-8 bg-[#1B3B2B] text-[#BFA270] rounded flex items-center justify-center font-bold">
+                <Building className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#163323]">Configurar Datos Bancarios de la Estancia</h3>
+                <p className="text-xs text-[#637568]">Información visible para transferencias de cuotas y expensas.</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveBankDetails} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-[#163323] mb-1">Titular de la Cuenta</label>
+                <input
+                  type="text"
+                  value={bankFormData.titularCuenta}
+                  onChange={(e) => setBankFormData({ ...bankFormData, titularCuenta: e.target.value })}
+                  placeholder="Fideicomiso Estancia El Desayuno"
+                  className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-[#163323] mb-1">CUIT del Fideicomiso</label>
+                  <input
+                    type="text"
+                    value={bankFormData.cuitFideicomiso}
+                    onChange={(e) => setBankFormData({ ...bankFormData, cuitFideicomiso: e.target.value })}
+                    placeholder="30-71234567-8"
+                    className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-xs focus:outline-none focus:border-[#1B3B2B]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#163323] mb-1">Banco / Entidad</label>
+                  <input
+                    type="text"
+                    value={bankFormData.bancoNombre}
+                    onChange={(e) => setBankFormData({ ...bankFormData, bancoNombre: e.target.value })}
+                    placeholder="Banco Galicia"
+                    className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#163323] mb-1">ALIAS Bancario *</label>
+                <input
+                  type="text"
+                  required
+                  value={bankFormData.aliasBancario}
+                  onChange={(e) => setBankFormData({ ...bankFormData, aliasBancario: e.target.value })}
+                  placeholder="EL.DESAYUNO.ESTANCIA"
+                  className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono font-bold text-xs text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#163323] mb-1">CBU / CVU (22 dígitos) *</label>
+                <input
+                  type="text"
+                  required
+                  value={bankFormData.cbu}
+                  onChange={(e) => setBankFormData({ ...bankFormData, cbu: e.target.value })}
+                  placeholder="0070123420000012345678"
+                  className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono font-bold text-xs text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E3DFC8]">
+                <button
+                  type="button"
+                  onClick={() => setIsEditBankModalOpen(false)}
+                  className="px-4 py-2 border border-[#DDD5BF] text-xs font-bold text-[#637568] hover:bg-[#F4EFE6] transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer"
+                >
+                  Guardar Datos Bancarios
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

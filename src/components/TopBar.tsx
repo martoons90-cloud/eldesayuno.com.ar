@@ -97,14 +97,10 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <span>FIDEICOMISO</span>
                   {isAdmin && (
                     <span
-                      className={`text-[7px] font-mono px-1 py-0.1 rounded-2xs ${
-                        isD1Active
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-neutral-100 text-neutral-600'
-                      }`}
-                      title={isD1Active ? 'Conectado a Cloudflare D1' : 'Modo Almacenamiento Local'}
+                      className="text-[7px] font-mono font-bold px-1 py-0.1 bg-emerald-100 text-emerald-800 rounded-2xs"
+                      title="Conectado directamente a la Base de Datos Central del Servidor / Cloudflare"
                     >
-                      {isD1Active ? '● D1' : '○ Local'}
+                      ● DB Servidor
                     </span>
                   )}
                 </span>

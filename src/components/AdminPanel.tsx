@@ -40,6 +40,8 @@ import {
   ShieldAlert,
   Copy,
   CheckCheck,
+  CreditCard,
+  Building,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -158,7 +160,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   useEffect(() => {
     setD1ConfigForm(d1Service.getConfig());
-  }, [activeSection]);
+    setSettingsFormData(settings);
+  }, [activeSection, settings]);
 
   // Handle User Edit / Save
   const handleSaveUser = (e: React.FormEvent) => {
@@ -1550,6 +1553,90 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   }
                   className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none font-mono"
                 />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-[#EFEAE0]">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#163323] mb-2 flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-[#BFA270]" />
+                Datos Bancarios del Fideicomiso (CBU & Alias para Transferencias)
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1">
+                    Titular de la Cuenta
+                  </label>
+                  <input
+                    type="text"
+                    value={settingsFormData.titularCuenta || ''}
+                    onChange={(e) =>
+                      setSettingsFormData({ ...settingsFormData, titularCuenta: e.target.value })
+                    }
+                    placeholder="Fideicomiso Estancia El Desayuno"
+                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1">
+                    CUIT del Fideicomiso
+                  </label>
+                  <input
+                    type="text"
+                    value={settingsFormData.cuitFideicomiso || ''}
+                    onChange={(e) =>
+                      setSettingsFormData({ ...settingsFormData, cuitFideicomiso: e.target.value })
+                    }
+                    placeholder="30-71234567-8"
+                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1">
+                    Nombre del Banco / Entidad
+                  </label>
+                  <input
+                    type="text"
+                    value={settingsFormData.bancoNombre || ''}
+                    onChange={(e) =>
+                      setSettingsFormData({ ...settingsFormData, bancoNombre: e.target.value })
+                    }
+                    placeholder="Banco Galicia / BBVA / Macro"
+                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1">
+                    ALIAS Bancario
+                  </label>
+                  <input
+                    type="text"
+                    value={settingsFormData.aliasBancario || ''}
+                    onChange={(e) =>
+                      setSettingsFormData({ ...settingsFormData, aliasBancario: e.target.value })
+                    }
+                    placeholder="EL.DESAYUNO.ESTANCIA"
+                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none font-mono font-bold text-[#163323]"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1">
+                    CBU / CVU (22 dígitos)
+                  </label>
+                  <input
+                    type="text"
+                    value={settingsFormData.cbu || ''}
+                    onChange={(e) =>
+                      setSettingsFormData({ ...settingsFormData, cbu: e.target.value })
+                    }
+                    placeholder="0070123420000012345678"
+                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none font-mono font-bold text-[#163323]"
+                  />
+                </div>
               </div>
             </div>
 
