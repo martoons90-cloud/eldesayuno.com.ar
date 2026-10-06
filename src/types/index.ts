@@ -215,3 +215,34 @@ export interface FeeCollection {
   createdAt: string;
   notes?: string;
 }
+
+// -------------------------------------------------------------
+// GESTOR DE GASTOS Y FACTURAS DEL FIDEICOMISO
+// -------------------------------------------------------------
+export type ExpenseCategory =
+  | 'servicios' // Luz, agua, gas, wifi
+  | 'personal_casero' // Sueldo casero, encarga de limpieza
+  | 'mantenimiento' // Reparaciones, parque, pileta
+  | 'impuestos' // Inmobiliario, tasas municipales
+  | 'insumos' // Productos de limpieza, insumos quincho
+  | 'otro';
+
+export interface ExpenseItem {
+  id: string;
+  concept: string; // e.g., "Factura Luz EPEC Octubre 2026"
+  category: ExpenseCategory;
+  amount: number;
+  currency: 'ARS' | 'USD';
+  periodMonth: string; // "2026-10"
+  date: string; // YYYY-MM-DD
+  provider?: string; // e.g., "EPEC", "Aguas Cordobesas", "Casero"
+  status: 'paid' | 'pending';
+  paidAt?: string;
+  paymentMethod?: string;
+  receiptUrl?: string; // Foto factura / comprobante
+  notes?: string;
+  transferredToFeeCollectionId?: string; // ID of fee collection created from this expense/month
+  createdBy: string;
+  createdAt: string;
+}
+

@@ -12,6 +12,7 @@ import {
   IncidentReport,
   FeeCollection,
   OwnerFeeAllocation,
+  ExpenseItem,
 } from '../types';
 
 const USERS_KEY = 'el_desayuno_users_v3';
@@ -25,6 +26,7 @@ const INVENTORY_KEY = 'el_desayuno_inventory_v3';
 const INCIDENTS_KEY = 'el_desayuno_incidents_v3';
 const NOTIFICATIONS_KEY = 'el_desayuno_notifications_v3';
 const FEES_KEY = 'el_desayuno_fees_v3';
+const EXPENSES_KEY = 'el_desayuno_expenses_v1';
 const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
 
 export const DEFAULT_USERS: User[] = [
@@ -409,6 +411,103 @@ export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = [
   },
 ];
 
+export const DEFAULT_EXPENSES: ExpenseItem[] = [
+  {
+    id: 'exp-101',
+    concept: 'Factura Energía Eléctrica EPEC (Consumo Septiembre / Octubre)',
+    category: 'servicios',
+    amount: 285000,
+    currency: 'ARS',
+    periodMonth: '2026-10',
+    date: '2026-10-05',
+    provider: 'EPEC Empresa Provincial de Energía',
+    status: 'paid',
+    paidAt: '2026-10-06',
+    paymentMethod: 'transfer',
+    notes: 'Factura N° 82910-A. Incluye medidor principal y caserío.',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-10-05T10:00:00.000Z',
+  },
+  {
+    id: 'exp-102',
+    concept: 'Honorarios & Sueldo Encargado / Casero del Campo (Octubre)',
+    category: 'personal_casero',
+    amount: 680000,
+    currency: 'ARS',
+    periodMonth: '2026-10',
+    date: '2026-10-02',
+    provider: 'Ramón Casero (Personal Permanente)',
+    status: 'paid',
+    paidAt: '2026-10-02',
+    paymentMethod: 'transfer',
+    notes: 'Sueldo mensual casero + cargas sociales.',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-10-02T12:00:00.000Z',
+  },
+  {
+    id: 'exp-103',
+    concept: 'Mantenimiento de Parque, Parquización y Productos Piscina',
+    category: 'mantenimiento',
+    amount: 320000,
+    currency: 'ARS',
+    periodMonth: '2026-10',
+    date: '2026-10-08',
+    provider: 'Parquización Areco SRL & Cloro Norte',
+    status: 'paid',
+    paidAt: '2026-10-08',
+    paymentMethod: 'transfer',
+    notes: 'Corte de césped 12 hectáreas + 50kg Cloro + Clarificador.',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-10-08T15:30:00.000Z',
+  },
+  {
+    id: 'exp-104',
+    concept: 'Servicio de Internet Satelital Starlink y Conectividad Wi-Fi',
+    category: 'servicios',
+    amount: 68000,
+    currency: 'ARS',
+    periodMonth: '2026-10',
+    date: '2026-10-01',
+    provider: 'Starlink Argentina',
+    status: 'paid',
+    paidAt: '2026-10-01',
+    paymentMethod: 'mercadopago',
+    notes: 'Abono residencial de alta velocidad.',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-10-01T08:00:00.000Z',
+  },
+  {
+    id: 'exp-105',
+    concept: 'Insumos de Limpieza, Blanquería y Artículos del Quincho',
+    category: 'insumos',
+    amount: 97000,
+    currency: 'ARS',
+    periodMonth: '2026-10',
+    date: '2026-10-09',
+    provider: 'Distribuidora Mayorista San Antonio',
+    status: 'paid',
+    paidAt: '2026-10-09',
+    paymentMethod: 'cash',
+    notes: 'Repuesto de papel, detergentes, bolsas y carbón para quincho.',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-10-09T11:20:00.000Z',
+  },
+  {
+    id: 'exp-106',
+    concept: 'Impuesto Inmobiliario Rural / Tasas Municipales (Cuota 5/2026)',
+    category: 'impuestos',
+    amount: 150000,
+    currency: 'ARS',
+    periodMonth: '2026-10',
+    date: '2026-10-10',
+    provider: 'ARBA / Municipalidad San Antonio de Areco',
+    status: 'pending',
+    notes: 'Vence el 25/10/2026.',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-10-10T09:00:00.000Z',
+  },
+];
+
 // Helper to calculate days used per user from active bookings
 function recalculateUsersUsedDays(users: User[], bookings: Booking[]): User[] {
   return users.map((user) => {
@@ -463,6 +562,9 @@ class StorageService {
     if (!localStorage.getItem(INCIDENTS_KEY)) {
       localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
     }
+    if (!localStorage.getItem(EXPENSES_KEY)) {
+      localStorage.setItem(EXPENSES_KEY, JSON.stringify(DEFAULT_EXPENSES));
+    }
     // Ensure Efraín Rodríguez has admin role
     let users = this.getUsers();
     const efrainIdx = users.findIndex((u) => u.id === 'user-c4-efrain' || u.name.includes('Efraín'));
@@ -498,6 +600,9 @@ class StorageService {
         }
         if (data.data.fees && Array.isArray(data.data.fees)) {
           localStorage.setItem(FEES_KEY, JSON.stringify(data.data.fees));
+        }
+        if (data.data.expenses && Array.isArray(data.data.expenses)) {
+          localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.data.expenses));
         }
         if (data.data.settings) {
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.data.settings));
@@ -1217,6 +1322,34 @@ class StorageService {
     this.notify();
   }
 
+  // Expenses & Operating Costs Management
+  public getExpenses(): ExpenseItem[] {
+    if (typeof window === 'undefined') return DEFAULT_EXPENSES;
+    const raw = localStorage.getItem(EXPENSES_KEY);
+    return raw ? JSON.parse(raw) : DEFAULT_EXPENSES;
+  }
+
+  public saveExpense(expense: ExpenseItem): ExpenseItem {
+    const list = this.getExpenses();
+    const index = list.findIndex((e) => e.id === expense.id);
+    let updated: ExpenseItem[];
+    if (index >= 0) {
+      updated = [...list];
+      updated[index] = expense;
+    } else {
+      updated = [expense, ...list];
+    }
+    localStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
+    this.notify();
+    return expense;
+  }
+
+  public deleteExpense(expenseId: string) {
+    const list = this.getExpenses().filter((e) => e.id !== expenseId);
+    localStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
+    this.notify();
+  }
+
   // Get complete package of local data for D1 push & backup
   public getAllDataPackage() {
     return {
@@ -1231,6 +1364,7 @@ class StorageService {
       incidents: this.getIncidents(),
       notifications: this.getNotifications(),
       fees: this.getFeeCollections(),
+      expenses: this.getExpenses(),
       exportedAt: new Date().toISOString(),
       version: '2.0-eldesayuno',
     };
@@ -1255,6 +1389,7 @@ class StorageService {
       if (Array.isArray(data.incidents)) localStorage.setItem(INCIDENTS_KEY, JSON.stringify(data.incidents));
       if (Array.isArray(data.notifications)) localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(data.notifications));
       if (Array.isArray(data.fees)) localStorage.setItem(FEES_KEY, JSON.stringify(data.fees));
+      if (Array.isArray(data.expenses)) localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
 
       this.notify();
       return { success: true, message: 'Copia de respaldo restaurada exitosamente.' };
@@ -1276,6 +1411,7 @@ class StorageService {
     localStorage.setItem(INVENTORY_KEY, JSON.stringify(DEFAULT_INVENTORY));
     localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
     localStorage.setItem(FEES_KEY, JSON.stringify(DEFAULT_FEE_COLLECTIONS));
+    localStorage.setItem(EXPENSES_KEY, JSON.stringify(DEFAULT_EXPENSES));
     const recalculated = recalculateUsersUsedDays(DEFAULT_USERS, DEFAULT_BOOKINGS);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
     this.notify();

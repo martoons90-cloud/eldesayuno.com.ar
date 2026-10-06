@@ -16,6 +16,7 @@ import { HouseGuideView } from './components/HouseGuideView';
 import { InventoryStockView } from './components/InventoryStockView';
 import { IncidentReportsView } from './components/IncidentReportsView';
 import { CobranzasView } from './components/CobranzasView';
+import { ExpensesView } from './components/ExpensesView';
 import { AdminPanel, AdminSectionType } from './components/AdminPanel';
 import { UnifiedSettingsPanel, SettingsTabId } from './components/UnifiedSettingsPanel';
 import {
@@ -37,6 +38,7 @@ import {
   AlertTriangle,
   DollarSign,
   CreditCard,
+  Receipt,
 } from 'lucide-react';
 
 export default function App() {
@@ -475,10 +477,30 @@ export default function App() {
                       <ArrowUpRight className="w-4 h-4 text-[#8C7A53] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                     </div>
                     <p className="text-xs text-[#526657] mt-3 leading-relaxed">
-                      Emito cuotas de expensas, controle los cobros recibidos de los 15 copropietarios, divida por partes o porcentajes y parametrice vencimientos.
+                      Emita cuotas de expensas, controle los cobros recibidos de los 15 copropietarios, divida por partes o porcentajes y parametrice vencimientos.
                     </p>
                     <span className="text-[11px] font-semibold text-[#1B3B2B] mt-4 block group-hover:underline">
                       Abrir panel de cobranzas →
+                    </span>
+                  </div>
+
+                  {/* Shortcut 6: Libro de Gastos y Facturas */}
+                  <div
+                    onClick={() => setActiveTab('gastos')}
+                    className="p-6 bg-white border border-[#E3DFC8] hover:border-[#1B3B2B] shadow-xs cursor-pointer transition-all group"
+                  >
+                    <div className="flex items-center justify-between pb-3 border-b border-[#EFEAE0]">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
+                        <Receipt className="w-4 h-4 text-[#BFA270]" />
+                        Gastos & Costos Operativos
+                      </span>
+                      <ArrowUpRight className="w-4 h-4 text-[#8C7A53] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-xs text-[#526657] mt-3 leading-relaxed">
+                      Lleve el registro auditado de servicios (luz EPEC, internet), sueldo del casero, parquización e impuestos, y traslade la suma del mes a cobranza en 1-clic.
+                    </p>
+                    <span className="text-[11px] font-semibold text-[#1B3B2B] mt-4 block group-hover:underline">
+                      Abrir gestor de gastos →
                     </span>
                   </div>
                 </div>
@@ -514,6 +536,15 @@ export default function App() {
                 users={users}
                 settings={settings}
                 isAdmin={currentUser.role === 'admin'}
+              />
+            )}
+
+            {activeTab === 'gastos' && (
+              <ExpensesView
+                currentUser={currentUser}
+                settings={settings}
+                isAdmin={currentUser.role === 'admin'}
+                onNavigateToCobranzas={() => setActiveTab('cobranzas')}
               />
             )}
 
