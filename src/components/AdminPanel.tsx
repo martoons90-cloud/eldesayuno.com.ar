@@ -7,6 +7,7 @@ import { d1Service, D1Config, D1_SCHEMA_SQL } from '../services/d1Service';
 import { BrandLogo } from './BrandLogo';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { TransferAdminModal } from './TransferAdminModal';
+import { UserFormModal } from './UserFormModal';
 import {
   Users,
   Calendar,
@@ -164,43 +165,62 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   }, [activeSection, settings]);
 
   // Handle User Edit / Save
-  const handleSaveUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingUser) {
-      storageService.saveUser({
-        ...editingUser,
-        name: userFormData.name,
-        email: userFormData.email,
-        phone: userFormData.phone,
-        partName: userFormData.partName,
-        annualQuotaDays: Number(userFormData.annualQuotaDays),
-        color: userFormData.color,
-      });
-      setEditingUser(null);
+  const handleSaveUserFromModal = (userData: {
+    id?: string;
+    name: string;
+    email: string;
+    phone: string;
+    partName: string;
+    cabezaNumber?: number;
+    annualQuotaDays: number;
+    color: string;
+    password?: string;
+    role?: 'owner' | 'admin';
+  }) => {
+    if (userData.id) {
+      const existing = users.find((u) => u.id === userData.id);
+      if (existing) {
+        storageService.saveUser({
+          ...existing,
+          name: userData.name,
+          email: userData.email,
+          phone: userData.phone,
+          partName: userData.partName,
+          cabezaNumber: userData.cabezaNumber,
+          annualQuotaDays: userData.annualQuotaDays,
+          color: userData.color,
+          password: userData.password || existing.password,
+          role: userData.role || existing.role,
+        });
+      }
     } else {
       const newUser: User = {
         id: 'user-' + Date.now(),
-        name: userFormData.name,
-        email: userFormData.email,
-        phone: userFormData.phone,
-        partName: userFormData.partName,
-        role: 'owner',
-        annualQuotaDays: Number(userFormData.annualQuotaDays),
+        name: userData.name,
+        username: userData.email.split('@')[0],
+        email: userData.email,
+        phone: userData.phone,
+        partName: userData.partName,
+        cabezaNumber: userData.cabezaNumber,
+        role: userData.role || 'owner',
+        annualQuotaDays: userData.annualQuotaDays,
         usedDays: 0,
         pendingDays: 0,
-        color: userFormData.color,
-        avatarInitials: userFormData.name
+        color: userData.color,
+        avatarInitials: userData.name
           .split(' ')
           .map((n) => n[0])
           .join('')
           .toUpperCase()
           .slice(0, 2),
+        password: userData.password,
         active: true,
         createdAt: new Date().toISOString().split('T')[0],
       };
       storageService.saveUser(newUser);
-      setIsNewUserModalOpen(false);
     }
+    setEditingUser(null);
+    setIsNewUserModalOpen(false);
   };
 
   const handleToggleUserActive = (user: User) => {
@@ -1665,122 +1685,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* ========================================================= */}
 
       {/* Modal: Add or Edit Owner */}
-      {(isNewUserModalOpen || editingUser) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
-          <div className="bg-[#FFFFFF] w-full max-w-lg border border-[#DED7C2] shadow-2xl p-6">
-            <h3 className="text-base font-bold text-[#163323] pb-3 border-b border-[#EFEAE0]">
-              {editingUser ? 'Modificar Copropietario' : 'Alta de Nuevo Copropietario'}
-            </h3>
-
-            <form onSubmit={handleSaveUser} className="space-y-3 mt-4 text-xs">
-              <div>
-                <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  Nombre Completo
-                </label>
-                <input
-                  type="text"
-                  value={userFormData.name}
-                  onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
-                  required
-                  className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Email de Acceso
-                  </label>
-                  <input
-                    type="email"
-                    value={userFormData.email}
-                    onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
-                    required
-                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Teléfono Celular
-                  </label>
-                  <input
-                    type="text"
-                    value={userFormData.phone}
-                    onChange={(e) => setUserFormData({ ...userFormData, phone: e.target.value })}
-                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Denominación de Parte
-                  </label>
-                  <input
-                    type="text"
-                    value={userFormData.partName}
-                    onChange={(e) => setUserFormData({ ...userFormData, partName: e.target.value })}
-                    placeholder="Cabeza 1"
-                    required
-                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Cupo Anual de Días
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="365"
-                    value={userFormData.annualQuotaDays}
-                    onChange={(e) =>
-                      setUserFormData({ ...userFormData, annualQuotaDays: Number(e.target.value) })
-                    }
-                    required
-                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  Color Identificador en Calendario
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={userFormData.color}
-                    onChange={(e) => setUserFormData({ ...userFormData, color: e.target.value })}
-                    className="w-10 h-8 border cursor-pointer"
-                  />
-                  <span className="font-mono text-xs">{userFormData.color}</span>
-                </div>
-              </div>
-
-              <div className="pt-4 flex items-center justify-end gap-2 border-t border-[#EFEAE0]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsNewUserModalOpen(false);
-                    setEditingUser(null);
-                  }}
-                  className="px-4 py-2 text-[#637568] hover:text-[#19231A]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#1B3B2B] text-white font-semibold uppercase tracking-wider hover:bg-[#132A1F]"
-                >
-                  Guardar Copropietario
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <UserFormModal
+        isOpen={isNewUserModalOpen || !!editingUser}
+        onClose={() => {
+          setIsNewUserModalOpen(false);
+          setEditingUser(null);
+        }}
+        editingUser={editingUser}
+        allUsers={users}
+        onSaveUser={handleSaveUserFromModal}
+      />
 
       {/* Modal: New Date Block */}
       {isNewBlockModalOpen && (
