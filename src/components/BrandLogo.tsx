@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface BrandLogoProps {
   className?: string;
@@ -6,6 +6,7 @@ interface BrandLogoProps {
   showTagline?: boolean;
   variant?: 'full' | 'compact' | 'seal-only';
   theme?: 'dark' | 'light';
+  logoUrl?: string;
 }
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({
@@ -14,7 +15,24 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   showTagline = true,
   variant = 'full',
   theme = 'dark',
+  logoUrl,
 }) => {
+  const [imgSrc, setImgSrc] = useState<string | null>(logoUrl || null);
+  const [hasImgError, setHasImgError] = useState(false);
+
+  useEffect(() => {
+    if (logoUrl) {
+      setImgSrc(logoUrl);
+      setHasImgError(false);
+    } else if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('el_desayuno_custom_logo');
+      if (stored) {
+        setImgSrc(stored);
+        setHasImgError(false);
+      }
+    }
+  }, [logoUrl]);
+
   const isLight = theme === 'light';
   const accentGold = '#BFA270';
   const textColor = isLight ? '#FAF8F4' : '#163323';
@@ -33,6 +51,20 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
   // Masterpiece Vector SVG Emblem - Exact reproduction of "El Desayuno Sociedad"
   const renderSeal = () => {
+    if (imgSrc && !hasImgError) {
+      return (
+        <img
+          src={imgSrc}
+          alt="El Desayuno Sociedad"
+          width={sealSize}
+          height={sealSize}
+          onError={() => setHasImgError(true)}
+          className="object-contain shrink-0 transition-transform duration-300 hover:scale-[1.015]"
+          style={{ width: `${sealSize}px`, height: `${sealSize}px` }}
+        />
+      );
+    }
+
     return (
       <svg
         width={sealSize}

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { User, Booking, DateBlock, TrustSettings, NotificationPush } from './types';
+import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport } from './types';
 import { storageService } from './services/storageService';
 import { LoginScreen } from './components/LoginScreen';
 import { TopBar } from './components/TopBar';
@@ -13,7 +13,10 @@ import { CalendarView } from './components/CalendarView';
 import { BookingModal } from './components/BookingModal';
 import { MyBookingsView } from './components/MyBookingsView';
 import { HouseGuideView } from './components/HouseGuideView';
-import { AdminPanel } from './components/AdminPanel';
+import { InventoryStockView } from './components/InventoryStockView';
+import { IncidentReportsView } from './components/IncidentReportsView';
+import { AdminPanel, AdminSectionType } from './components/AdminPanel';
+import { UnifiedSettingsPanel, SettingsTabId } from './components/UnifiedSettingsPanel';
 import {
   PushNotificationToast,
   NotificationCenterDrawer,
@@ -27,6 +30,10 @@ import {
   Lock,
   ArrowUpRight,
   TrendingUp,
+  Database,
+  Image as ImageIcon,
+  Boxes,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function App() {
@@ -36,10 +43,12 @@ export default function App() {
   const [blocks, setBlocks] = useState<DateBlock[]>([]);
   const [settings, setSettings] = useState<TrustSettings>(storageService.getSettings());
   const [notifications, setNotifications] = useState<NotificationPush[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
 
   // Navigation state
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [adminSection, setAdminSection] = useState<'owners' | 'blocks' | 'reservations' | 'settings'>('reservations');
+  const [adminSection, setAdminSection] = useState<AdminSectionType>('reservations');
 
   // Booking Modal State
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
@@ -58,6 +67,8 @@ export default function App() {
     setBlocks(storageService.getBlocks());
     setSettings(storageService.getSettings());
     setNotifications(storageService.getNotifications());
+    setInventory(storageService.getInventory());
+    setIncidents(storageService.getIncidents());
 
     const loggedIn = storageService.getCurrentUser();
     setCurrentUser(loggedIn);
@@ -124,17 +135,18 @@ export default function App() {
       <TopBar
         currentUser={currentUser}
         activeTab={activeTab}
+        logoUrl={settings.logoUrl}
         onSelectTab={(tab) => {
           setActiveTab(tab);
-          if (tab === 'owners') {
-            setActiveTab('owners');
-            setAdminSection('owners');
-          } else if (tab === 'blocks') {
-            setActiveTab('blocks');
-            setAdminSection('blocks');
-          } else if (tab === 'reservations') {
-            setActiveTab('reservations');
-            setAdminSection('reservations');
+          if (
+            tab === 'owners' ||
+            tab === 'blocks' ||
+            tab === 'reservations' ||
+            tab === 'settings' ||
+            tab === 'd1' ||
+            tab === 'logo'
+          ) {
+            setAdminSection(tab as AdminSectionType);
           }
         }}
         onLogout={handleLogout}
@@ -181,6 +193,18 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'inventory' && (
+              <InventoryStockView currentUser={currentUser} settings={settings} />
+            )}
+
+            {activeTab === 'incidents' && (
+              <IncidentReportsView
+                currentUser={currentUser}
+                bookings={bookings}
+                settings={settings}
+              />
+            )}
+
             {activeTab === 'guide' && <HouseGuideView settings={settings} />}
           </>
         )}
@@ -210,7 +234,7 @@ export default function App() {
                         Consola General de Administración
                       </h1>
                       <p className="text-sm text-[#4E6152] mt-1 max-w-2xl leading-relaxed">
-                        Control integral de ocupación de la casa de veraneo, auditoría de turnos de los copropietarios, bloqueos por mantenimiento edilicio y asignación de cupos anuales.
+                        Control integral de ocupación de la casa de veraneo, auditoría de turnos de los copropietarios, bloqueos por mantenimiento edilicio, inventario y gestión de novedades/daños reportados.
                       </p>
                     </div>
 
@@ -236,53 +260,73 @@ export default function App() {
                   </div>
 
                   {/* Administrative KPI grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 pt-6">
-                    <div className="border-l-2 border-[#1B3B2B] pl-4">
-                      <span className="text-[11px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
-                        Copropietarios Activos
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 pt-6">
+                    <div className="border-l-2 border-[#1B3B2B] pl-3">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                        Copropietarios
                       </span>
-                      <div className="text-3xl font-bold font-mono tabular-nums text-[#19231A] mt-1">
+                      <div className="text-2xl font-bold font-mono tabular-nums text-[#19231A] mt-1">
                         {users.filter((u) => u.role === 'owner' && u.active).length}
                       </div>
-                      <p className="text-xs text-[#7A8E7E] mt-1">Cuatro partes indivisas (100%)</p>
+                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">4 partes indivisas</p>
                     </div>
 
-                    <div className="border-l-2 border-emerald-700 pl-4">
-                      <span className="text-[11px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
-                        Estadías Confirmadas
+                    <div className="border-l-2 border-emerald-700 pl-3">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                        Estadías
                       </span>
-                      <div className="text-3xl font-bold font-mono tabular-nums text-emerald-800 mt-1">
+                      <div className="text-2xl font-bold font-mono tabular-nums text-emerald-800 mt-1">
                         {activeBookingsCount}
                       </div>
-                      <p className="text-xs text-[#7A8E7E] mt-1">En agenda para el año</p>
+                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">En agenda 2026</p>
                     </div>
 
-                    <div className="border-l-2 border-[#BFA270] pl-4">
-                      <span className="text-[11px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
-                        Días Consumidos (Total)
+                    <div className="border-l-2 border-[#BFA270] pl-3">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                        Noches Ocupadas
                       </span>
-                      <div className="text-3xl font-bold font-mono tabular-nums text-[#8F6F3A] mt-1">
-                        {totalDaysReserved} / {totalQuotaAllOwners}
+                      <div className="text-2xl font-bold font-mono tabular-nums text-[#8F6F3A] mt-1">
+                        {totalDaysReserved}
                       </div>
-                      <p className="text-xs text-[#7A8E7E] mt-1">
-                        {Math.round((totalDaysReserved / (totalQuotaAllOwners || 1)) * 100)}% de ocupación teórica
+                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">
+                        Noches totales 2026
                       </p>
                     </div>
 
-                    <div className="border-l-2 border-amber-600 pl-4">
-                      <span className="text-[11px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
-                        Bloqueos Técnicos
+                    <div className="border-l-2 border-amber-600 pl-3">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                        Bloqueos
                       </span>
-                      <div className="text-3xl font-bold font-mono tabular-nums text-amber-800 mt-1">
+                      <div className="text-2xl font-bold font-mono tabular-nums text-amber-800 mt-1">
                         {blocks.length}
                       </div>
-                      <p className="text-xs text-[#7A8E7E] mt-1">Caldera, pileta y pintura</p>
+                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">Mantenimiento</p>
+                    </div>
+
+                    <div className="border-l-2 border-blue-700 pl-3">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                        Stock de la Casa
+                      </span>
+                      <div className="text-2xl font-bold font-mono tabular-nums text-blue-900 mt-1">
+                        {inventory.length}
+                      </div>
+                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">Ítems inventariados</p>
+                    </div>
+
+                    <div className="border-l-2 border-red-600 pl-3">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                        Novedades / Daños
+                      </span>
+                      <div className="text-2xl font-bold font-mono tabular-nums text-red-800 mt-1">
+                        {incidents.filter((i) => i.status !== 'resuelto' && i.status !== 'desestimado').length}
+                      </div>
+                      <p className="text-[10px] text-[#7A8E7E] mt-0.5">Pendientes de revisión</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Quick Shortcuts to Admin Modules */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Shortcut 1: Consolidado de Reservas */}
                   <div
                     onClick={() => {
@@ -307,31 +351,69 @@ export default function App() {
                     </span>
                   </div>
 
-                  {/* Shortcut 2: Padrón y Cupos */}
+                  {/* Shortcut 2: Stock & Inventario */}
+                  <div
+                    onClick={() => setActiveTab('inventory')}
+                    className="p-6 bg-white border border-[#E3DFC8] hover:border-[#1B3B2B] shadow-xs cursor-pointer transition-all group"
+                  >
+                    <div className="flex items-center justify-between pb-3 border-b border-[#EFEAE0]">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
+                        <Boxes className="w-4 h-4 text-blue-800" />
+                        Stock & Inventario
+                      </span>
+                      <ArrowUpRight className="w-4 h-4 text-[#8C7A53] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-xs text-[#526657] mt-3 leading-relaxed">
+                      Consulte y audite el listado de bienes en la estancia: vajilla, muebles, televisores, bombas, ropa blanca y reposeras con impresión de check-list.
+                    </p>
+                    <span className="text-[11px] font-semibold text-[#1B3B2B] mt-4 block group-hover:underline">
+                      Ver inventario completo ({inventory.length} ítems) →
+                    </span>
+                  </div>
+
+                  {/* Shortcut 3: Novedades & Reportes */}
+                  <div
+                    onClick={() => setActiveTab('incidents')}
+                    className="p-6 bg-white border border-[#E3DFC8] hover:border-[#1B3B2B] shadow-xs cursor-pointer transition-all group"
+                  >
+                    <div className="flex items-center justify-between pb-3 border-b border-[#EFEAE0]">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-700" />
+                        Novedades & Daños Reportados
+                      </span>
+                      <ArrowUpRight className="w-4 h-4 text-[#8C7A53] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-xs text-[#526657] mt-3 leading-relaxed">
+                      Vea avisos y reclamos cargados por los copropietarios con fotografías de roturas o faltantes al llegar a la casa, y asigne tareas al casero Don Raúl.
+                    </p>
+                    <span className="text-[11px] font-semibold text-[#1B3B2B] mt-4 block group-hover:underline">
+                      Revisar novedades ({incidents.filter((i) => i.status !== 'resuelto').length} activas) →
+                    </span>
+                  </div>
+
+                  {/* Shortcut 4: Padrón y Cupos */}
                   <div
                     onClick={() => {
-                      setActiveTab('owners');
-                      setAdminSection('owners');
+                      setActiveTab('settings');
                     }}
                     className="p-6 bg-white border border-[#E3DFC8] hover:border-[#1B3B2B] shadow-xs cursor-pointer transition-all group"
                   >
                     <div className="flex items-center justify-between pb-3 border-b border-[#EFEAE0]">
                       <span className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
                         <Users className="w-4 h-4 text-[#1B3B2B]" />
-                        Padrón y Cupos
+                        Configuración Integral
                       </span>
                       <ArrowUpRight className="w-4 h-4 text-[#8C7A53] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                     </div>
                     <p className="text-xs text-[#526657] mt-3 leading-relaxed">
-                      Gestión de propietarios, alta y baja de beneficiarios, asignación de los 30
-                      días anuales por parte y configuración del color del calendario.
+                      Parametrice socios, cupos, reglas, teléfonos de guardia, Wi-Fi, logo, base de datos Cloudflare D1 y respaldos JSON en un único panel centralizado.
                     </p>
                     <span className="text-[11px] font-semibold text-[#1B3B2B] mt-4 block group-hover:underline">
-                      Gestionar propietarios →
+                      Abrir configuración general →
                     </span>
                   </div>
 
-                  {/* Shortcut 3: Bloqueos y Mantenimiento */}
+                  {/* Shortcut 5: Bloqueos y Mantenimiento */}
                   <div
                     onClick={() => {
                       setActiveTab('blocks');
@@ -351,7 +433,7 @@ export default function App() {
                       apertura de pileta para que ningún socio reserve esos días.
                     </p>
                     <span className="text-[11px] font-semibold text-[#1B3B2B] mt-4 block group-hover:underline">
-                      Ver bloqueos vigentes →
+                      Ver bloqueos vigentes ({blocks.length}) →
                     </span>
                   </div>
                 </div>
@@ -369,10 +451,60 @@ export default function App() {
               />
             )}
 
-            {(activeTab === 'reservations' ||
-              activeTab === 'blocks' ||
+            {activeTab === 'inventory' && (
+              <InventoryStockView currentUser={currentUser} settings={settings} />
+            )}
+
+            {activeTab === 'incidents' && (
+              <IncidentReportsView
+                currentUser={currentUser}
+                bookings={bookings}
+                settings={settings}
+              />
+            )}
+
+            {/* Unified Configuration Panel */}
+            {(activeTab === 'settings' ||
               activeTab === 'owners' ||
-              activeTab === 'settings') && (
+              activeTab === 'logo' ||
+              activeTab === 'identity' ||
+              activeTab === 'd1' ||
+              activeTab === 'database' ||
+              activeTab === 'rules' ||
+              activeTab === 'contacts' ||
+              activeTab === 'property' ||
+              activeTab === 'engine' ||
+              activeTab === 'documents') && (
+              <UnifiedSettingsPanel
+                currentUser={currentUser}
+                users={users}
+                bookings={bookings}
+                blocks={blocks}
+                settings={settings}
+                initialTab={
+                  activeTab === 'owners'
+                    ? 'owners'
+                    : activeTab === 'logo' || activeTab === 'identity'
+                    ? 'identity'
+                    : activeTab === 'd1' || activeTab === 'database'
+                    ? 'database'
+                    : activeTab === 'rules'
+                    ? 'rules'
+                    : activeTab === 'contacts'
+                    ? 'contacts'
+                    : activeTab === 'property'
+                    ? 'property'
+                    : activeTab === 'documents'
+                    ? 'documents'
+                    : activeTab === 'engine'
+                    ? 'engine'
+                    : 'owners'
+                }
+              />
+            )}
+
+            {/* Operational Management Views (Reservations & Maintenance Blocks) */}
+            {(activeTab === 'reservations' || activeTab === 'blocks') && (
               <AdminPanel
                 currentUser={currentUser}
                 users={users}

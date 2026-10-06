@@ -509,6 +509,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               {/* Owners */}
               {users
                 .filter((u) => u.role === 'owner')
+                .sort((a, b) => (a.cabezaNumber || 0) - (b.cabezaNumber || 0) || a.name.localeCompare(b.name))
                 .map((u) => (
                   <div key={u.id} className="flex items-center gap-2">
                     <span

@@ -1,10 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HouseRule, UsefulContact, DocumentItem, TrustSettings } from '../types';
-import {
-  DEFAULT_HOUSE_RULES,
-  DEFAULT_CONTACTS,
-  DEFAULT_DOCUMENTS,
-} from '../services/storageService';
+import { storageService } from '../services/storageService';
 import {
   BookOpen,
   Wifi,
@@ -33,6 +29,16 @@ export const HouseGuideView: React.FC<HouseGuideViewProps> = ({ settings }) => {
   const [activeSubTab, setActiveSubTab] = useState<'rules' | 'contacts' | 'wifi' | 'documents'>('rules');
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocumentItem | null>(null);
+
+  const [rules, setRules] = useState<HouseRule[]>(storageService.getRules());
+  const [contacts, setContacts] = useState<UsefulContact[]>(storageService.getContacts());
+  const [documents, setDocuments] = useState<DocumentItem[]>(storageService.getDocuments());
+
+  useEffect(() => {
+    setRules(storageService.getRules());
+    setContacts(storageService.getContacts());
+    setDocuments(storageService.getDocuments());
+  }, []);
 
   const handleCopyWifi = () => {
     navigator.clipboard.writeText(settings.wifiPassword);
@@ -158,7 +164,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
       {activeSubTab === 'rules' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {DEFAULT_HOUSE_RULES.map((rule) => (
+            {rules.map((rule) => (
               <div
                 key={rule.id}
                 className="bg-[#FFFFFF] border border-[#E3DFC8] p-5 shadow-xs flex items-start gap-4"
@@ -207,7 +213,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {DEFAULT_CONTACTS.map((cnt) => (
+            {contacts.map((cnt) => (
               <div
                 key={cnt.id}
                 className={`p-4 border flex flex-col justify-between ${
@@ -390,7 +396,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEAE0]">
-                {DEFAULT_DOCUMENTS.map((doc) => (
+                {documents.map((doc) => (
                   <tr key={doc.id} className="hover:bg-[#FAF8F5] transition-colors">
                     <td className="py-3.5 px-4 font-semibold text-[#163323]">
                       <div className="flex items-start gap-2.5">

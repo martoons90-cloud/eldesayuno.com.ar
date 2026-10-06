@@ -114,11 +114,10 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
         <Info className="w-4 h-4 text-[#8C7A53] shrink-0 mt-0.5" />
         <div>
           <span className="font-bold text-[#1B3B2B] block">
-            Política de Cancelación y Restitución de Cupo
+            Política de Cancelación y Liberación de Fechas
           </span>
-          Las cancelaciones confirmadas con al menos {settings.cancellationMinDays} días de
-          anticipación al check-in devuelven el 100% de los días a su saldo anual. La liberación
-          inmediata de las fechas permite que otro copropietario pueda aprovecharlas.
+          Las cancelaciones realizadas con al menos {settings.cancellationMinDays} días de
+          anticipación permiten liberar inmediatamente las fechas en el calendario común para que otro copropietario pueda aprovecharlas.
         </div>
       </div>
 

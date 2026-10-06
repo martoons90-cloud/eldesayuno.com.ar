@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Booking, DateBlock, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
 import { pushService } from '../services/notificationService';
+import { d1Service, D1Config, D1_SCHEMA_SQL } from '../services/d1Service';
+import { BrandLogo } from './BrandLogo';
+import { PasswordManagementModal } from './PasswordManagementModal';
+import { TransferAdminModal } from './TransferAdminModal';
 import {
   Users,
   Calendar,
@@ -20,7 +24,32 @@ import {
   Search,
   Filter,
   XCircle,
+  Database,
+  Cloud,
+  Server,
+  Terminal,
+  RefreshCw,
+  Image as ImageIcon,
+  Check,
+  ExternalLink,
+  ShieldCheck,
+  Upload,
+  KeyRound,
+  Shield,
+  ShieldAlert,
+  Copy,
+  CheckCheck,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
+
+export type AdminSectionType =
+  | 'owners'
+  | 'blocks'
+  | 'reservations'
+  | 'settings'
+  | 'd1'
+  | 'logo';
 
 interface AdminPanelProps {
   currentUser: User;
@@ -28,8 +57,8 @@ interface AdminPanelProps {
   bookings: Booking[];
   blocks: DateBlock[];
   settings: TrustSettings;
-  activeSection: 'owners' | 'blocks' | 'reservations' | 'settings';
-  onNavigateSection: (sec: 'owners' | 'blocks' | 'reservations' | 'settings') => void;
+  activeSection: AdminSectionType;
+  onNavigateSection: (sec: AdminSectionType) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -44,13 +73,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // --- Section 1: User / Owner Management State ---
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isNewUserModalOpen, setIsNewUserModalOpen] = useState(false);
+  const [passwordModalUser, setPasswordModalUser] = useState<User | null>(null);
+  const [isTransferAdminOpen, setIsTransferAdminOpen] = useState(false);
+  const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
     phone: '',
-    partName: 'Parte V (25% indiviso)',
+    partName: 'Cabeza 1 (Parte I - 25%)',
     annualQuotaDays: 30,
-    color: '#3A5A40',
+    color: '#DC2626',
+    password: '',
   });
 
   // --- Section 2: Date Blocks State ---
@@ -75,6 +109,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Cancellation Modal for Admin
   const [adminCancelBookingId, setAdminCancelBookingId] = useState<string | null>(null);
   const [adminCancelReason, setAdminCancelReason] = useState('');
+
+  // --- Section 5: Logo Management State ---
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string>(
+    settings.logoUrl || (typeof window !== 'undefined' ? localStorage.getItem('el_desayuno_custom_logo') || '' : '')
+  );
+  const [logoInputUrl, setLogoInputUrl] = useState<string>(currentLogoUrl);
+  const [logoSavedSuccess, setLogoSavedSuccess] = useState(false);
+
+  // --- Section 6: Cloudflare D1 Management State ---
+  const [d1ConfigForm, setD1ConfigForm] = useState<D1Config>(d1Service.getConfig());
+  const [d1StatusMessage, setD1StatusMessage] = useState<{
+    type: 'success' | 'error' | 'info';
+    text: string;
+  } | null>(null);
+  const [d1Loading, setD1Loading] = useState(false);
+  const [d1Latency, setD1Latency] = useState<number | null>(null);
+  const [sqlConsoleQuery, setSqlConsoleQuery] = useState('SELECT id, name, email, role, part_name, used_days FROM users;');
+  const [sqlConsoleResults, setSqlConsoleResults] = useState<Record<string, unknown>[] | null>(null);
+  const [sqlConsoleError, setSqlConsoleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setD1ConfigForm(d1Service.getConfig());
+  }, [activeSection]);
 
   // Handle User Edit / Save
   const handleSaveUser = (e: React.FormEvent) => {
@@ -239,7 +296,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     document.body.removeChild(link);
   };
 
-  // Print Report Handler
   const handlePrintReport = () => {
     window.print();
   };
@@ -250,6 +306,158 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     storageService.saveSettings(settingsFormData);
     setSettingsSavedMessage(true);
     setTimeout(() => setSettingsSavedMessage(false), 3000);
+  };
+
+  // -------------------------------------------------------------
+  // LOGO MANAGEMENT HANDLERS
+  // -------------------------------------------------------------
+  const handleFileUploadLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = ev.target?.result as string;
+        if (base64) {
+          localStorage.setItem('el_desayuno_custom_logo', base64);
+          setCurrentLogoUrl(base64);
+          setLogoInputUrl(base64);
+          // Save in settings
+          storageService.saveSettings({
+            ...settings,
+            logoUrl: base64,
+          });
+          setLogoSavedSuccess(true);
+          setTimeout(() => setLogoSavedSuccess(false), 3000);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveLogoUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!logoInputUrl.trim()) {
+      localStorage.removeItem('el_desayuno_custom_logo');
+      setCurrentLogoUrl('');
+      storageService.saveSettings({
+        ...settings,
+        logoUrl: '',
+      });
+    } else {
+      localStorage.setItem('el_desayuno_custom_logo', logoInputUrl.trim());
+      setCurrentLogoUrl(logoInputUrl.trim());
+      storageService.saveSettings({
+        ...settings,
+        logoUrl: logoInputUrl.trim(),
+      });
+    }
+    setLogoSavedSuccess(true);
+    setTimeout(() => setLogoSavedSuccess(false), 3000);
+  };
+
+  const handleResetToDefaultLogo = () => {
+    localStorage.removeItem('el_desayuno_custom_logo');
+    setCurrentLogoUrl('');
+    setLogoInputUrl('');
+    storageService.saveSettings({
+      ...settings,
+      logoUrl: '',
+    });
+    setLogoSavedSuccess(true);
+    setTimeout(() => setLogoSavedSuccess(false), 3000);
+  };
+
+  // -------------------------------------------------------------
+  // CLOUDFLARE D1 MANAGEMENT HANDLERS
+  // -------------------------------------------------------------
+  const handleTestD1Connection = async () => {
+    setD1Loading(true);
+    setD1StatusMessage(null);
+    const res = await d1Service.testConnection(d1ConfigForm);
+    setD1Loading(false);
+    if (res.success) {
+      setD1Latency(res.latencyMs || 0);
+      setD1StatusMessage({
+        type: 'success',
+        text: res.message,
+      });
+    } else {
+      setD1StatusMessage({
+        type: 'error',
+        text: res.message,
+      });
+    }
+  };
+
+  const handleSaveD1Config = (e: React.FormEvent) => {
+    e.preventDefault();
+    d1Service.saveConfig(d1ConfigForm);
+    setD1StatusMessage({
+      type: 'success',
+      text: 'Credenciales de Cloudflare D1 guardadas.',
+    });
+  };
+
+  const handleInitD1Schema = async () => {
+    if (!confirm('¿Crear o verificar las tablas en Cloudflare D1 (users, bookings, date_blocks, trust_settings)?')) {
+      return;
+    }
+    setD1Loading(true);
+    const res = await d1Service.initializeSchema();
+    setD1Loading(false);
+    setD1StatusMessage({
+      type: res.success ? 'success' : 'error',
+      text: res.message,
+    });
+  };
+
+  const handlePushDataToD1 = async () => {
+    if (!confirm('¿Desea migrar todos los datos actuales del sistema hacia Cloudflare D1?')) {
+      return;
+    }
+    setD1Loading(true);
+    const payload = storageService.getAllDataPackage();
+    const res = await d1Service.pushLocalDataToD1(payload);
+    setD1Loading(false);
+    setD1StatusMessage({
+      type: res.success ? 'success' : 'error',
+      text: res.message,
+    });
+  };
+
+  const handlePullDataFromD1 = async () => {
+    if (!confirm('¿Descargar y sincronizar datos desde Cloudflare D1? Se actualizará el estado de la aplicación.')) {
+      return;
+    }
+    setD1Loading(true);
+    const res = await d1Service.pullDataFromD1();
+    setD1Loading(false);
+    if (res.success && res.data) {
+      storageService.applyRemoteD1Data(res.data);
+      setD1StatusMessage({
+        type: 'success',
+        text: 'Datos sincronizados exitosamente desde Cloudflare D1.',
+      });
+    } else {
+      setD1StatusMessage({
+        type: 'error',
+        text: res.error || 'Error al obtener datos de Cloudflare D1.',
+      });
+    }
+  };
+
+  const handleExecuteConsoleSQL = async () => {
+    if (!sqlConsoleQuery.trim()) return;
+    setD1Loading(true);
+    setSqlConsoleError(null);
+    setSqlConsoleResults(null);
+    const res = await d1Service.executeQuery(sqlConsoleQuery);
+    setD1Loading(false);
+    if (res.success) {
+      setSqlConsoleResults(res.results);
+    } else {
+      setSqlConsoleError(res.error || 'Error ejecutando query SQL.');
+    }
   };
 
   return (
@@ -288,6 +496,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             Bloqueos Mantenimiento
           </button>
           <button
+            onClick={() => onNavigateSection('logo')}
+            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+              activeSection === 'logo'
+                ? 'bg-[#1B3B2B] text-white shadow-xs'
+                : 'text-[#4F6254] hover:text-[#19231A]'
+            }`}
+          >
+            <ImageIcon className="w-3.5 h-3.5 text-[#BFA270]" />
+            <span>Identidad & Logo</span>
+          </button>
+          <button
+            onClick={() => onNavigateSection('d1')}
+            className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+              activeSection === 'd1'
+                ? 'bg-[#1B3B2B] text-white shadow-xs'
+                : 'text-[#4F6254] hover:text-[#19231A]'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 text-[#BFA270]" />
+            <span>Cloudflare D1</span>
+          </button>
+          <button
             onClick={() => onNavigateSection('settings')}
             className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
               activeSection === 'settings'
@@ -295,7 +525,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 : 'text-[#4F6254] hover:text-[#19231A]'
             }`}
           >
-            Configuración Fideicomiso
+            Parámetros
           </button>
         </div>
 
@@ -308,9 +538,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   name: '',
                   email: '',
                   phone: '',
-                  partName: 'Parte Indivisa',
+                  partName: 'Cabeza 1 (Parte I - 25%)',
                   annualQuotaDays: 30,
-                  color: '#3D5A40',
+                  color: '#DC2626',
+                  password: '',
                 });
                 setIsNewUserModalOpen(true);
               }}
@@ -353,21 +584,452 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
 
       {/* ========================================================= */}
-      {/* 1. GESTIÓN DE COPROPIETARIOS / BENEFICIARIOS */}
+      {/* 1. GESTIÓN DE IDENTIDAD Y LOGO                            */}
       {/* ========================================================= */}
-      {activeSection === 'owners' && (
-        <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs">
-          <div className="pb-4 mb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {activeSection === 'logo' && (
+        <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs space-y-6">
+          <div className="pb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="text-base font-bold text-[#163323]">
-                Padrón de Copropietarios y Asignación de Cupos
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#A68853]">
+                Imagen Institucional
+              </span>
+              <h3 className="text-base font-bold text-[#163323] mt-0.5">
+                Configuración del Isologotipo de El Desayuno
               </h3>
               <p className="text-xs text-[#7A8E7E]">
-                Configuración del saldo de días anuales y color asignado en el calendario.
+                Cargue una imagen personalizada o ingrese un enlace directo para actualizar el logo en la portada, panel y reportes.
               </p>
             </div>
-            <div className="text-xs text-[#526657] font-medium">
-              Total partes activas: {users.filter((u) => u.role === 'owner' && u.active).length}
+          </div>
+
+          {logoSavedSuccess && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>Logo actualizado correctamente en la aplicación.</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Logo Preview Column (5 cols) */}
+            <div className="lg:col-span-5 bg-[#FAF8F5] border border-[#E6E0CF] p-6 flex flex-col items-center text-center">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#163323] mb-4">
+                Vista Previa del Emblema
+              </span>
+
+              <div className="p-4 bg-white border border-[#E0D9C5] shadow-xs flex items-center justify-center">
+                <BrandLogo size="2xl" variant="seal-only" logoUrl={currentLogoUrl || undefined} />
+              </div>
+
+              <div className="mt-4 text-center">
+                <span className="font-serif font-bold text-lg tracking-wider text-[#163323] block">
+                  EL DESAYUNO
+                </span>
+                <span className="text-[10px] tracking-[0.25em] text-[#A68853] uppercase font-semibold">
+                  S O C I E D A D
+                </span>
+                <span className="text-[9px] text-[#637568] block mt-0.5">
+                  Cuatro Partes, Un Mismo Objetivo
+                </span>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-[#EAE3D3] w-full flex items-center justify-around text-xs text-[#7A8E7E]">
+                <span>Header (44px)</span>
+                <span>·</span>
+                <span>Login (190px)</span>
+                <span>·</span>
+                <span>Reportes</span>
+              </div>
+            </div>
+
+            {/* Controls Column (7 cols) */}
+            <div className="lg:col-span-7 space-y-5">
+              {/* Option 1: File Upload */}
+              <div className="p-5 bg-white border border-[#E3DFC8]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-[#BFA270]" />
+                  <span>Opción 1: Cargar Archivo de Imagen desde su Equipo</span>
+                </h4>
+                <p className="text-xs text-[#526657] mt-1 leading-relaxed">
+                  Seleccione su archivo PNG, JPG o SVG. Se guardará de manera permanente en la base de datos y memoria de la plataforma.
+                </p>
+
+                <div className="mt-4 flex items-center gap-3">
+                  <label className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer flex items-center gap-2 transition-colors shadow-xs">
+                    <Upload className="w-3.5 h-3.5 text-[#BFA270]" />
+                    <span>Seleccionar Archivo de Imagen</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUploadLogo}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Option 2: Image URL */}
+              <div className="p-5 bg-white border border-[#E3DFC8]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-[#BFA270]" />
+                  <span>Opción 2: URL Externa Directa (CDN / Cloudflare R2)</span>
+                </h4>
+                <p className="text-xs text-[#526657] mt-1 leading-relaxed">
+                  Ingrese el enlace directo a la imagen alojada en un bucket o servidor web.
+                </p>
+
+                <form onSubmit={handleSaveLogoUrl} className="mt-4 space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={logoInputUrl}
+                      onChange={(e) => setLogoInputUrl(e.target.value)}
+                      placeholder="https://ejemplo.com/logo-el-desayuno.png"
+                      className="flex-1 px-3 py-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs font-mono focus:outline-none focus:border-[#1E3F20]"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-[#F4EFE6] hover:bg-[#EDE6D8] border border-[#DCD4C0] text-[#163323] text-xs font-semibold uppercase tracking-wider cursor-pointer transition-colors"
+                    >
+                      Guardar URL
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Reset Option */}
+              <div className="p-4 bg-[#FAF8F5] border border-[#E6E0CF] flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-[#163323] block">
+                    Restablecer al Emblema Heráldico Original
+                  </span>
+                  <span className="text-[11px] text-[#7A8E7E]">
+                    Vuelve a la ilustración vectorial predeterminada.
+                  </span>
+                </div>
+                <button
+                  onClick={handleResetToDefaultLogo}
+                  className="px-3.5 py-1.5 bg-white hover:bg-red-50 border border-[#DDD5BF] hover:border-red-300 text-xs font-semibold text-[#163323] hover:text-red-700 transition-colors cursor-pointer"
+                >
+                  Restablecer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 2. BASE DE DATOS CLOUDFLARE D1                            */}
+      {/* ========================================================= */}
+      {activeSection === 'd1' && (
+        <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs space-y-6">
+          {/* Header & Status Banner */}
+          <div className="pb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-[#1B3B2B]" />
+                <h3 className="text-base font-bold text-[#163323]">
+                  Conexión con Base de Datos Cloudflare D1
+                </h3>
+              </div>
+              <p className="text-xs text-[#7A8E7E] mt-0.5">
+                Base de datos relacional serverless SQLite para persistencia y auditoría del Fideicomiso.
+              </p>
+            </div>
+
+            {/* Connection Status Pill */}
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold border ${
+                  d1Service.isConnected()
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-amber-50 text-amber-900 border-amber-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    d1Service.isConnected() ? 'bg-emerald-600 animate-pulse' : 'bg-amber-500'
+                  }`}
+                />
+                <span>
+                  {d1Service.isConnected()
+                    ? `D1 Enlazado ${d1Latency ? `(${d1Latency}ms)` : ''}`
+                    : 'Modo Local (Sin enlace D1)'}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* Status Alert if any */}
+          {d1StatusMessage && (
+            <div
+              className={`p-4 text-xs border flex items-start gap-2.5 ${
+                d1StatusMessage.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                  : 'bg-red-50 border-red-300 text-red-900'
+              }`}
+            >
+              {d1StatusMessage.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-red-700 shrink-0 mt-0.5" />
+              )}
+              <span className="leading-relaxed font-medium">{d1StatusMessage.text}</span>
+            </div>
+          )}
+
+          {/* D1 Configuration Form */}
+          <div className="p-5 bg-[#FAF8F5] border border-[#E6E0CF]">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#163323] mb-3 flex items-center gap-2">
+              <Cloud className="w-4 h-4 text-[#BFA270]" />
+              <span>Credenciales de Cloudflare API</span>
+            </h4>
+
+            <form onSubmit={handleSaveD1Config} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                    Cloudflare Account ID
+                  </label>
+                  <input
+                    type="text"
+                    value={d1ConfigForm.accountId}
+                    onChange={(e) =>
+                      setD1ConfigForm({ ...d1ConfigForm, accountId: e.target.value.trim() })
+                    }
+                    placeholder="ej. 8f2a1c9e4b3d7a6f..."
+                    className="w-full p-2 bg-white border border-[#DCD4C0] font-mono text-xs focus:outline-none focus:border-[#1E3F20]"
+                  />
+                  <span className="text-[10px] text-[#7A8E7E] block mt-0.5">
+                    Visible en la barra lateral del panel de Cloudflare.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                    D1 Database ID (UUID)
+                  </label>
+                  <input
+                    type="text"
+                    value={d1ConfigForm.databaseId}
+                    onChange={(e) =>
+                      setD1ConfigForm({ ...d1ConfigForm, databaseId: e.target.value.trim() })
+                    }
+                    placeholder="ej. 550e8400-e29b-41d4-a716-..."
+                    className="w-full p-2 bg-white border border-[#DCD4C0] font-mono text-xs focus:outline-none focus:border-[#1E3F20]"
+                  />
+                  <span className="text-[10px] text-[#7A8E7E] block mt-0.5">
+                    UUID de la base creada en Cloudflare D1.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                    API Token (Permiso D1 Edit)
+                  </label>
+                  <input
+                    type="password"
+                    value={d1ConfigForm.apiToken}
+                    onChange={(e) =>
+                      setD1ConfigForm({ ...d1ConfigForm, apiToken: e.target.value.trim() })
+                    }
+                    placeholder="••••••••••••••••••••••••"
+                    className="w-full p-2 bg-white border border-[#DCD4C0] font-mono text-xs focus:outline-none focus:border-[#1E3F20]"
+                  />
+                  <span className="text-[10px] text-[#7A8E7E] block mt-0.5">
+                    Token creado en Cloudflare con acceso a D1.
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-[#EAE3D3] flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestD1Connection}
+                    disabled={d1Loading}
+                    className="px-4 py-2 bg-[#F4EFE6] hover:bg-[#EDE6D8] border border-[#DCD4C0] text-[#163323] font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    {d1Loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Server className="w-3.5 h-3.5 text-[#1B3B2B]" />}
+                    <span>Probar Conexión</span>
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Guardar Credenciales
+                  </button>
+                </div>
+
+                {d1ConfigForm.lastConnectedAt && (
+                  <span className="text-[11px] text-[#7A8E7E]">
+                    Último enlace exitoso:{' '}
+                    {new Date(d1ConfigForm.lastConnectedAt).toLocaleString('es-AR')}
+                  </span>
+                )}
+              </div>
+            </form>
+          </div>
+
+          {/* Database Operations & Migrations */}
+          <div className="p-5 bg-white border border-[#E3DFC8]">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#163323] mb-3 flex items-center gap-2">
+              <Server className="w-4 h-4 text-[#BFA270]" />
+              <span>Acciones de Esquema y Sincronización</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-[#FAF8F5] border border-[#E4DEC9] flex flex-col justify-between">
+                <div>
+                  <h5 className="font-bold text-xs text-[#163323]">1. Inicializar Tablas en D1</h5>
+                  <p className="text-[11px] text-[#637568] mt-1 leading-snug">
+                    Ejecuta las sentencias SQL DDL para crear las tablas <code>users</code>, <code>bookings</code>, <code>date_blocks</code> y <code>trust_settings</code>.
+                  </p>
+                </div>
+                <button
+                  onClick={handleInitD1Schema}
+                  disabled={d1Loading}
+                  className="mt-4 w-full py-2 bg-white hover:bg-[#FAF8F5] border border-[#D5CDBC] text-xs font-semibold text-[#163323] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Database className="w-3.5 h-3.5 text-[#BFA270]" />
+                  <span>Crear / Verificar Tablas</span>
+                </button>
+              </div>
+
+              <div className="p-4 bg-[#FAF8F5] border border-[#E4DEC9] flex flex-col justify-between">
+                <div>
+                  <h5 className="font-bold text-xs text-[#163323]">2. Subir Datos Locales a D1</h5>
+                  <p className="text-[11px] text-[#637568] mt-1 leading-snug">
+                    Migra todos los socios, turnos y bloqueos cargados en la aplicación hacia las tablas de Cloudflare D1.
+                  </p>
+                </div>
+                <button
+                  onClick={handlePushDataToD1}
+                  disabled={d1Loading}
+                  className="mt-4 w-full py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5 text-[#BFA270]" />
+                  <span>Migrar a Cloudflare D1</span>
+                </button>
+              </div>
+
+              <div className="p-4 bg-[#FAF8F5] border border-[#E4DEC9] flex flex-col justify-between">
+                <div>
+                  <h5 className="font-bold text-xs text-[#163323]">3. Descargar Datos desde D1</h5>
+                  <p className="text-[11px] text-[#637568] mt-1 leading-snug">
+                    Consulta Cloudflare D1 y refresca el estado local de todos los turnos, cupos y parámetros.
+                  </p>
+                </div>
+                <button
+                  onClick={handlePullDataFromD1}
+                  disabled={d1Loading}
+                  className="mt-4 w-full py-2 bg-white hover:bg-[#FAF8F5] border border-[#D5CDBC] text-xs font-semibold text-[#163323] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#1B3B2B]" />
+                  <span>Sincronizar desde D1</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive SQL Console */}
+          <div className="p-5 bg-white border border-[#E3DFC8]">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-[#BFA270]" />
+                <span>Consola de Consultas SQL D1</span>
+              </h4>
+              <span className="text-[10px] text-[#7A8E7E]">SQLite 3 / Cloudflare Edge</span>
+            </div>
+            <p className="text-xs text-[#637568] mb-3">
+              Ejecute consultas directas para auditar o consultar los registros de la estancia en Cloudflare D1.
+            </p>
+
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <textarea
+                  value={sqlConsoleQuery}
+                  onChange={(e) => setSqlConsoleQuery(e.target.value)}
+                  rows={2}
+                  className="flex-1 p-2.5 bg-[#19231A] text-[#E0EBDD] font-mono text-xs focus:outline-none border border-[#2D3F2F]"
+                />
+                <button
+                  onClick={handleExecuteConsoleSQL}
+                  disabled={d1Loading}
+                  className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer self-stretch flex items-center justify-center"
+                >
+                  {d1Loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Ejecutar'}
+                </button>
+              </div>
+
+              {sqlConsoleError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs font-mono">
+                  Error: {sqlConsoleError}
+                </div>
+              )}
+
+              {sqlConsoleResults && (
+                <div className="p-3 bg-[#FAF8F5] border border-[#E6E0CF] overflow-x-auto max-h-60">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#637568] block mb-2">
+                    Resultados ({sqlConsoleResults.length} filas retornadas):
+                  </span>
+                  {sqlConsoleResults.length === 0 ? (
+                    <p className="text-xs text-[#7A8E7E] italic">Consulta ejecutada sin filas devueltas.</p>
+                  ) : (
+                    <table className="w-full text-xs text-left font-mono">
+                      <thead className="bg-[#EFEAE0] text-[#19231A]">
+                        <tr>
+                          {Object.keys(sqlConsoleResults[0]).map((col) => (
+                            <th key={col} className="p-1.5 border border-[#D5CDBC]">
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sqlConsoleResults.map((row, rIdx) => (
+                          <tr key={rIdx} className="hover:bg-white">
+                            {Object.values(row).map((val, cIdx) => (
+                              <td key={cIdx} className="p-1.5 border border-[#E8E2D2] text-[11px]">
+                                {val === null ? 'NULL' : String(val)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 3. GESTIÓN DE COPROPIETARIOS / BENEFICIARIOS              */}
+      {/* ========================================================= */}
+      {activeSection === 'owners' && (
+        <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs space-y-4">
+          <div className="pb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#1B3B2B]" />
+                <span>Padrón de Copropietarios & Gestión de Accesos</span>
+              </h3>
+              <p className="text-xs text-[#7A8E7E] mt-0.5">
+                Directorio de beneficiarios, contraseñas de acceso y administración de poderes fiduciarios.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsTransferAdminOpen(true)}
+                className="px-3.5 py-1.5 bg-[#F4EFE6] hover:bg-[#EDE6D8] border border-[#D5CDBC] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Ceder el poder de Administrador General a otro socio"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-700" />
+                <span>Transferir Administración</span>
+              </button>
             </div>
           </div>
 
@@ -376,24 +1038,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
                 <tr>
                   <th className="py-3 px-3">Copropietario</th>
-                  <th className="py-3 px-3">Participación / Cuota</th>
+                  <th className="py-3 px-3">Cabeza / Grupo</th>
                   <th className="py-3 px-3">Color Calendario</th>
-                  <th className="py-3 px-3">Cupo Asignado</th>
-                  <th className="py-3 px-3">Días Consumidos</th>
-                  <th className="py-3 px-3">Saldo Restante</th>
+                  <th className="py-3 px-3">Contraseña de Acceso</th>
+                  <th className="py-3 px-3">Administración</th>
                   <th className="py-3 px-3">Estado</th>
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEAE0]">
                 {users.map((u) => {
-                  const remaining = Math.max(0, u.annualQuotaDays - u.usedDays);
+                  const isCurrentAdmin = u.role === 'admin';
                   return (
                     <tr key={u.id} className="hover:bg-[#FAF8F5] transition-colors">
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2.5">
                           <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs"
                             style={{ backgroundColor: u.color }}
                           >
                             {u.avatarInitials}
@@ -406,7 +1067,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-3 font-medium text-[#4F6254]">{u.partName}</td>
+                      <td className="py-3 px-3 font-medium text-[#4F6254]">
+                        {u.partName}
+                      </td>
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2">
                           <span
@@ -416,20 +1079,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <span className="font-mono text-[11px] text-[#7A8E7E]">{u.color}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-3 font-mono font-bold text-[#19231A]">
-                        {u.role === 'admin' ? 'Ilimitado' : `${u.annualQuotaDays} días`}
-                      </td>
-                      <td className="py-3 px-3 font-mono tabular-nums text-[#8C6D3B]">
-                        {u.role === 'admin' ? '-' : `${u.usedDays} días`}
-                      </td>
-                      <td className="py-3 px-3 font-mono font-bold tabular-nums">
-                        {u.role === 'admin' ? (
-                          <span className="text-xs text-[#7A8E7E]">Fiduciario</span>
-                        ) : (
-                          <span
-                            className={remaining > 0 ? 'text-emerald-800' : 'text-red-700'}
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-xs tracking-wider bg-[#F4EFE6] px-2 py-0.5 border border-[#DCD4C0] text-[#163323]">
+                            {revealedPasswords[u.id] ? (u.password || '******') : '••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setRevealedPasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                            className="p-1 hover:bg-[#EDE6D7] text-[#637568] hover:text-[#163323] transition-colors cursor-pointer"
+                            title={revealedPasswords[u.id] ? "Ocultar contraseña" : "Mostrar contraseña"}
                           >
-                            {remaining} días
+                            {revealedPasswords[u.id] ? <EyeOff className="w-3.5 h-3.5 text-amber-700" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (u.password) {
+                                navigator.clipboard.writeText(u.password);
+                                setCopiedPasswordId(u.id);
+                                setTimeout(() => setCopiedPasswordId(null), 2000);
+                              }
+                            }}
+                            className="p-1 hover:bg-[#EDE6D7] text-[#637568] hover:text-[#163323] transition-colors cursor-pointer"
+                            title="Copiar contraseña"
+                          >
+                            {copiedPasswordId === u.id ? (
+                              <CheckCheck className="w-3.5 h-3.5 text-emerald-700" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPasswordModalUser(u)}
+                            className="text-[10px] text-[#1B3B2B] hover:underline font-semibold cursor-pointer"
+                            title="Modificar contraseña"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        {isCurrentAdmin ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300">
+                            <Shield className="w-3 h-3 text-amber-700" />
+                            <span>Administrador</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-[#637568]">
+                            Socio Copropietario
                           </span>
                         )}
                       </td>
@@ -445,6 +1144,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+                            onClick={() => setPasswordModalUser(u)}
+                            className="p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
+                            title="Cambiar Contraseña"
+                          >
+                            <KeyRound className="w-3.5 h-3.5 text-[#BFA270]" />
+                          </button>
+                          <button
                             onClick={() => {
                               setEditingUser(u);
                               setUserFormData({
@@ -454,17 +1160,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 partName: u.partName,
                                 annualQuotaDays: u.annualQuotaDays,
                                 color: u.color,
+                                password: u.password || '',
                               });
                             }}
                             className="p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
-                            title="Modificar cupo y datos"
+                            title="Modificar datos"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           {u.role !== 'admin' && (
                             <button
                               onClick={() => handleToggleUserActive(u)}
-                              className={`p-1 cursor-pointer ${
+                              className={`p-1 text-[10px] font-semibold cursor-pointer ${
                                 u.active
                                   ? 'text-amber-700 hover:text-amber-900'
                                   : 'text-emerald-700 hover:text-emerald-900'
@@ -486,7 +1193,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 2. CONSOLIDADO DE TODAS LAS RESERVAS */}
+      {/* 4. CONSOLIDADO DE TODAS LAS RESERVAS                      */}
       {/* ========================================================= */}
       {activeSection === 'reservations' && (
         <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs">
@@ -652,7 +1359,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 3. BLOQUEO MANUAL DE FECHAS (OBRAS, MANTENIMIENTO) */}
+      {/* 5. BLOQUEO MANUAL DE FECHAS (OBRAS, MANTENIMIENTO)        */}
       {/* ========================================================= */}
       {activeSection === 'blocks' && (
         <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs">
@@ -713,7 +1420,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 4. CONFIGURACIÓN DEL FIDEICOMISO */}
+      {/* 6. CONFIGURACIÓN GENERAL DEL FIDEICOMISO                  */}
       {/* ========================================================= */}
       {activeSection === 'settings' && (
         <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs">
@@ -838,7 +1545,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* MODALS */}
+      {/* MODALS                                                    */}
       {/* ========================================================= */}
 
       {/* Modal: Add or Edit Owner */}
@@ -1114,6 +1821,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal: Password Management */}
+      {passwordModalUser && (
+        <PasswordManagementModal
+          isOpen={!!passwordModalUser}
+          onClose={() => setPasswordModalUser(null)}
+          targetUser={passwordModalUser}
+          isSelfChange={passwordModalUser.id === currentUser.id}
+        />
+      )}
+
+      {/* Modal: Transfer Admin Role */}
+      {isTransferAdminOpen && (
+        <TransferAdminModal
+          isOpen={isTransferAdminOpen}
+          onClose={() => setIsTransferAdminOpen(false)}
+          currentAdmin={currentUser}
+          users={users}
+          onTransferSuccess={(newAdmin) => {
+            setIsTransferAdminOpen(false);
+          }}
+        />
       )}
     </div>
   );

@@ -1,6 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { User, Booking, DateBlock } from '../types';
-import { Calendar, CheckCircle2, Clock, CalendarDays, ArrowUpRight, Sparkles, AlertCircle } from 'lucide-react';
+import {
+  Calendar,
+  CheckCircle2,
+  Clock,
+  CalendarDays,
+  ArrowUpRight,
+  Sparkles,
+  Wifi,
+  Shield,
+  KeyRound,
+  Home,
+  Check,
+  Copy,
+  Info,
+} from 'lucide-react';
+import { PasswordManagementModal } from './PasswordManagementModal';
 
 interface OwnerQuotaSummaryProps {
   currentUser: User;
@@ -20,12 +35,10 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
   onGoToMyBookings,
 }) => {
   const currentYear = 2026;
-  const assigned = currentUser.annualQuotaDays;
-  const used = currentUser.usedDays;
-  const remaining = Math.max(0, assigned - used);
-  const percentageUsed = assigned > 0 ? Math.min(100, Math.round((used / assigned) * 100)) : 0;
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [copiedWifi, setCopiedWifi] = useState(false);
 
-  // Upcoming bookings for this owner
+  // Filter confirmed upcoming bookings for this owner
   const myUpcomingBookings = bookings
     .filter(
       (b) =>
@@ -35,14 +48,23 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
     )
     .sort((a, b) => a.checkInDate.localeCompare(b.checkInDate));
 
+  const totalNightsReserved = bookings
+    .filter((b) => b.userId === currentUser.id && (b.status === 'confirmed' || b.status === 'completed'))
+    .reduce((sum, b) => sum + b.totalDays, 0);
+
   // Next upcoming stay
   const nextStay = myUpcomingBookings[0];
 
+  const handleCopyWifi = () => {
+    navigator.clipboard.writeText('sociedad_cuatro_partes');
+    setCopiedWifi(true);
+    setTimeout(() => setCopiedWifi(false), 2500);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Welcome & Quota Hero Banner */}
+      {/* Welcome Hero Banner */}
       <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 sm:p-8 shadow-[0_4px_20px_-4px_rgba(23,43,26,0.06)] relative overflow-hidden">
-        {/* Subtle decorative heritage background accent */}
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-[#F8F5EE] to-transparent pointer-events-none hidden md:block" />
 
         <div className="relative z-10">
@@ -56,21 +78,25 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 <span className="font-semibold text-[#1B3B2B]">{currentUser.partName}</span>
               </div>
               <h1
-                className="text-2xl sm:text-3xl font-bold text-[#163323] mt-1.5"
+                className="text-2xl sm:text-3xl font-bold text-[#163323] mt-1.5 flex items-center gap-3"
                 style={{ fontFamily: "'Cinzel', 'Playfair Display', Georgia, serif" }}
               >
-                Bienvenido, {currentUser.name}
+                <span>Bienvenido, {currentUser.name}</span>
+                <span
+                  className="w-4 h-4 rounded-full border border-black/10 inline-block shrink-0"
+                  style={{ backgroundColor: currentUser.color }}
+                  title={`Color asignado: ${currentUser.color}`}
+                />
               </h1>
               <p className="text-sm text-[#4E6152] mt-1 max-w-2xl leading-relaxed">
-                Panel privado de gestión de estadías. Consulte la disponibilidad en tiempo real de la casa de veraneo y reserve sus turnos anuales con confirmación inmediata.
+                Portal privado de copropietarios. Consulte la agenda de ocupación de la estancia, reserve sus turnos y gestione sus accesos.
               </p>
             </div>
 
             <div className="flex items-center gap-3 shrink-0">
               <button
                 onClick={onOpenNewBooking}
-                disabled={remaining === 0}
-                className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] active:bg-[#0E2017] text-[#FAF8F5] text-xs font-semibold uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
+                className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] active:bg-[#0E2017] text-[#FAF8F5] text-xs font-semibold uppercase tracking-wider transition-colors shadow-sm cursor-pointer flex items-center gap-2"
               >
                 <CalendarDays className="w-4 h-4 text-[#BFA270]" />
                 <span>Solicitar Reserva</span>
@@ -86,72 +112,60 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
             </div>
           </div>
 
-          {/* Metric Grid - High density tabular display */}
+          {/* Metric / Information Cards (Clean, no quota mechanics) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-6">
-            {/* Cupo Asignado */}
+            {/* Grupo / Cabeza */}
             <div className="border-l-2 border-[#1B3B2B] pl-4">
               <span className="text-[11px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
-                Cupo Anual Asignado
+                Pertenencia Societaria
               </span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-3xl sm:text-4xl font-bold font-mono tabular-nums text-[#19231A]">
-                  {assigned}
-                </span>
-                <span className="text-xs text-[#6C7E70] font-medium">días ({currentYear})</span>
+              <div className="text-lg font-bold text-[#19231A] mt-1">
+                {currentUser.partName}
               </div>
-              <p className="text-xs text-[#7A8E7E] mt-1.5">
-                Correspondiente a su participación del 25% indiviso.
+              <p className="text-xs text-[#7A8E7E] mt-1 flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full inline-block"
+                  style={{ backgroundColor: currentUser.color }}
+                />
+                <span>Color en calendario: {currentUser.color}</span>
               </p>
             </div>
 
-            {/* Días Utilizados */}
+            {/* Total Noches en Agenda */}
             <div className="border-l-2 border-[#BFA270] pl-4">
               <span className="text-[11px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
-                Días Utilizados / Comprometidos
+                Noches en Agenda {currentYear}
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-3xl sm:text-4xl font-bold font-mono tabular-nums text-[#8F6F3A]">
-                  {used}
+                  {totalNightsReserved}
                 </span>
-                <span className="text-xs text-[#6C7E70] font-medium">días consumidos</span>
+                <span className="text-xs text-[#6C7E70] font-medium">noches agendadas</span>
               </div>
-              <div className="flex items-center gap-2 mt-1.5 text-xs text-[#7A8E7E]">
-                <span>{percentageUsed}% del cupo ejecutado</span>
-              </div>
-            </div>
-
-            {/* Días Restantes */}
-            <div className="border-l-2 border-emerald-700 pl-4 bg-[#FAF9F5] sm:bg-transparent -ml-2 p-2 sm:p-0 sm:ml-0">
-              <span className="text-[11px] uppercase tracking-wider font-semibold text-emerald-800 block">
-                Saldo Disponible de Estadía
-              </span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-3xl sm:text-4xl font-bold font-mono tabular-nums text-[#17341B]">
-                  {remaining}
-                </span>
-                <span className="text-xs text-[#17341B] font-bold">días libres para reservar</span>
-              </div>
-              <p className="text-xs text-[#4F6254] mt-1.5">
-                {remaining > 0
-                  ? 'Disponibles para turnos regulares o fines de semana.'
-                  : 'Ha completado el cupo asignado para el ejercicio actual.'}
+              <p className="text-xs text-[#7A8E7E] mt-1">
+                {myUpcomingBookings.length} estadía(s) confirmada(s) por delante.
               </p>
             </div>
-          </div>
 
-          {/* Quota Progress Bar */}
-          <div className="mt-6 pt-4 border-t border-[#F0EAE0]">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="font-semibold text-[#2D4534]">Distribución de Días {currentYear}</span>
-              <span className="font-mono tabular-nums text-[#6C7E70]">
-                {used} / {assigned} días ({percentageUsed}%)
+            {/* Credenciales y Clave de Acceso */}
+            <div className="border-l-2 border-emerald-700 pl-4 bg-[#FAF9F5] sm:bg-transparent -ml-2 p-2 sm:p-0 sm:ml-0">
+              <span className="text-[11px] uppercase tracking-wider font-semibold text-emerald-800 block">
+                Clave de Acceso Directo
               </span>
-            </div>
-            <div className="w-full h-2.5 bg-[#EFEAE0] overflow-hidden">
-              <div
-                className="h-full bg-[#1B3B2B] transition-all duration-500 ease-out"
-                style={{ width: `${percentageUsed}%` }}
-              />
+              <div className="flex items-center gap-2.5 mt-1">
+                <span className="text-2xl font-bold font-mono tracking-widest text-[#17341B] bg-emerald-100/60 px-2 py-0.5 border border-emerald-300">
+                  {currentUser.password || '******'}
+                </span>
+                <button
+                  onClick={() => setIsPasswordModalOpen(true)}
+                  className="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] font-semibold cursor-pointer transition-colors"
+                >
+                  Cambiar Clave
+                </button>
+              </div>
+              <p className="text-[11px] text-[#4F6254] mt-1.5">
+                Código alfanumérico para ingresar al sistema.
+              </p>
             </div>
           </div>
         </div>
@@ -219,7 +233,7 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 <Clock className="w-8 h-8 mx-auto text-[#C5BAA0] mb-2" />
                 <p className="text-sm font-medium text-[#2D4534]">No tiene estadías próximas programadas</p>
                 <p className="text-xs text-[#7A8E7E] mt-1">
-                  Tiene {remaining} días disponibles para disfrutar en la casa de veraneo.
+                  Revise el calendario para seleccionar las fechas de su próxima visita.
                 </p>
                 <button
                   onClick={onOpenNewBooking}
@@ -263,10 +277,16 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 </span>
               </div>
               <div>
-                <span className="text-[#7A8E7E] block text-[11px]">Capacidad Autorizada</span>
-                <span className="font-medium text-[#19231A]">
-                  Hasta 12 huéspedes pernoctando
-                </span>
+                <span className="text-[#7A8E7E] block text-[11px]">Wi-Fi de la Casa</span>
+                <div className="flex items-center justify-between font-mono text-[#19231A] bg-[#FAF8F5] p-1.5 border border-[#E8E2D2] mt-0.5">
+                  <span>SSID: ElDesayuno_Casa_5G</span>
+                  <button
+                    onClick={handleCopyWifi}
+                    className="text-[10px] font-sans text-[#1B3B2B] font-semibold underline cursor-pointer"
+                  >
+                    {copiedWifi ? '¡Copiado!' : 'Copiar clave'}
+                  </button>
+                </div>
               </div>
               <div>
                 <span className="text-[#7A8E7E] block text-[11px]">Horarios Oficiales</span>
@@ -277,7 +297,7 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
               <div>
                 <span className="text-[#7A8E7E] block text-[11px]">Margen Sanitización Post Turno</span>
                 <span className="font-medium text-[#19231A]">
-                  24 horas bloqueadas para limpieza profunda
+                  24 horas reservadas para limpieza profunda
                 </span>
               </div>
             </div>
@@ -288,11 +308,21 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
               <span className="font-semibold block text-[#1B3B2B] mb-0.5">
                 Regla de Convivencia y Reserva
               </span>
-              Para garantizar equidad entre las 4 partes, las cancelaciones deben realizarse con al menos 7 días de antelación.
+              Para garantizar equidad entre las 4 partes, las cancelaciones deben coordinarse con antelación.
             </div>
           </div>
         </div>
       </div>
+
+      {/* Password Management Modal */}
+      {isPasswordModalOpen && (
+        <PasswordManagementModal
+          isOpen={isPasswordModalOpen}
+          onClose={() => setIsPasswordModalOpen(false)}
+          targetUser={currentUser}
+          isSelfChange={true}
+        />
+      )}
     </div>
   );
 };

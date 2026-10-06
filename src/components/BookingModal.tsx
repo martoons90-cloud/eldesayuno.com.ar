@@ -60,7 +60,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   const daysRequested = calculateDays(checkInDate, checkOutDate);
-  const remainingQuota = Math.max(0, currentUser.annualQuotaDays - currentUser.usedDays);
 
   // Validation function
   const validateBooking = () => {
@@ -72,11 +71,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
     if (daysRequested <= 0) {
       return 'El rango de días no es válido.';
-    }
-
-    // Quota validation
-    if (currentUser.role === 'owner' && daysRequested > remainingQuota) {
-      return `Saldo insuficiente: solicita ${daysRequested} días pero su cupo disponible es de ${remainingQuota} días.`;
     }
 
     // Overlap validation with active bookings
@@ -197,21 +191,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </button>
         </div>
 
-        {/* Quota balance strip */}
+        {/* Stay summary strip */}
         <div className="px-6 py-2.5 bg-[#FAF8F4] border-b border-[#EAE3D3] flex items-center justify-between text-xs">
           <span className="text-[#526657]">
-            Su saldo disponible en 2026:{' '}
-            <strong className="text-[#17341B] font-mono tabular-nums font-bold">
-              {remainingQuota} días
-            </strong>
+            Estadía para: <strong className="text-[#17341B] font-semibold">{currentUser.name}</strong> ({currentUser.partName})
           </span>
           {daysRequested > 0 && (
-            <span
-              className={`font-semibold font-mono tabular-nums ${
-                daysRequested <= remainingQuota ? 'text-emerald-800' : 'text-red-700'
-              }`}
-            >
-              Solicitando: {daysRequested} {daysRequested === 1 ? 'día' : 'días'}
+            <span className="font-semibold font-mono tabular-nums text-emerald-800">
+              Duración: {daysRequested} {daysRequested === 1 ? 'noche' : 'noches'}
             </span>
           )}
         </div>
@@ -359,7 +346,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || (currentUser.role === 'owner' && daysRequested > remainingQuota)}
+              disabled={loading || daysRequested <= 0}
               className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] active:bg-[#0E2017] text-[#FAF8F5] text-xs font-semibold uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-2"
             >
               {loading ? (

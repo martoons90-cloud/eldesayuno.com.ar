@@ -3,15 +3,18 @@ export type UserRole = 'owner' | 'admin';
 export interface User {
   id: string;
   name: string;
+  username?: string; // e.g. "efrain.rodriguez"
   email: string;
   role: UserRole;
-  partName: string; // e.g. "Parte I (25%)", "Parte II (25%)"
+  partName: string; // e.g. "Cabeza 1 - Parte I (25%)"
+  cabezaNumber?: number; // 1, 2, 3, 4
   annualQuotaDays: number;
   usedDays: number;
   pendingDays: number;
   color: string; // Hex color for calendar
   avatarInitials: string;
   phone: string;
+  password?: string; // 6-character non-predictable alphanumeric password (e.g. G93TO5)
   active: boolean;
   createdAt: string;
 }
@@ -83,26 +86,85 @@ export interface DocumentItem {
   downloadUrl?: string;
 }
 
+export type InventoryCategory =
+  | 'living_galeria'
+  | 'cocina_vajilla'
+  | 'suites_dormitorios'
+  | 'quincho_asador'
+  | 'piscina_parque'
+  | 'blanqueria_ropa'
+  | 'equipamiento_tecnico';
+
+export type InventoryCondition = 'excelente' | 'bueno' | 'regular' | 'requiere_reparacion' | 'faltante';
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: InventoryCategory;
+  locationRoom: string; // e.g. "Quincho", "Suite Principal", "Cocina"
+  quantity: number;
+  unit: string; // "unidades", "juegos", "piezas", "bolsas"
+  condition: InventoryCondition;
+  notes?: string;
+  imageUrl?: string;
+  lastCheckedDate: string;
+}
+
+export type IncidentUrgency = 'baja' | 'media' | 'alta' | 'urgente';
+export type IncidentStatus = 'pendiente' | 'en_revision' | 'en_reparacion' | 'resuelto' | 'desestimado';
+
+export interface IncidentReport {
+  id: string;
+  bookingId?: string;
+  reporterUserId: string;
+  reporterName: string;
+  reporterPartName: string;
+  title: string;
+  description: string;
+  location: string;
+  category: 'rotura' | 'faltante' | 'desperfecto_tecnico' | 'limpieza' | 'mantenimiento' | 'otro';
+  urgency: IncidentUrgency;
+  status: IncidentStatus;
+  photoUrl?: string;
+  createdAt: string;
+  adminResponse?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
 export interface NotificationPush {
   id: string;
   title: string;
   body: string;
   timestamp: string;
   read: boolean;
-  type: 'booking_created' | 'booking_cancelled' | 'block_added' | 'quota_updated' | 'system';
+  type: 'booking_created' | 'booking_cancelled' | 'block_added' | 'quota_updated' | 'incident_reported' | 'incident_resolved' | 'system';
   targetUserId?: string; // null means all users or admins
   bookingId?: string;
+  incidentId?: string;
 }
 
 export interface TrustSettings {
   houseName: string;
+  slogan?: string;
   location: string;
+  googleMapsUrl?: string;
   wifiSsid: string;
   wifiPassword: string;
+  secondaryWifiSsid?: string;
+  secondaryWifiPassword?: string;
   checkInTime: string; // "14:00"
   checkOutTime: string; // "11:00"
   autoCleaningBufferHours: number; // 24
   cancellationMinDays: number; // 7
   maxGuestsLimit: number; // 12
+  maxConsecutiveDays?: number; // 14
+  maxActiveBookingsPerOwner?: number; // 3
   emergencyAddress: string;
+  caretakerName?: string;
+  caretakerPhone?: string;
+  allowPets?: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+  logoUrl?: string;
 }
