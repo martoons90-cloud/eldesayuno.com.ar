@@ -223,14 +223,13 @@ export const TopBar: React.FC<TopBarProps> = ({
               </div>
             </div>
 
-            {/* Logout button */}
+            {/* Subtle Logout icon button */}
             <button
               onClick={onLogout}
-              className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 text-red-800 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0"
-              title="Cerrar sesión e ingresar con otra cuenta"
+              className="p-2 text-[#637568] hover:text-red-700 hover:bg-red-50 transition-colors rounded-full cursor-pointer shrink-0"
+              title="Cerrar sesión"
             >
-              <LogOut className="w-3.5 h-3.5 text-red-700" />
-              <span>Cerrar Sesión</span>
+              <LogOut className="w-4 h-4" />
             </button>
 
             {/* Mobile menu hamburger (visible on screens < 1150px) */}
