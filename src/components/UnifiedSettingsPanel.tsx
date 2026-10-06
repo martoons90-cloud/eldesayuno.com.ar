@@ -47,6 +47,7 @@ import {
   CheckCheck,
   Eye,
   EyeOff,
+  Building,
 } from 'lucide-react';
 
 export type SettingsTabId =
@@ -1247,18 +1248,87 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   />
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Dirección de Referencia para Emergencias Médicas
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsFormData.emergencyAddress}
-                    onChange={(e) =>
-                      setSettingsFormData({ ...settingsFormData, emergencyAddress: e.target.value })
-                    }
-                    className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  />
+                <div className="md:col-span-2 pt-4 border-t border-[#EFEAE0]">
+                  <h4 className="font-bold text-sm text-[#163323] uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Building className="w-4 h-4 text-[#BFA270]" />
+                    <span>Datos Bancarios para Recibir Transferencias de Expensas (CBU / CVU / ALIAS)</span>
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                        Número CBU / CVU (22 Dígitos)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="0070123430000012345678"
+                        value={settingsFormData.cbu || ''}
+                        onChange={(e) =>
+                          setSettingsFormData({ ...settingsFormData, cbu: e.target.value })
+                        }
+                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-[#163323]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                        ALIAS Bancario / MercadoPago
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="EL.DESAYUNO.FIDEICOMISO"
+                        value={settingsFormData.aliasBancario || ''}
+                        onChange={(e) =>
+                          setSettingsFormData({ ...settingsFormData, aliasBancario: e.target.value })
+                        }
+                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-[#163323]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                        Banco / Entidad Financiera
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Banco Galicia / MercadoPago"
+                        value={settingsFormData.bancoNombre || ''}
+                        onChange={(e) =>
+                          setSettingsFormData({ ...settingsFormData, bancoNombre: e.target.value })
+                        }
+                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                        Titular de la Cuenta
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Fideicomiso Estancia El Desayuno"
+                        value={settingsFormData.titularCuenta || ''}
+                        onChange={(e) =>
+                          setSettingsFormData({ ...settingsFormData, titularCuenta: e.target.value })
+                        }
+                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0]"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                        CUIT del Fideicomiso
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="30-71829304-5"
+                        value={settingsFormData.cuitFideicomiso || ''}
+                        onChange={(e) =>
+                          setSettingsFormData({ ...settingsFormData, cuitFideicomiso: e.target.value })
+                        }
+                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#DDD5BF] font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

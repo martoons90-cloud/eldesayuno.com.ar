@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Booking, DateBlock } from '../types';
+import { User, Booking, DateBlock, TrustSettings } from '../types';
 import {
   Calendar,
   CheckCircle2,
@@ -14,6 +14,9 @@ import {
   Check,
   Copy,
   Info,
+  Building,
+  CreditCard,
+  Upload,
 } from 'lucide-react';
 import { PasswordManagementModal } from './PasswordManagementModal';
 
@@ -21,22 +24,34 @@ interface OwnerQuotaSummaryProps {
   currentUser: User;
   bookings: Booking[];
   blocks: DateBlock[];
+  settings?: TrustSettings;
   onOpenNewBooking: () => void;
   onGoToCalendar: () => void;
   onGoToMyBookings: () => void;
+  onGoToCobranzas?: () => void;
 }
 
 export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
   currentUser,
   bookings,
   blocks,
+  settings,
   onOpenNewBooking,
   onGoToCalendar,
   onGoToMyBookings,
+  onGoToCobranzas,
 }) => {
   const currentYear = 2026;
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [copiedWifi, setCopiedWifi] = useState(false);
+  const [copiedBankField, setCopiedBankField] = useState<string | null>(null);
+
+  const handleCopyBank = (text: string, field: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedBankField(field);
+    setTimeout(() => setCopiedBankField(null), 2500);
+  };
 
   // Filter confirmed upcoming bookings for this owner
   const myUpcomingBookings = bookings
@@ -314,7 +329,92 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
         </div>
       </div>
 
-      {/* Password Management Modal */}
+      {/* Dedicated Card: CBU / CVU / ALIAS for Transfers & Receipt Upload */}
+      <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-[#E3DFC8]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#1B3B2B] text-[#BFA270] rounded flex items-center justify-center font-bold">
+              <Building className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#163323]">
+                Datos Bancarios Oficiales para Pago de Cuotas y Expensas
+              </h3>
+              <p className="text-xs text-[#56685B]">
+                Titular: <strong>{settings?.titularCuenta || 'Fideicomiso Estancia El Desayuno'}</strong>
+                {settings?.bancoNombre && <span> · {settings.bancoNombre}</span>}
+                {settings?.cuitFideicomiso && <span> · CUIT: {settings.cuitFideicomiso}</span>}
+              </p>
+            </div>
+          </div>
+
+          {onGoToCobranzas && (
+            <button
+              onClick={onGoToCobranzas}
+              className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-2 shrink-0"
+            >
+              <Upload className="w-4 h-4 text-[#BFA270]" />
+              <span>Subir Comprobante de Pago</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 text-xs">
+          {/* CBU / CVU */}
+          <div className="bg-white border border-[#E3DFC8] p-3 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#7A8E7E] block">CBU / CVU (22 dígitos)</span>
+              <span className="font-mono font-bold text-[#163323] text-sm">
+                {settings?.cbu || '0070123430000012345678'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleCopyBank(settings?.cbu || '0070123430000012345678', 'cbu')}
+              className="px-2.5 py-1 bg-[#FAF8F5] border border-[#DDD5BF] hover:border-[#1B3B2B] text-xs font-semibold text-[#163323] transition-colors cursor-pointer flex items-center gap-1"
+            >
+              {copiedBankField === 'cbu' ? (
+                <span className="text-emerald-700 font-bold">¡Copiado!</span>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-[#BFA270]" />
+                  <span>Copiar</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* ALIAS */}
+          <div className="bg-white border border-[#E3DFC8] p-3 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#7A8E7E] block">ALIAS Bancario / MP</span>
+              <span className="font-mono font-bold text-[#163323] text-sm">
+                {settings?.aliasBancario || 'EL.DESAYUNO.FIDEICOMISO'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleCopyBank(settings?.aliasBancario || 'EL.DESAYUNO.FIDEICOMISO', 'alias')}
+              className="px-2.5 py-1 bg-[#FAF8F5] border border-[#DDD5BF] hover:border-[#1B3B2B] text-xs font-semibold text-[#163323] transition-colors cursor-pointer flex items-center gap-1"
+            >
+              {copiedBankField === 'alias' ? (
+                <span className="text-emerald-700 font-bold">¡Copiado!</span>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-[#BFA270]" />
+                  <span>Copiar</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Quick instructions */}
+          <div className="bg-[#EFEAE0] border border-[#DDD5BF] p-3 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-[#1B3B2B] shrink-0" />
+            <p className="text-[11px] text-[#4F6254] leading-tight">
+              Una vez realizada la transferencia, haga clic en <strong>"Subir Comprobante"</strong> para adjuntar la foto o PDF de su pago.
+            </p>
+          </div>
+        </div>
+      </div>
       {isPasswordModalOpen && (
         <PasswordManagementModal
           isOpen={isPasswordModalOpen}

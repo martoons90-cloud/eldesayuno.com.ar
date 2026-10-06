@@ -10,6 +10,8 @@ import {
   NotificationPush,
   InventoryItem,
   IncidentReport,
+  FeeCollection,
+  OwnerFeeAllocation,
 } from '../types';
 
 const USERS_KEY = 'el_desayuno_users_v3';
@@ -22,6 +24,7 @@ const DOCUMENTS_KEY = 'el_desayuno_documents_v3';
 const INVENTORY_KEY = 'el_desayuno_inventory_v3';
 const INCIDENTS_KEY = 'el_desayuno_incidents_v3';
 const NOTIFICATIONS_KEY = 'el_desayuno_notifications_v3';
+const FEES_KEY = 'el_desayuno_fees_v3';
 const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
 
 export const DEFAULT_USERS: User[] = [
@@ -315,6 +318,11 @@ export const DEFAULT_SETTINGS: TrustSettings = {
   cancellationMinDays: 7,
   maxGuestsLimit: 12,
   emergencyAddress: 'Estancia El Desayuno, Acceso Principal Tranquera Verde, Coordenadas: -34.4820, -59.4120',
+  cbu: '0070123430000012345678',
+  aliasBancario: 'EL.DESAYUNO.FIDEICOMISO',
+  cuitFideicomiso: '30-71829304-5',
+  bancoNombre: 'Banco Galicia (Cuenta Corriente Pesos)',
+  titularCuenta: 'Fideicomiso Estancia El Desayuno',
 };
 
 export const DEFAULT_BOOKINGS: Booking[] = [];
@@ -332,6 +340,74 @@ export const DEFAULT_INVENTORY: InventoryItem[] = [];
 export const DEFAULT_INCIDENTS: IncidentReport[] = [];
 
 export const DEFAULT_NOTIFICATIONS: NotificationPush[] = [];
+
+export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = [
+  {
+    id: 'fee-101',
+    concept: 'Expensas Mensuales Ordinarias - Mantenimiento & Servicios Octubre 2026',
+    category: 'expensas_ordinarias',
+    totalAmount: 1600000,
+    currency: 'ARS',
+    recurrence: 'monthly',
+    issueDate: '2026-10-01',
+    dueDate: '2026-10-20',
+    distributionMode: 'equal_cabezas',
+    status: 'active',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-10-01T09:00:00.000Z',
+    notes: 'Incluye servicios generales, parquización, insumos de limpieza y honorarios de mantenimiento.',
+    allocations: [
+      { userId: 'user-c1-jose', userName: 'José Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 100000, status: 'paid', paidAt: '2026-10-05', paymentMethod: 'transfer', notes: 'Transferencia Banco Galicia' },
+      { userId: 'user-c1-arturo', userName: 'Arturo Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 100000, status: 'paid', paidAt: '2026-10-06', paymentMethod: 'transfer' },
+      { userId: 'user-c1-marcos', userName: 'Marcos Montaldi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c1-hugo', userName: 'Hugo Tobchi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 100000, status: 'paid', paidAt: '2026-10-08', paymentMethod: 'transfer' },
+      { userId: 'user-c2-alejandro', userName: 'Alejandro Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 12.5, assignedAmount: 200000, paidAmount: 200000, status: 'paid', paidAt: '2026-10-03', paymentMethod: 'transfer' },
+      { userId: 'user-c2-natalia', userName: 'Natalia Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 12.5, assignedAmount: 200000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c3-roberto', userName: 'Roberto Condori', partName: 'Cabeza 3', cabezaNumber: 3, percentage: 25.0, assignedAmount: 400000, paidAmount: 400000, status: 'paid', paidAt: '2026-10-02', paymentMethod: 'transfer' },
+      { userId: 'user-c4-efrain', userName: 'Efraín Rodríguez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-01', paymentMethod: 'transfer' },
+      { userId: 'user-c4-rafael', userName: 'Rafael Huespe', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-04', paymentMethod: 'transfer' },
+      { userId: 'user-c4-fairuz', userName: 'Fairuz Kuncar', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c4-daniel', userName: 'Daniel Pederiva', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-07', paymentMethod: 'transfer' },
+      { userId: 'user-c4-gonzalo', userName: 'Gonzalo Lamas', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c4-german', userName: 'Germán Jiménez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-05', paymentMethod: 'transfer' },
+      { userId: 'user-c4-gabriela', userName: 'Gabriela Zadir', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c4-arturo-tp', userName: 'Arturo Tezanos Pinto', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-06', paymentMethod: 'transfer' },
+    ],
+  },
+  {
+    id: 'fee-102',
+    concept: 'Fondo Especial Obras: Pintura Exterior & Renovación Deck Piscina',
+    category: 'obras_extraordinarias',
+    totalAmount: 2250000,
+    currency: 'ARS',
+    recurrence: 'days_45',
+    customRecurrenceDays: 45,
+    issueDate: '2026-09-15',
+    dueDate: '2026-10-30',
+    distributionMode: 'equal_owners',
+    status: 'active',
+    createdBy: 'Efraín Rodríguez',
+    createdAt: '2026-09-15T10:30:00.000Z',
+    notes: 'Pago en partes iguales entre los 15 copropietarios ($150.000 c/u).',
+    allocations: [
+      { userId: 'user-c1-jose', userName: 'José Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-20', paymentMethod: 'transfer' },
+      { userId: 'user-c1-arturo', userName: 'Arturo Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-22', paymentMethod: 'transfer' },
+      { userId: 'user-c1-marcos', userName: 'Marcos Montaldi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c1-hugo', userName: 'Hugo Tobchi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-25', paymentMethod: 'transfer' },
+      { userId: 'user-c2-alejandro', userName: 'Alejandro Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-18', paymentMethod: 'transfer' },
+      { userId: 'user-c2-natalia', userName: 'Natalia Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c3-roberto', userName: 'Roberto Condori', partName: 'Cabeza 3', cabezaNumber: 3, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-19', paymentMethod: 'transfer' },
+      { userId: 'user-c4-efrain', userName: 'Efraín Rodríguez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-16', paymentMethod: 'transfer' },
+      { userId: 'user-c4-rafael', userName: 'Rafael Huespe', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-21', paymentMethod: 'transfer' },
+      { userId: 'user-c4-fairuz', userName: 'Fairuz Kuncar', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c4-daniel', userName: 'Daniel Pederiva', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-28', paymentMethod: 'transfer' },
+      { userId: 'user-c4-gonzalo', userName: 'Gonzalo Lamas', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c4-german', userName: 'Germán Jiménez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-24', paymentMethod: 'transfer' },
+      { userId: 'user-c4-gabriela', userName: 'Gabriela Zadir', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
+      { userId: 'user-c4-arturo-tp', userName: 'Arturo Tezanos Pinto', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-27', paymentMethod: 'transfer' },
+    ],
+  },
+];
 
 // Helper to calculate days used per user from active bookings
 function recalculateUsersUsedDays(users: User[], bookings: Booking[]): User[] {
@@ -936,6 +1012,69 @@ class StorageService {
     this.notify();
   }
 
+  // Fee Collections & Cobranzas
+  public getFeeCollections(): FeeCollection[] {
+    if (typeof window === 'undefined') return DEFAULT_FEE_COLLECTIONS;
+    const raw = localStorage.getItem(FEES_KEY);
+    return raw ? JSON.parse(raw) : DEFAULT_FEE_COLLECTIONS;
+  }
+
+  public saveFeeCollection(collection: FeeCollection): FeeCollection {
+    const list = this.getFeeCollections();
+    const index = list.findIndex((f) => f.id === collection.id);
+    let updated: FeeCollection[];
+    if (index >= 0) {
+      updated = [...list];
+      updated[index] = collection;
+    } else {
+      updated = [collection, ...list];
+    }
+    localStorage.setItem(FEES_KEY, JSON.stringify(updated));
+
+    // Send push notification
+    this.addNotification({
+      title: `Nueva Cobranza Emitida: ${collection.concept}`,
+      body: `Monto total: $${collection.totalAmount.toLocaleString()} ARS - Vencimiento: ${collection.dueDate}`,
+      type: 'system',
+    });
+
+    this.notify();
+    return collection;
+  }
+
+  public updateOwnerAllocationStatus(
+    collectionId: string,
+    userId: string,
+    update: Partial<OwnerFeeAllocation>
+  ) {
+    const list = this.getFeeCollections();
+    const collection = list.find((f) => f.id === collectionId);
+    if (!collection) return;
+
+    const updatedAllocations = collection.allocations.map((alloc) => {
+      if (alloc.userId === userId) {
+        return { ...alloc, ...update };
+      }
+      return alloc;
+    });
+
+    // Check if all allocations are completed
+    const allPaid = updatedAllocations.every((a) => a.status === 'paid');
+    const updatedCollection: FeeCollection = {
+      ...collection,
+      allocations: updatedAllocations,
+      status: allPaid ? 'completed' : collection.status,
+    };
+
+    this.saveFeeCollection(updatedCollection);
+  }
+
+  public deleteFeeCollection(collectionId: string) {
+    const list = this.getFeeCollections().filter((f) => f.id !== collectionId);
+    localStorage.setItem(FEES_KEY, JSON.stringify(list));
+    this.notify();
+  }
+
   // Notifications
   public getNotifications(): NotificationPush[] {
     if (typeof window === 'undefined') return DEFAULT_NOTIFICATIONS;
@@ -1012,6 +1151,7 @@ class StorageService {
       inventory: this.getInventory(),
       incidents: this.getIncidents(),
       notifications: this.getNotifications(),
+      fees: this.getFeeCollections(),
       exportedAt: new Date().toISOString(),
       version: '2.0-eldesayuno',
     };
@@ -1035,6 +1175,7 @@ class StorageService {
       if (Array.isArray(data.inventory)) localStorage.setItem(INVENTORY_KEY, JSON.stringify(data.inventory));
       if (Array.isArray(data.incidents)) localStorage.setItem(INCIDENTS_KEY, JSON.stringify(data.incidents));
       if (Array.isArray(data.notifications)) localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(data.notifications));
+      if (Array.isArray(data.fees)) localStorage.setItem(FEES_KEY, JSON.stringify(data.fees));
 
       this.notify();
       return { success: true, message: 'Copia de respaldo restaurada exitosamente.' };
@@ -1055,6 +1196,7 @@ class StorageService {
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(DEFAULT_NOTIFICATIONS));
     localStorage.setItem(INVENTORY_KEY, JSON.stringify(DEFAULT_INVENTORY));
     localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
+    localStorage.setItem(FEES_KEY, JSON.stringify(DEFAULT_FEE_COLLECTIONS));
     const recalculated = recalculateUsersUsedDays(DEFAULT_USERS, DEFAULT_BOOKINGS);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
     this.notify();

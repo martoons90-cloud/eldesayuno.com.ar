@@ -167,4 +167,51 @@ export interface TrustSettings {
   quietHoursStart?: string;
   quietHoursEnd?: string;
   logoUrl?: string;
+  cbu?: string;
+  aliasBancario?: string;
+  cuitFideicomiso?: string;
+  bancoNombre?: string;
+  titularCuenta?: string;
+}
+
+// -------------------------------------------------------------
+// COBRANZAS, EXPENSAS Y DISTRIBUCIÓN DE GASTOS
+// -------------------------------------------------------------
+export type DistributionMode = 'equal_cabezas' | 'equal_owners' | 'percentage' | 'custom_amount';
+
+export type RecurrenceType = 'monthly' | 'days_45' | 'days_60' | 'custom_days' | 'one_time';
+
+export type PaymentStatus = 'pending' | 'paid' | 'partial' | 'overdue';
+
+export interface OwnerFeeAllocation {
+  userId: string;
+  userName: string;
+  partName: string; // e.g. "Cabeza 1"
+  cabezaNumber?: number;
+  percentage: number; // % assigned
+  assignedAmount: number; // $ assigned
+  paidAmount: number; // $ paid so far
+  status: PaymentStatus;
+  paidAt?: string; // YYYY-MM-DD
+  paymentMethod?: 'transfer' | 'cash' | 'check' | 'mercadopago' | 'other';
+  receiptUrl?: string; // Photo voucher in R2
+  notes?: string;
+}
+
+export interface FeeCollection {
+  id: string;
+  concept: string; // e.g. "Expensas Mantenimiento General & Servicios"
+  category: 'expensas_ordinarias' | 'obras_extraordinarias' | 'servicios' | 'mantenimiento' | 'impuestos' | 'otro';
+  totalAmount: number;
+  currency: 'ARS' | 'USD';
+  recurrence: RecurrenceType;
+  customRecurrenceDays?: number;
+  issueDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  distributionMode: DistributionMode;
+  allocations: OwnerFeeAllocation[];
+  status: 'active' | 'completed' | 'cancelled';
+  createdBy: string;
+  createdAt: string;
+  notes?: string;
 }
