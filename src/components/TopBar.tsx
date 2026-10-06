@@ -50,25 +50,25 @@ export const TopBar: React.FC<TopBarProps> = ({
   const effectiveIsAdmin = isUserAdmin && adminViewMode === 'admin';
   const isD1Active = d1Service.isConnected();
 
-  // Navigation tabs based on active mode
+  // Navigation tabs based on active mode (shortened for crisp fitting)
   const navItems = effectiveIsAdmin
     ? [
         { id: 'dashboard', label: 'Resumen' },
         { id: 'calendar', label: 'Calendario' },
         { id: 'reservations', label: 'Reservas' },
         { id: 'blocks', label: 'Bloqueos' },
-        { id: 'inventory', label: 'Stock & Inventario' },
-        { id: 'incidents', label: 'Novedades / Daños' },
-        { id: 'settings', label: 'Configuración' },
-        { id: 'guide', label: 'Reglamento & Docs' },
+        { id: 'inventory', label: 'Inventario' },
+        { id: 'incidents', label: 'Novedades' },
+        { id: 'settings', label: 'Ajustes' },
+        { id: 'guide', label: 'Reglamento' },
       ]
     : [
         { id: 'dashboard', label: 'Inicio' },
-        { id: 'calendar', label: 'Calendario & Ocupación' },
+        { id: 'calendar', label: 'Calendario' },
         { id: 'my-bookings', label: 'Mis Estadías' },
-        { id: 'inventory', label: 'Inventario & Stock' },
-        { id: 'incidents', label: 'Reportar Novedad' },
-        { id: 'guide', label: 'Reglamento & Casa' },
+        { id: 'inventory', label: 'Inventario' },
+        { id: 'incidents', label: 'Novedades' },
+        { id: 'guide', label: 'Reglamento' },
       ];
 
   return (
@@ -76,27 +76,27 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Accent top line */}
       <div className="h-1 w-full bg-gradient-to-r from-[#17341B] via-[#2A4D32] to-[#BFA270]" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Zone 1: Single text element wordmark with seal */}
-          <div className="flex items-center gap-3">
+      <div className="max-w-[1440px] mx-auto px-2 sm:px-4 lg:px-5">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 overflow-x-hidden">
+          {/* Zone 1: Wordmark & Logo */}
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => onSelectTab('dashboard')}
-              className="flex items-center gap-2.5 text-left cursor-pointer group focus:outline-none"
+              className="flex items-center gap-2 text-left cursor-pointer group focus:outline-none"
             >
               <BrandLogo size="sm" variant="seal-only" logoUrl={logoUrl} />
               <div className="flex flex-col">
                 <span
-                  className="text-base sm:text-lg font-bold tracking-wider text-[#163323] leading-none group-hover:text-[#2A4D32] transition-colors"
+                  className="text-sm sm:text-base font-bold tracking-wider text-[#163323] leading-none group-hover:text-[#2A4D32] transition-colors"
                   style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}
                 >
                   EL DESAYUNO
                 </span>
-                <span className="text-[9px] tracking-[0.22em] text-[#9E8252] font-semibold uppercase leading-tight mt-0.5 flex items-center gap-1.5">
+                <span className="text-[8px] tracking-[0.2em] text-[#9E8252] font-semibold uppercase leading-tight mt-0.5 flex items-center gap-1">
                   <span>FIDEICOMISO</span>
                   {isAdmin && (
                     <span
-                      className={`text-[8px] font-mono px-1 py-0.2 rounded-2xs ${
+                      className={`text-[7px] font-mono px-1 py-0.1 rounded-2xs ${
                         isD1Active
                           ? 'bg-emerald-100 text-emerald-800'
                           : 'bg-neutral-100 text-neutral-600'
@@ -111,23 +111,23 @@ export const TopBar: React.FC<TopBarProps> = ({
             </button>
           </div>
 
-          {/* Zone 2: Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-1">
+          {/* Zone 2: Inline Navigation Links (visible on xl screens >= 1150px) */}
+          <nav className="hidden xl:flex items-center gap-1 shrink-0">
             {navItems.map((item) => {
               const isActive = activeTab === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => onSelectTab(item.id)}
-                  className={`px-2.5 py-2 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors relative cursor-pointer ${
+                  className={`px-2 py-1.5 text-[11px] xl:text-xs font-semibold tracking-wide whitespace-nowrap transition-colors relative cursor-pointer ${
                     isActive
-                      ? 'text-[#163323]'
+                      ? 'text-[#163323] font-bold'
                       : 'text-[#56685B] hover:text-[#163323]'
                   }`}
                 >
                   {item.label}
                   {isActive && (
-                    <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-[#163323]" />
+                    <span className="absolute bottom-0 left-1.5 right-1.5 h-0.5 bg-[#163323]" />
                   )}
                 </button>
               );
@@ -135,23 +135,23 @@ export const TopBar: React.FC<TopBarProps> = ({
           </nav>
 
           {/* Zone 3: Primary Actions & User Status */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Quick Booking CTA - Always available for everyone */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Quick Booking CTA */}
             <button
               onClick={onOpenNewBooking}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-xs font-semibold uppercase tracking-wider transition-colors shadow-xs cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-[11px] font-semibold uppercase tracking-wider transition-colors shadow-2xs cursor-pointer shrink-0"
               title="Solicitar nueva reserva de estadía"
             >
               <PlusCircle className="w-3.5 h-3.5 text-[#BFA270]" />
-              <span>Reservar Turno</span>
+              <span>+ Reservar</span>
             </button>
 
             {/* Mode Switcher for Administrators */}
             {isUserAdmin && onToggleAdminViewMode && (
-              <div className="hidden md:flex items-center bg-[#FAF8F5] border border-[#DDD5BF] p-0.5 shadow-2xs">
+              <div className="hidden lg:flex items-center bg-[#FAF8F5] border border-[#DDD5BF] p-0.5 shadow-2xs shrink-0">
                 <button
                   onClick={() => onToggleAdminViewMode('admin')}
-                  className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                  className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
                     adminViewMode === 'admin'
                       ? 'bg-[#1B3B2B] text-white shadow-2xs'
                       : 'text-[#637568] hover:text-[#163323]'
@@ -163,7 +163,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </button>
                 <button
                   onClick={() => onToggleAdminViewMode('owner')}
-                  className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                  className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
                     adminViewMode === 'owner'
                       ? 'bg-[#2563EB] text-white shadow-2xs'
                       : 'text-[#637568] hover:text-[#163323]'
@@ -179,12 +179,12 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* Notification Bell */}
             <button
               onClick={onOpenNotifications}
-              className="relative p-2 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer"
+              className="relative p-1.5 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer shrink-0"
               title="Centro de Notificaciones Push"
             >
               <Bell className="w-4 h-4" />
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-[#BFA270] text-[#163323] font-mono text-[9px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-[#BFA270] text-[#163323] font-mono text-[8px] font-bold rounded-full flex items-center justify-center">
                   {unreadCount}
                 </span>
               )}
@@ -193,31 +193,31 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* Password Change Button */}
             <button
               onClick={() => setIsPasswordModalOpen(true)}
-              className="p-2 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer"
+              className="p-1.5 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer shrink-0"
               title="Cambiar mi Contraseña"
             >
               <KeyRound className="w-4 h-4 text-[#BFA270]" />
             </button>
 
             {/* User Pill / Identity */}
-            <div className="hidden sm:flex items-center gap-2.5 pl-2.5 border-l border-[#E6E0CF]">
+            <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-[#E6E0CF] shrink-0">
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs shrink-0"
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-xs shrink-0"
                 style={{ backgroundColor: currentUser.color }}
               >
                 {currentUser.avatarInitials}
               </div>
               <div className="flex flex-col text-left">
-                <span className="text-xs font-semibold text-[#163323] leading-tight truncate max-w-[120px]">
+                <span className="text-[11px] font-semibold text-[#163323] leading-tight truncate max-w-[110px]">
                   {currentUser.name}
                 </span>
-                <span className="text-[10px] text-[#7A8E7E] leading-none flex items-center gap-1 mt-0.5">
+                <span className="text-[9px] text-[#7A8E7E] leading-none flex items-center gap-0.5 mt-0.5">
                   {effectiveIsAdmin ? (
                     <span className="text-[#A68853] font-semibold flex items-center gap-0.5">
-                      <Shield className="w-2.5 h-2.5" /> Administrador
+                      <Shield className="w-2.5 h-2.5" /> Admin
                     </span>
                   ) : (
-                    <span>{currentUser.partName}</span>
+                    <span className="truncate max-w-[100px]">{currentUser.partName}</span>
                   )}
                 </span>
               </div>
@@ -226,17 +226,17 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* Logout button */}
             <button
               onClick={onLogout}
-              className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 text-red-800 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 text-red-800 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0"
               title="Cerrar sesión e ingresar con otra cuenta"
             >
               <LogOut className="w-3.5 h-3.5 text-red-700" />
-              <span className="hidden sm:inline">Cerrar Sesión</span>
+              <span>Cerrar Sesión</span>
             </button>
 
-            {/* Mobile menu hamburger */}
+            {/* Mobile menu hamburger (visible on screens < 1150px) */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer"
+              className="xl:hidden p-1.5 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer shrink-0"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -246,7 +246,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden bg-[#FAF8F5] border-t border-[#E3DFC8] px-4 pt-3 pb-5 space-y-2 animate-fade-in">
+        <div className="xl:hidden bg-[#FAF8F5] border-t border-[#E3DFC8] px-4 pt-3 pb-5 space-y-2 animate-fade-in">
           {/* User profile strip in mobile */}
           <div className="flex items-center justify-between p-3 bg-white border border-[#E3DFC8] mb-3">
             <div className="flex items-center gap-3">
