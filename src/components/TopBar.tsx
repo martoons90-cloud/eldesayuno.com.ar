@@ -3,6 +3,7 @@ import { BrandLogo } from './BrandLogo';
 import { User, NotificationPush } from '../types';
 import { d1Service } from '../services/d1Service';
 import { PasswordManagementModal } from './PasswordManagementModal';
+import { APP_VERSION } from '../version';
 import {
   Bell,
   LogOut,
@@ -95,8 +96,14 @@ export const TopBar: React.FC<TopBarProps> = ({
                 >
                   EL DESAYUNO
                 </span>
-                <span className="text-[8px] tracking-[0.2em] text-[#9E8252] font-semibold uppercase leading-tight mt-0.5 flex items-center gap-1">
+                <span className="text-[8px] tracking-[0.2em] text-[#9E8252] font-semibold uppercase leading-tight mt-0.5 flex items-center gap-1.5">
                   <span>FIDEICOMISO</span>
+                  <span
+                    className="text-[8px] font-mono font-bold px-1.5 py-0.2 bg-[#EFE9DB] text-[#445648] rounded-2xs border border-[#D5CDBC]"
+                    title={`Versión activa del sistema: ${APP_VERSION}`}
+                  >
+                    {APP_VERSION}
+                  </span>
                   {isAdmin && (
                     <span
                       className="text-[7px] font-mono font-bold px-1 py-0.1 bg-emerald-100 text-emerald-800 rounded-2xs"

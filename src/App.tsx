@@ -19,6 +19,7 @@ import { CobranzasView } from './components/CobranzasView';
 import { ExpensesView } from './components/ExpensesView';
 import { AdminPanel, AdminSectionType } from './components/AdminPanel';
 import { UnifiedSettingsPanel, SettingsTabId } from './components/UnifiedSettingsPanel';
+import { APP_VERSION } from './version';
 import {
   PushNotificationToast,
   NotificationCenterDrawer,
@@ -620,8 +621,15 @@ export default function App() {
             <span>·</span>
             <span>Cuatro Partes, Un Mismo Objetivo</span>
           </div>
-          <div>
+          <div className="flex items-center gap-2.5">
             <span>Sistema Privado de Gestión de Estadías y Reserva de Turnos © {new Date().getFullYear()}</span>
+            <span>·</span>
+            <span
+              className="font-mono font-bold text-[#163323] bg-[#EFE9DB] px-1.5 py-0.5 rounded text-[11px] border border-[#D5CDBC]"
+              title={`Versión de producción: ${APP_VERSION}`}
+            >
+              {APP_VERSION}
+            </span>
           </div>
         </div>
       </footer>

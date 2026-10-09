@@ -7,6 +7,7 @@ import { BrandLogo } from './BrandLogo';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { TransferAdminModal } from './TransferAdminModal';
 import { UserFormModal } from './UserFormModal';
+import { APP_VERSION, APP_BUILD_DATE, APP_STAGE } from '../version';
 import {
   Users,
   Sliders,
@@ -767,6 +768,26 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 </button>
               );
             })}
+          </div>
+
+          {/* System Version & Environment Info Card */}
+          <div className="p-3.5 bg-[#FAF8F5] border-t border-[#E3DFC8]">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568]">
+                Versión del Sistema
+              </span>
+              <span className="font-mono font-bold text-xs bg-[#1B3B2B] text-white px-2 py-0.5 rounded shadow-2xs">
+                {APP_VERSION}
+              </span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between text-[11px] text-[#55695B]">
+              <span>Entorno:</span>
+              <span className="font-medium text-[#163323]">{APP_STAGE} · Cloud Multi-Terminal</span>
+            </div>
+            <div className="mt-0.5 flex items-center justify-between text-[10px] text-[#7A8E7E] font-mono">
+              <span>Compilación:</span>
+              <span>{APP_BUILD_DATE}</span>
+            </div>
           </div>
         </div>
 

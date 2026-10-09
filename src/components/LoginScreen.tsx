@@ -3,6 +3,7 @@ import { BrandLogo } from './BrandLogo';
 import { storageService } from '../services/storageService';
 import { User } from '../types';
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, Info } from 'lucide-react';
+import { APP_VERSION } from '../version';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -164,8 +165,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       {/* Footer */}
       <footer className="py-4 text-center text-xs text-[#7B8D7F] border-t border-[#E8E2D2] bg-[#FAF8F4]">
-        <p>
-          El Desayuno Sociedad © {new Date().getFullYear()} · Sistema de Gestión de Estadías y Reserva de Turnos
+        <p className="flex items-center justify-center gap-2 flex-wrap">
+          <span>El Desayuno Sociedad © {new Date().getFullYear()} · Sistema de Gestión de Estadías y Reserva de Turnos</span>
+          <span
+            className="font-mono font-bold text-[#163323] bg-[#EFE9DB] px-1.5 py-0.5 rounded text-[10px] border border-[#D5CDBC]"
+            title={`Versión de producción: ${APP_VERSION}`}
+          >
+            {APP_VERSION}
+          </span>
         </p>
       </footer>
     </div>
