@@ -94,6 +94,10 @@ export default function App() {
 
   useEffect(() => {
     refreshData();
+    // Direct database fetch on initial application open
+    storageService.fetchLatestSettingsFromDatabase().then(() => {
+      refreshData();
+    });
     storageService.hydrateFromAppStateAsync().finally(() => {
       refreshData();
     });

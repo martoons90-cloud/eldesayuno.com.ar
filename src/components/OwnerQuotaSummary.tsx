@@ -71,7 +71,7 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
   const nextStay = myUpcomingBookings[0];
 
   const handleCopyWifi = () => {
-    const pwd = settings?.wifiPassword || 'sociedad_cuatro_partes';
+    const pwd = settings?.wifiPassword || 'RouterEldes@yuno';
     navigator.clipboard.writeText(pwd);
     setCopiedWifi(true);
     setTimeout(() => setCopiedWifi(false), 2500);
@@ -299,7 +299,7 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 <span className="text-[#7A8E7E] block text-[11px]">Wi-Fi de la Casa</span>
                 <div className="flex items-center justify-between font-mono text-[#19231A] bg-[#FAF8F5] p-1.5 border border-[#E8E2D2] mt-0.5">
                   <span className="truncate mr-2 font-bold text-[#163323]">
-                    SSID: {settings?.wifiSsid || 'ElDesayuno_Casa_5G'}
+                    SSID: {settings?.wifiSsid || 'Casa forestal'}
                   </span>
                   <button
                     onClick={handleCopyWifi}

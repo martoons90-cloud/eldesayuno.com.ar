@@ -124,16 +124,21 @@ class StorageService {
     const updatedUsers = recalculateUsersUsedDays(users, bookings);
     localStorage.setItem(USERS_KEY, JSON.stringify(updatedUsers));
 
-    // Hydrate server state for cross-browser synchronization
+    // Hydrate server state and settings directly from database for cross-browser synchronization
+    this.fetchLatestSettingsFromDatabase();
     this.hydrateFromAppStateAsync();
 
     // Real-time synchronization stream via SSE (< 50ms sync across all browser sessions)
     this.initRealtimeSyncStream();
 
     // Auto-refresh from cloud server on focus, visibility change, and periodic fallback
-    window.addEventListener('focus', () => this.hydrateFromAppStateAsync());
+    window.addEventListener('focus', () => {
+      this.fetchLatestSettingsFromDatabase();
+      this.hydrateFromAppStateAsync();
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
+        this.fetchLatestSettingsFromDatabase();
         this.hydrateFromAppStateAsync();
       }
     });
@@ -212,11 +217,12 @@ class StorageService {
         }
         if (data.data.settings && typeof data.data.settings === 'object') {
           const currentSettingsRaw = localStorage.getItem(SETTINGS_KEY) || '{}';
-          const serverSettingsRaw = JSON.stringify(data.data.settings);
+          const mergedSettings = { ...DEFAULT_SETTINGS, ...data.data.settings };
+          const serverSettingsRaw = JSON.stringify(mergedSettings);
           if (currentSettingsRaw !== serverSettingsRaw) {
             localStorage.setItem(SETTINGS_KEY, serverSettingsRaw);
-            if (data.data.settings.logoUrl) {
-              localStorage.setItem('el_desayuno_custom_logo', data.data.settings.logoUrl);
+            if (mergedSettings.logoUrl) {
+              localStorage.setItem('el_desayuno_custom_logo', mergedSettings.logoUrl);
             }
             hasChanges = true;
           }
@@ -300,9 +306,10 @@ class StorageService {
           localStorage.setItem(BLOCKS_KEY, JSON.stringify(data.data.blocks));
         }
         if (data.data.settings) {
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.data.settings));
-          if (data.data.settings.logoUrl) {
-            localStorage.setItem('el_desayuno_custom_logo', data.data.settings.logoUrl);
+          const mergedSettings = { ...DEFAULT_SETTINGS, ...data.data.settings };
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedSettings));
+          if (mergedSettings.logoUrl) {
+            localStorage.setItem('el_desayuno_custom_logo', mergedSettings.logoUrl);
           }
         }
         if (data.data.inventory && data.data.inventory.length > 0) {
@@ -812,6 +819,29 @@ class StorageService {
     } catch {
       return DEFAULT_SETTINGS;
     }
+  }
+
+  // Force authoritative query to central database on open
+  public async fetchLatestSettingsFromDatabase(): Promise<TrustSettings> {
+    if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.settings && typeof data.settings === 'object') {
+          const merged = { ...DEFAULT_SETTINGS, ...data.settings };
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+          if (merged.logoUrl) {
+            localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
+          }
+          this.notify(false);
+          return merged;
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching latest settings from DB:', e);
+    }
+    return this.getSettings();
   }
 
   public async saveSettingsAsync(settings: TrustSettings): Promise<TrustSettings> {

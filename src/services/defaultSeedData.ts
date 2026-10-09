@@ -329,20 +329,21 @@ export const SEED_USERS: User[] = [
 
 export const SEED_SETTINGS: TrustSettings = {
   houseName: 'Estancia El Desayuno',
+  slogan: 'Cuatro Partes, Un Mismo Objetivo',
   location: 'Ruta Provincial 41, Km 82, San Antonio de Areco / Mercedes, Bs. As.',
-  wifiSsid: 'ElDesayuno_Casa_5G',
-  wifiPassword: 'sociedad_cuatro_partes',
+  wifiSsid: 'Casa forestal',
+  wifiPassword: 'RouterEldes@yuno',
   checkInTime: '14:00',
   checkOutTime: '11:00',
   autoCleaningBufferHours: 24,
   cancellationMinDays: 7,
   maxGuestsLimit: 12,
   emergencyAddress: 'Estancia El Desayuno, Acceso Principal Tranquera Verde, Coordenadas: -34.4820, -59.4120',
-  cbu: '0070123430000012345678',
-  aliasBancario: 'EL.DESAYUNO.FIDEICOMISO',
-  cuitFideicomiso: '30-71829304-5',
-  bancoNombre: 'Banco Galicia (Cuenta Corriente Pesos)',
-  titularCuenta: 'Fideicomiso Estancia El Desayuno',
+  cbu: '422609619031812',
+  aliasBancario: 'F.ELDESAYUNO',
+  cuitFideicomiso: '30-71957079-4',
+  bancoNombre: 'Banco Macro S.A.',
+  titularCuenta: 'EL DESAYUNO FIDEICOMISO',
   wifiCoverageNotes: 'La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.',
 };
 

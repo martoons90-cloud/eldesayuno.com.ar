@@ -30,23 +30,32 @@ export const HouseGuideView: React.FC<HouseGuideViewProps> = ({ settings }) => {
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocumentItem | null>(null);
 
+  const [currentSettings, setCurrentSettings] = useState<TrustSettings>(settings);
   const [rules, setRules] = useState<HouseRule[]>(storageService.getRules());
   const [contacts, setContacts] = useState<UsefulContact[]>(storageService.getContacts());
   const [documents, setDocuments] = useState<DocumentItem[]>(storageService.getDocuments());
 
   useEffect(() => {
+    setCurrentSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
     const syncData = () => {
+      setCurrentSettings(storageService.getSettings());
       setRules(storageService.getRules());
       setContacts(storageService.getContacts());
       setDocuments(storageService.getDocuments());
     };
     syncData();
+    storageService.fetchLatestSettingsFromDatabase().then((s) => {
+      if (s) setCurrentSettings(s);
+    });
     const unsub = storageService.subscribe(syncData);
     return () => unsub();
   }, []);
 
   const handleCopyWifi = () => {
-    navigator.clipboard.writeText(settings.wifiPassword || 'sociedad_cuatro_partes');
+    navigator.clipboard.writeText(currentSettings.wifiPassword || 'RouterEldes@yuno');
     setCopiedWifi(true);
     setTimeout(() => setCopiedWifi(false), 2500);
   };
@@ -285,7 +294,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                     Nombre de Red (SSID)
                   </span>
                   <div className="mt-1 p-3 bg-[#FAF8F5] border border-[#E0D9C5] font-mono text-sm font-bold text-[#163323]">
-                    {settings.wifiSsid}
+                    {currentSettings.wifiSsid || 'Casa forestal'}
                   </div>
                 </div>
 
@@ -295,7 +304,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                   </span>
                   <div className="mt-1 flex items-center gap-2">
                     <div className="flex-1 p-3 bg-[#FAF8F5] border border-[#E0D9C5] font-mono text-sm font-bold text-[#163323] select-all">
-                      {settings.wifiPassword}
+                      {currentSettings.wifiPassword || 'RouterEldes@yuno'}
                     </div>
                     <button
                       onClick={handleCopyWifi}
@@ -319,7 +328,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                 <div className="p-3 bg-[#F8F5EE] border border-[#E6E0CF] text-xs text-[#526657]">
                   <p className="font-semibold text-[#163323] mb-1">Cobertura del Servicio:</p>
                   <p>
-                    {settings.wifiCoverageNotes ||
+                    {currentSettings.wifiCoverageNotes ||
                       'La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.'}
                   </p>
                 </div>
@@ -362,7 +371,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                   Apunta con la cámara de tu celular
                 </span>
                 <span className="text-[10px] text-[#7A8E7E]">
-                  Se conectará automáticamente a {settings.wifiSsid}
+                  Se conectará automáticamente a {currentSettings.wifiSsid || 'Casa forestal'}
                 </span>
               </div>
             </div>

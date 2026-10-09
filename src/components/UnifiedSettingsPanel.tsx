@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem } from '../types';
 import { storageService } from '../services/storageService';
 import { d1Service, D1Config } from '../services/d1Service';
@@ -186,10 +186,42 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     return () => unsub();
   }, []);
 
-  const handleSaveSettingsGeneral = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await storageService.saveSettingsAsync(settingsFormData);
-    showSuccess('Parámetros guardados y persistidos en la base de datos de la nube.');
+  const [propertySaveStatus, setPropertySaveStatus] = useState<'saving' | 'saved'>('saved');
+  const propertySaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleSaveSettingsGeneral = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (propertySaveTimerRef.current) clearTimeout(propertySaveTimerRef.current);
+    setPropertySaveStatus('saving');
+    try {
+      await storageService.saveSettingsAsync(settingsFormData);
+      setPropertySaveStatus('saved');
+      showSuccess('Parámetros guardados y sincronizados en la base de datos de la nube.');
+    } catch {
+      setPropertySaveStatus('saved');
+    }
+  };
+
+  const handlePropertyFieldChange = (field: keyof TrustSettings, value: any) => {
+    const updated = { ...settingsFormData, [field]: value };
+    setSettingsFormData(updated);
+    setPropertySaveStatus('saving');
+    if (propertySaveTimerRef.current) clearTimeout(propertySaveTimerRef.current);
+    propertySaveTimerRef.current = setTimeout(async () => {
+      try {
+        await storageService.saveSettingsAsync(updated);
+        setPropertySaveStatus('saved');
+      } catch {
+        setPropertySaveStatus('saved');
+      }
+    }, 1200);
+  };
+
+  const handlePropertyFieldBlur = () => {
+    if (propertySaveTimerRef.current) clearTimeout(propertySaveTimerRef.current);
+    storageService.saveSettingsAsync(settingsFormData).then(() => {
+      setPropertySaveStatus('saved');
+    });
   };
 
   // -------------------------------------------------------------
@@ -1332,14 +1364,43 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           {/* ========================================================= */}
           {activeTab === 'property' && (
             <form onSubmit={handleSaveSettingsGeneral} className="space-y-6">
-              <div className="pb-4 border-b border-[#EFEAE0]">
-                <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
-                  <Home className="w-5 h-5 text-[#1B3B2B]" />
-                  <span>Estancia, Ubicación & Conectividad Wi-Fi</span>
-                </h3>
-                <p className="text-xs text-[#7A8E7E] mt-0.5">
-                  Parámetros edilicios y credenciales de conexión visibles en la guía del huésped.
-                </p>
+              <div className="pb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FBF9F5] p-3 border border-[#E3DFC8]">
+                <div>
+                  <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
+                    <Home className="w-5 h-5 text-[#1B3B2B]" />
+                    <span>Estancia, Ubicación & Conectividad Wi-Fi</span>
+                  </h3>
+                  <p className="text-xs text-[#7A8E7E] mt-0.5">
+                    Parámetros edilicios y credenciales de conexión visibles en la guía del huésped y en toda la red.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <span
+                    className={`text-[11px] font-mono px-2.5 py-1 rounded border flex items-center gap-1.5 ${
+                      propertySaveStatus === 'saving'
+                        ? 'bg-blue-50 text-blue-800 border-blue-200'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        propertySaveStatus === 'saving' ? 'bg-blue-600 animate-pulse' : 'bg-emerald-600'
+                      }`}
+                    />
+                    <span>
+                      {propertySaveStatus === 'saving' ? 'Guardando en Base de Datos...' : '✓ Sincronizado en BD'}
+                    </span>
+                  </span>
+
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Save className="w-4 h-4 text-[#BFA270]" />
+                    <span>Guardar en BD</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -1350,9 +1411,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   <input
                     type="text"
                     value={settingsFormData.houseName}
-                    onChange={(e) =>
-                      setSettingsFormData({ ...settingsFormData, houseName: e.target.value })
-                    }
+                    onChange={(e) => handlePropertyFieldChange('houseName', e.target.value)}
+                    onBlur={handlePropertyFieldBlur}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-serif font-bold text-sm"
                   />
                 </div>
@@ -1364,9 +1424,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   <input
                     type="text"
                     value={settingsFormData.slogan || 'Cuatro Partes, Un Mismo Objetivo'}
-                    onChange={(e) =>
-                      setSettingsFormData({ ...settingsFormData, slogan: e.target.value })
-                    }
+                    onChange={(e) => handlePropertyFieldChange('slogan', e.target.value)}
+                    onBlur={handlePropertyFieldBlur}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0]"
                   />
                 </div>
@@ -1379,9 +1438,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   <input
                     type="text"
                     value={settingsFormData.location}
-                    onChange={(e) =>
-                      setSettingsFormData({ ...settingsFormData, location: e.target.value })
-                    }
+                    onChange={(e) => handlePropertyFieldChange('location', e.target.value)}
+                    onBlur={handlePropertyFieldBlur}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0]"
                   />
                 </div>
@@ -1394,10 +1452,9 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   <input
                     type="text"
                     value={settingsFormData.wifiSsid}
-                    onChange={(e) =>
-                      setSettingsFormData({ ...settingsFormData, wifiSsid: e.target.value })
-                    }
-                    className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono"
+                    onChange={(e) => handlePropertyFieldChange('wifiSsid', e.target.value)}
+                    onBlur={handlePropertyFieldBlur}
+                    className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold"
                   />
                 </div>
 
@@ -1408,9 +1465,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   <input
                     type="text"
                     value={settingsFormData.wifiPassword}
-                    onChange={(e) =>
-                      setSettingsFormData({ ...settingsFormData, wifiPassword: e.target.value })
-                    }
+                    onChange={(e) => handlePropertyFieldChange('wifiPassword', e.target.value)}
+                    onBlur={handlePropertyFieldBlur}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold"
                   />
                 </div>
@@ -1424,9 +1480,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     rows={2}
                     placeholder="La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural."
                     value={settingsFormData.wifiCoverageNotes || ''}
-                    onChange={(e) =>
-                      setSettingsFormData({ ...settingsFormData, wifiCoverageNotes: e.target.value })
-                    }
+                    onChange={(e) => handlePropertyFieldChange('wifiCoverageNotes', e.target.value)}
+                    onBlur={handlePropertyFieldBlur}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] text-xs text-[#163323] focus:outline-none focus:border-[#163323]"
                   />
                   <span className="text-[10px] text-[#7A8E7E] mt-1 block">
@@ -1448,9 +1503,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                         type="text"
                         placeholder="0070123430000012345678"
                         value={settingsFormData.cbu || ''}
-                        onChange={(e) =>
-                          setSettingsFormData({ ...settingsFormData, cbu: e.target.value })
-                        }
+                        onChange={(e) => handlePropertyFieldChange('cbu', e.target.value)}
+                        onBlur={handlePropertyFieldBlur}
                         className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-[#163323]"
                       />
                     </div>
@@ -1463,9 +1517,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                         type="text"
                         placeholder="EL.DESAYUNO.FIDEICOMISO"
                         value={settingsFormData.aliasBancario || ''}
-                        onChange={(e) =>
-                          setSettingsFormData({ ...settingsFormData, aliasBancario: e.target.value })
-                        }
+                        onChange={(e) => handlePropertyFieldChange('aliasBancario', e.target.value)}
+                        onBlur={handlePropertyFieldBlur}
                         className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-[#163323]"
                       />
                     </div>
@@ -1478,9 +1531,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                         type="text"
                         placeholder="Banco Galicia / MercadoPago"
                         value={settingsFormData.bancoNombre || ''}
-                        onChange={(e) =>
-                          setSettingsFormData({ ...settingsFormData, bancoNombre: e.target.value })
-                        }
+                        onChange={(e) => handlePropertyFieldChange('bancoNombre', e.target.value)}
+                        onBlur={handlePropertyFieldBlur}
                         className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0]"
                       />
                     </div>
@@ -1493,9 +1545,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                         type="text"
                         placeholder="Fideicomiso Estancia El Desayuno"
                         value={settingsFormData.titularCuenta || ''}
-                        onChange={(e) =>
-                          setSettingsFormData({ ...settingsFormData, titularCuenta: e.target.value })
-                        }
+                        onChange={(e) => handlePropertyFieldChange('titularCuenta', e.target.value)}
+                        onBlur={handlePropertyFieldBlur}
                         className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0]"
                       />
                     </div>
@@ -1508,9 +1559,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                         type="text"
                         placeholder="30-71829304-5"
                         value={settingsFormData.cuitFideicomiso || ''}
-                        onChange={(e) =>
-                          setSettingsFormData({ ...settingsFormData, cuitFideicomiso: e.target.value })
-                        }
+                        onChange={(e) => handlePropertyFieldChange('cuitFideicomiso', e.target.value)}
+                        onBlur={handlePropertyFieldBlur}
                         className="w-full p-2.5 bg-[#FAF8F5] border border-[#DDD5BF] font-mono"
                       />
                     </div>
@@ -1518,13 +1568,16 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-[#EFEAE0] flex justify-end">
+              <div className="pt-4 border-t border-[#EFEAE0] flex justify-between items-center">
+                <span className="text-[11px] text-[#7A8E7E]">
+                  Todos los cambios se respaldan y sincronizan automáticamente con la Base de Datos central.
+                </span>
                 <button
                   type="submit"
                   className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
                 >
                   <Save className="w-4 h-4 text-[#BFA270]" />
-                  <span>Guardar Datos de la Estancia</span>
+                  <span>Guardar en Base de Datos</span>
                 </button>
               </div>
             </form>

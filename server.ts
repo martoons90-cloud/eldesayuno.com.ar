@@ -509,9 +509,11 @@ app.post('/api/d1/sync-pull', async (req, res) => {
     const settings = rawSettings
       ? {
           houseName: rawSettings.house_name,
+          slogan: rawSettings.slogan || 'Cuatro Partes, Un Mismo Objetivo',
           location: rawSettings.location,
           wifiSsid: rawSettings.wifi_ssid,
           wifiPassword: rawSettings.wifi_password,
+          wifiCoverageNotes: rawSettings.wifi_coverage_notes || '',
           checkInTime: rawSettings.check_in_time,
           checkOutTime: rawSettings.check_out_time,
           autoCleaningBufferHours: rawSettings.auto_cleaning_buffer_hours,
@@ -519,6 +521,11 @@ app.post('/api/d1/sync-pull', async (req, res) => {
           maxGuestsLimit: rawSettings.max_guests_limit,
           emergencyAddress: rawSettings.emergency_address,
           logoUrl: rawSettings.logo_url,
+          cbu: rawSettings.cbu || '',
+          aliasBancario: rawSettings.alias_bancario || '',
+          cuitFideicomiso: rawSettings.cuit_fideicomiso || '',
+          bancoNombre: rawSettings.banco_nombre || '',
+          titularCuenta: rawSettings.titular_cuenta || '',
         }
       : undefined;
 
@@ -1005,8 +1012,8 @@ const handleSaveSettings = async (req: express.Request, res: express.Response) =
         actId,
         dbId,
         token,
-        `INSERT OR REPLACE INTO trust_settings (id, house_name, location, wifi_ssid, wifi_password, check_in_time, check_out_time, auto_cleaning_buffer_hours, cancellation_min_days, max_guests_limit, emergency_address, logo_url, updated_at)
-         VALUES ('default_settings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO trust_settings (id, house_name, location, wifi_ssid, wifi_password, check_in_time, check_out_time, auto_cleaning_buffer_hours, cancellation_min_days, max_guests_limit, emergency_address, logo_url, cbu, alias_bancario, cuit_fideicomiso, banco_nombre, titular_cuenta, wifi_coverage_notes, slogan, updated_at)
+         VALUES ('default_settings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           s.houseName || 'Estancia El Desayuno',
           s.location || '',
@@ -1019,6 +1026,13 @@ const handleSaveSettings = async (req: express.Request, res: express.Response) =
           s.maxGuestsLimit || 12,
           s.emergencyAddress || '',
           s.logoUrl || '',
+          s.cbu || '',
+          s.aliasBancario || '',
+          s.cuitFideicomiso || '',
+          s.bancoNombre || '',
+          s.titularCuenta || '',
+          s.wifiCoverageNotes || '',
+          s.slogan || 'Cuatro Partes, Un Mismo Objetivo',
           new Date().toISOString(),
         ]
       ).catch((err) => console.warn('[D1 Background Sync] Error guardando settings en D1:', err));
