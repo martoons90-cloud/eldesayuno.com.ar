@@ -177,6 +177,13 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
         }
       })
       .catch(() => {});
+
+    const unsub = storageService.subscribe(() => {
+      setRulesList(storageService.getRules());
+      setContactsList(storageService.getContacts());
+      setDocumentsList(storageService.getDocuments());
+    });
+    return () => unsub();
   }, []);
 
   const handleSaveSettingsGeneral = async (e: React.FormEvent) => {

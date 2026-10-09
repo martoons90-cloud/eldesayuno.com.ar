@@ -136,6 +136,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [settingsFormData, setSettingsFormData] = useState<TrustSettings>(settings);
   const [settingsSavedMessage, setSettingsSavedMessage] = useState(false);
 
+  useEffect(() => {
+    setSettingsFormData(settings);
+  }, [settings]);
+
   // Cancellation Modal for Admin
   const [adminCancelBookingId, setAdminCancelBookingId] = useState<string | null>(null);
   const [adminCancelReason, setAdminCancelReason] = useState('');

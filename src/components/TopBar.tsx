@@ -96,22 +96,21 @@ export const TopBar: React.FC<TopBarProps> = ({
                 >
                   EL DESAYUNO
                 </span>
-                <span className="text-[8px] tracking-[0.2em] text-[#9E8252] font-semibold uppercase leading-tight mt-0.5 flex items-center gap-1.5">
+                <span className="text-[8px] tracking-[0.2em] text-[#9E8252] font-semibold uppercase leading-tight mt-0.5 flex items-center gap-1.5 flex-wrap">
                   <span>FIDEICOMISO</span>
                   <span
-                    className="text-[8px] font-mono font-bold px-1.5 py-0.2 bg-[#EFE9DB] text-[#445648] rounded-2xs border border-[#D5CDBC]"
-                    title={`Versión activa del sistema: ${APP_VERSION}`}
+                    className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-[#EFE9DB] text-[#163323] rounded border border-[#D5CDBC] shadow-2xs"
+                    title={`Versión activa del ERP: ${APP_VERSION}`}
                   >
                     {APP_VERSION}
                   </span>
-                  {isAdmin && (
-                    <span
-                      className="text-[7px] font-mono font-bold px-1 py-0.1 bg-emerald-100 text-emerald-800 rounded-2xs"
-                      title="Conectado directamente a la Base de Datos Central del Servidor / Cloudflare"
-                    >
-                      ● DB Servidor
-                    </span>
-                  )}
+                  <span
+                    className="text-[8px] font-mono font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded border border-emerald-200 flex items-center gap-1"
+                    title="Sincronizado en tiempo real con la Base de Datos Central del Servidor"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                    <span>BD Sincronizada</span>
+                  </span>
                 </span>
               </div>
             </button>

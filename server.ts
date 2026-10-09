@@ -845,6 +845,20 @@ function loadServerState(): Record<string, any> {
   return seed;
 }
 
+// Real-time synchronization event bus across all client sessions
+const sseClients = new Set<express.Response>();
+
+function broadcastSyncEvent(eventType: string, payload?: any): void {
+  const data = JSON.stringify({ type: eventType, payload, timestamp: Date.now() });
+  for (const client of sseClients) {
+    try {
+      client.write(`event: sync\ndata: ${data}\n\n`);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
 function saveServerState(state: Record<string, any>): void {
   try {
     state.updatedAt = new Date().toISOString();
@@ -852,6 +866,7 @@ function saveServerState(state: Record<string, any>): void {
     const tempPath = `${STATE_FILE_PATH}.tmp.${Date.now()}`;
     fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), 'utf-8');
     fs.renameSync(tempPath, STATE_FILE_PATH);
+    broadcastSyncEvent('state_updated', { updatedAt: state.updatedAt });
   } catch (err) {
     console.error('[Server State] Error escribiendo STATE_FILE_PATH:', err);
   }
@@ -859,6 +874,21 @@ function saveServerState(state: Record<string, any>): void {
 
 // Initialize seed on startup
 loadServerState();
+
+// 0. Real-time Server-Sent Events stream for instant cross-session sync (< 50ms)
+app.get('/api/sync/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+  res.write('event: connected\ndata: {"status":"connected"}\n\n');
+  sseClients.add(res);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
 
 // 1. Get full App State (Canonical Cloud Truth)
 app.get('/api/app-state', (_req, res) => {

@@ -322,7 +322,7 @@
     "bancoNombre": "Banco Galicia (Cuenta Corriente Pesos)",
     "titularCuenta": "Fideicomiso Estancia El Desayuno",
     "wifiCoverageNotes": "La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.",
-    "updatedAt": "2026-10-09T00:18:37.874Z"
+    "updatedAt": "2026-10-09T04:32:20.637Z"
   },
   "bookings": [
     {
@@ -847,5 +847,5 @@
     }
   ],
   "version": "2.0-eldesayuno",
-  "updatedAt": "2026-10-09T00:19:20.253Z"
+  "updatedAt": "2026-10-09T04:32:20.637Z"
 }

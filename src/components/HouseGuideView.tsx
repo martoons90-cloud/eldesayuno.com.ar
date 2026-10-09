@@ -35,13 +35,18 @@ export const HouseGuideView: React.FC<HouseGuideViewProps> = ({ settings }) => {
   const [documents, setDocuments] = useState<DocumentItem[]>(storageService.getDocuments());
 
   useEffect(() => {
-    setRules(storageService.getRules());
-    setContacts(storageService.getContacts());
-    setDocuments(storageService.getDocuments());
+    const syncData = () => {
+      setRules(storageService.getRules());
+      setContacts(storageService.getContacts());
+      setDocuments(storageService.getDocuments());
+    };
+    syncData();
+    const unsub = storageService.subscribe(syncData);
+    return () => unsub();
   }, []);
 
   const handleCopyWifi = () => {
-    navigator.clipboard.writeText(settings.wifiPassword);
+    navigator.clipboard.writeText(settings.wifiPassword || 'sociedad_cuatro_partes');
     setCopiedWifi(true);
     setTimeout(() => setCopiedWifi(false), 2500);
   };

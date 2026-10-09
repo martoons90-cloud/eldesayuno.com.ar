@@ -71,7 +71,8 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
   const nextStay = myUpcomingBookings[0];
 
   const handleCopyWifi = () => {
-    navigator.clipboard.writeText('sociedad_cuatro_partes');
+    const pwd = settings?.wifiPassword || 'sociedad_cuatro_partes';
+    navigator.clipboard.writeText(pwd);
     setCopiedWifi(true);
     setTimeout(() => setCopiedWifi(false), 2500);
   };
@@ -283,7 +284,7 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 Información de la Propiedad
               </span>
               <h3 className="text-base font-bold text-[#163323] mt-0.5">
-                Estancia El Desayuno
+                {settings?.houseName || 'Estancia El Desayuno'}
               </h3>
             </div>
 
@@ -291,16 +292,18 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
               <div>
                 <span className="text-[#7A8E7E] block text-[11px]">Ubicación</span>
                 <span className="font-medium text-[#19231A]">
-                  Ruta Prov. 41, Km 82 (San Antonio de Areco)
+                  {settings?.location || 'Ruta Prov. 41, Km 82 (San Antonio de Areco)'}
                 </span>
               </div>
               <div>
                 <span className="text-[#7A8E7E] block text-[11px]">Wi-Fi de la Casa</span>
                 <div className="flex items-center justify-between font-mono text-[#19231A] bg-[#FAF8F5] p-1.5 border border-[#E8E2D2] mt-0.5">
-                  <span>SSID: ElDesayuno_Casa_5G</span>
+                  <span className="truncate mr-2 font-bold text-[#163323]">
+                    SSID: {settings?.wifiSsid || 'ElDesayuno_Casa_5G'}
+                  </span>
                   <button
                     onClick={handleCopyWifi}
-                    className="text-[10px] font-sans text-[#1B3B2B] font-semibold underline cursor-pointer"
+                    className="text-[10px] font-sans text-[#1B3B2B] font-semibold underline cursor-pointer shrink-0"
                   >
                     {copiedWifi ? '¡Copiado!' : 'Copiar clave'}
                   </button>
@@ -309,13 +312,13 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
               <div>
                 <span className="text-[#7A8E7E] block text-[11px]">Horarios Oficiales</span>
                 <span className="font-medium text-[#19231A]">
-                  Ingreso 14:00 hs · Salida 11:00 hs
+                  Ingreso {settings?.checkInTime || '14:00'} hs · Salida {settings?.checkOutTime || '11:00'} hs
                 </span>
               </div>
               <div>
                 <span className="text-[#7A8E7E] block text-[11px]">Margen Sanitización Post Turno</span>
                 <span className="font-medium text-[#19231A]">
-                  24 horas reservadas para limpieza profunda
+                  {settings?.autoCleaningBufferHours || 24} horas reservadas para limpieza profunda
                 </span>
               </div>
             </div>
