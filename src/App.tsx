@@ -113,6 +113,13 @@ export default function App() {
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setActiveTab('dashboard');
+    refreshData();
+    storageService.fetchLatestSettingsFromDatabase().then(() => {
+      refreshData();
+    });
+    storageService.hydrateFromAppStateAsync().finally(() => {
+      refreshData();
+    });
   };
 
   // Handle Logout

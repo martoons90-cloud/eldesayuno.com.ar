@@ -21,6 +21,18 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Disable ETags globally to eliminate 304 cached responses
+app.set('etag', false);
+
+// Strict anti-caching headers on all API endpoints for cross-browser synchronization
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 // Helper to query Cloudflare D1 REST API
 async function queryCloudflareD1(
   accountId: string,
@@ -826,8 +838,8 @@ import { getFullSeedState } from './src/services/defaultSeedData';
 const STATE_FILE_PATH = path.resolve(process.cwd(), 'app-server-state.json');
 let memoryServerState: Record<string, any> | null = null;
 
-function loadServerState(): Record<string, any> {
-  if (memoryServerState) {
+function loadServerState(forceDisk = false): Record<string, any> {
+  if (memoryServerState && !forceDisk) {
     return memoryServerState;
   }
   try {
@@ -873,26 +885,37 @@ function saveServerState(state: Record<string, any>): void {
     const tempPath = `${STATE_FILE_PATH}.tmp.${Date.now()}`;
     fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), 'utf-8');
     fs.renameSync(tempPath, STATE_FILE_PATH);
-    broadcastSyncEvent('state_updated', { updatedAt: state.updatedAt });
+    broadcastSyncEvent('state_updated', { settings: state.settings, updatedAt: state.updatedAt });
   } catch (err) {
     console.error('[Server State] Error escribiendo STATE_FILE_PATH:', err);
   }
 }
 
 // Initialize seed on startup
-loadServerState();
+loadServerState(true);
 
 // 0. Real-time Server-Sent Events stream for instant cross-session sync (< 50ms)
 app.get('/api/sync/events', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
   });
   res.write('event: connected\ndata: {"status":"connected"}\n\n');
   sseClients.add(res);
 
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {
+      clearInterval(keepAlive);
+      sseClients.delete(res);
+    }
+  }, 15000);
+
   req.on('close', () => {
+    clearInterval(keepAlive);
     sseClients.delete(res);
   });
 });
@@ -900,7 +923,7 @@ app.get('/api/sync/events', (req, res) => {
 // 1. Get full App State (Canonical Cloud Truth)
 app.get('/api/app-state', (_req, res) => {
   try {
-    const data = loadServerState();
+    const data = loadServerState(true);
     return res.json({ success: true, data });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error leyendo estado en servidor' });
@@ -979,7 +1002,7 @@ app.post('/api/app-state', (req, res) => {
 // 2b. Dedicated Settings Endpoints (Canonical Cloud Database for Ajustes)
 app.get('/api/settings', (_req, res) => {
   try {
-    const state = loadServerState();
+    const state = loadServerState(true);
     return res.json({ success: true, settings: state.settings || {} });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error obteniendo ajustes del servidor' });

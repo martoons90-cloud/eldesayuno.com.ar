@@ -169,7 +169,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   }, [settings]);
 
   useEffect(() => {
-    fetch('/api/settings')
+    fetch(`/api/settings?_t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.settings) {
@@ -179,6 +179,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       .catch(() => {});
 
     const unsub = storageService.subscribe(() => {
+      setSettingsFormData(storageService.getSettings());
       setRulesList(storageService.getRules());
       setContactsList(storageService.getContacts());
       setDocumentsList(storageService.getDocuments());

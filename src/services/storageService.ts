@@ -75,12 +75,34 @@ function recalculateUsersUsedDays(users: User[], bookings: Booking[]): User[] {
 // Storage Class
 class StorageService {
   private listeners: Array<() => void> = [];
+  private broadcastChannel: BroadcastChannel | null = null;
 
   constructor() {
     this.init();
     if (typeof window !== 'undefined') {
+      // Cross-tab synchronization via BroadcastChannel (< 1ms between tabs of same browser)
+      if ('BroadcastChannel' in window) {
+        try {
+          this.broadcastChannel = new BroadcastChannel('el_desayuno_sync_channel');
+          this.broadcastChannel.onmessage = (event) => {
+            if (event.data?.type === 'SYNC_SETTINGS' && event.data.settings) {
+              const merged = { ...DEFAULT_SETTINGS, ...event.data.settings };
+              localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+              if (merged.logoUrl) {
+                localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
+              }
+              this.notify(false, false);
+            } else if (event.data?.type === 'SYNC_ALL') {
+              this.notify(false, false);
+            }
+          };
+        } catch (err) {
+          console.warn('BroadcastChannel error:', err);
+        }
+      }
+
       window.addEventListener('storage', () => {
-        this.notify(false);
+        this.notify(false, false);
       });
       // Initial background hydration from Cloudflare D1
       this.hydrateFromD1Async();
@@ -149,12 +171,25 @@ class StorageService {
     if (typeof window === 'undefined') return;
     try {
       const eventSource = new EventSource('/api/sync/events');
-      eventSource.addEventListener('sync', () => {
-        this.hydrateFromAppStateAsync();
-      });
-      eventSource.onmessage = () => {
+      const handleSyncMessage = (e: MessageEvent) => {
+        try {
+          if (e.data) {
+            const parsed = JSON.parse(e.data);
+            if (parsed.payload?.settings && typeof parsed.payload.settings === 'object') {
+              const merged = { ...DEFAULT_SETTINGS, ...parsed.payload.settings };
+              localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+              if (merged.logoUrl) {
+                localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
+              }
+              this.notify(false, true);
+            }
+          }
+        } catch {}
         this.hydrateFromAppStateAsync();
       };
+
+      eventSource.addEventListener('sync', handleSyncMessage);
+      eventSource.onmessage = handleSyncMessage;
       eventSource.onerror = () => {
         // EventSource handles auto-reconnect
       };
@@ -166,7 +201,13 @@ class StorageService {
   public async hydrateFromAppStateAsync() {
     if (typeof window === 'undefined') return;
     try {
-      const res = await fetch('/api/app-state');
+      const res = await fetch(`/api/app-state?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
       if (!res.ok) return;
       const data = await res.json();
       if (data.success && data.data) {
@@ -216,11 +257,27 @@ class StorageService {
           }
         }
         if (data.data.settings && typeof data.data.settings === 'object') {
-          const currentSettingsRaw = localStorage.getItem(SETTINGS_KEY) || '{}';
-          const mergedSettings = { ...DEFAULT_SETTINGS, ...data.data.settings };
-          const serverSettingsRaw = JSON.stringify(mergedSettings);
-          if (currentSettingsRaw !== serverSettingsRaw) {
-            localStorage.setItem(SETTINGS_KEY, serverSettingsRaw);
+          const currentSettings = this.getSettings();
+          const serverSettings = data.data.settings;
+          const isDifferent =
+            currentSettings.wifiSsid !== serverSettings.wifiSsid ||
+            currentSettings.wifiPassword !== serverSettings.wifiPassword ||
+            currentSettings.houseName !== serverSettings.houseName ||
+            currentSettings.location !== serverSettings.location ||
+            currentSettings.checkInTime !== serverSettings.checkInTime ||
+            currentSettings.checkOutTime !== serverSettings.checkOutTime ||
+            currentSettings.autoCleaningBufferHours !== serverSettings.autoCleaningBufferHours ||
+            currentSettings.cbu !== serverSettings.cbu ||
+            currentSettings.aliasBancario !== serverSettings.aliasBancario ||
+            currentSettings.titularCuenta !== serverSettings.titularCuenta ||
+            currentSettings.cuitFideicomiso !== serverSettings.cuitFideicomiso ||
+            currentSettings.bancoNombre !== serverSettings.bancoNombre ||
+            currentSettings.wifiCoverageNotes !== serverSettings.wifiCoverageNotes ||
+            currentSettings.logoUrl !== serverSettings.logoUrl;
+
+          if (isDifferent) {
+            const mergedSettings = { ...DEFAULT_SETTINGS, ...serverSettings };
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedSettings));
             if (mergedSettings.logoUrl) {
               localStorage.setItem('el_desayuno_custom_logo', mergedSettings.logoUrl);
             }
@@ -354,7 +411,7 @@ class StorageService {
     };
   }
 
-  private notify(syncD1: boolean = true) {
+  private notify(syncD1: boolean = true, broadcast: boolean = true) {
     this.listeners.forEach((cb) => {
       try {
         cb();
@@ -362,6 +419,16 @@ class StorageService {
         console.error(err);
       }
     });
+    if (broadcast && this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({
+          type: 'SYNC_SETTINGS',
+          settings: this.getSettings(),
+        });
+      } catch (err) {
+        console.warn('BroadcastChannel post error:', err);
+      }
+    }
     if (syncD1) {
       this.syncToD1Async();
     }
@@ -825,7 +892,13 @@ class StorageService {
   public async fetchLatestSettingsFromDatabase(): Promise<TrustSettings> {
     if (typeof window === 'undefined') return DEFAULT_SETTINGS;
     try {
-      const res = await fetch('/api/settings');
+      const res = await fetch(`/api/settings?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.settings && typeof data.settings === 'object') {
@@ -834,7 +907,7 @@ class StorageService {
           if (merged.logoUrl) {
             localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
           }
-          this.notify(false);
+          this.notify(false, true);
           return merged;
         }
       }
@@ -846,9 +919,13 @@ class StorageService {
 
   public async saveSettingsAsync(settings: TrustSettings): Promise<TrustSettings> {
     try {
-      const res = await fetch('/api/settings', {
+      const res = await fetch(`/api/settings?_t=${Date.now()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
         body: JSON.stringify(settings),
       });
       const data = await res.json();
@@ -857,14 +934,14 @@ class StorageService {
         if (data.settings.logoUrl) {
           localStorage.setItem('el_desayuno_custom_logo', data.settings.logoUrl);
         }
-        this.notify(false);
+        this.notify(false, true);
         return data.settings;
       }
     } catch (err) {
       console.warn('Error guardando ajustes en la nube:', err);
     }
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    this.notify(false);
+    this.notify(false, true);
     return settings;
   }
 

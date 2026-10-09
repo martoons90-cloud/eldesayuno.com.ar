@@ -55,9 +55,12 @@ export const HouseGuideView: React.FC<HouseGuideViewProps> = ({ settings }) => {
   }, []);
 
   const handleCopyWifi = () => {
-    navigator.clipboard.writeText(currentSettings.wifiPassword || 'RouterEldes@yuno');
-    setCopiedWifi(true);
-    setTimeout(() => setCopiedWifi(false), 2500);
+    const pwd = currentSettings.wifiPassword || settings.wifiPassword || '';
+    if (pwd) {
+      navigator.clipboard.writeText(pwd);
+      setCopiedWifi(true);
+      setTimeout(() => setCopiedWifi(false), 2500);
+    }
   };
 
   const getRuleIcon = (name: string) => {
@@ -294,7 +297,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                     Nombre de Red (SSID)
                   </span>
                   <div className="mt-1 p-3 bg-[#FAF8F5] border border-[#E0D9C5] font-mono text-sm font-bold text-[#163323]">
-                    {currentSettings.wifiSsid || 'Casa forestal'}
+                    {currentSettings.wifiSsid || settings.wifiSsid || 'Sin configurar'}
                   </div>
                 </div>
 
@@ -304,7 +307,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                   </span>
                   <div className="mt-1 flex items-center gap-2">
                     <div className="flex-1 p-3 bg-[#FAF8F5] border border-[#E0D9C5] font-mono text-sm font-bold text-[#163323] select-all">
-                      {currentSettings.wifiPassword || 'RouterEldes@yuno'}
+                      {currentSettings.wifiPassword || settings.wifiPassword || 'Sin contraseña'}
                     </div>
                     <button
                       onClick={handleCopyWifi}

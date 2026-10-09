@@ -308,8 +308,8 @@
   "settings": {
     "houseName": "Estancia El Desayuno",
     "location": "Ruta Provincial 41, Km 82, San Antonio de Areco / Mercedes, Bs. As.",
-    "wifiSsid": "Casa forestal",
-    "wifiPassword": "RouterEldes@yuno",
+    "wifiSsid": "ElDesayuno_WiFi_2026",
+    "wifiPassword": "CampoTranquilo2026",
     "checkInTime": "14:00",
     "checkOutTime": "11:00",
     "autoCleaningBufferHours": 24,
@@ -322,7 +322,7 @@
     "bancoNombre": "Banco Macro S.A.",
     "titularCuenta": "EL DESAYUNO FIDEICOMISO",
     "wifiCoverageNotes": "La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.",
-    "updatedAt": "2026-10-09T05:28:40.319Z",
+    "updatedAt": "2026-10-09T13:37:08.939Z",
     "slogan": "Cuatro Partes, Un Mismo Objetivo"
   },
   "bookings": [
@@ -848,5 +848,5 @@
     }
   ],
   "version": "2.0-eldesayuno",
-  "updatedAt": "2026-10-09T05:28:40.319Z"
+  "updatedAt": "2026-10-09T13:37:08.939Z"
 }
