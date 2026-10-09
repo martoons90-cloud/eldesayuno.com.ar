@@ -46,7 +46,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   useEffect(() => {
     if (initialStartDate) setCheckInDate(initialStartDate);
     if (initialEndDate) setCheckOutDate(initialEndDate);
-  }, [initialStartDate, initialEndDate]);
+    if (isOpen) {
+      // Re-hydrate from cloud to guarantee fresh reservations from all devices
+      storageService.hydrateFromAppStateAsync();
+    }
+  }, [initialStartDate, initialEndDate, isOpen]);
 
   if (!isOpen) return null;
 
@@ -72,7 +76,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return 'El rango de días no es válido.';
     }
 
-    // Overlap validation with active bookings
+    // Overlap validation with active bookings in memory
     const requestedStart = checkInDate;
     const requestedEnd = checkOutDate;
 
@@ -103,7 +107,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return null;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -115,39 +119,39 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     setLoading(true);
 
-    setTimeout(() => {
-      try {
-        const newBooking = storageService.createBooking({
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userColor: currentUser.color,
-          partName: currentUser.partName,
-          checkInDate,
-          checkOutDate,
-          totalDays: daysRequested,
-          status: 'confirmed',
-          guestsCount,
-          arrivalTime,
-          notes: notes.trim() || undefined,
-          cleaningBufferApplied: false,
-        });
+    try {
+      // Create and lock booking authoritatively on cloud server
+      const newBooking = await storageService.createBookingAsync({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userColor: currentUser.color,
+        partName: currentUser.partName,
+        checkInDate,
+        checkOutDate,
+        totalDays: daysRequested,
+        status: 'confirmed',
+        guestsCount,
+        arrivalTime,
+        notes: notes.trim() || undefined,
+        cleaningBufferApplied: false,
+      });
 
-        // Trigger native push notification
-        pushService.triggerPush({
-          title: '¡Reserva Confirmada en El Desayuno!',
-          body: `Turno asegurado para ${currentUser.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días).`,
-          type: 'booking_created',
-          bookingId: newBooking.id,
-        });
+      // Trigger native push notification
+      pushService.triggerPush({
+        title: '¡Reserva Confirmada en El Desayuno!',
+        body: `Turno asegurado para ${currentUser.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días).`,
+        type: 'booking_created',
+        bookingId: newBooking.id,
+      });
 
-        setLoading(false);
-        onBookingSuccess(newBooking);
-        onClose();
-      } catch (err: unknown) {
-        setLoading(false);
-        setError('Ocurrió un error al procesar la reserva. Intente nuevamente.');
-      }
-    }, 400);
+      setLoading(false);
+      onBookingSuccess(newBooking);
+      onClose();
+    } catch (err: unknown) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : 'Ocurrió un error al procesar la reserva en la nube.';
+      setError(msg);
+    }
   };
 
   return (

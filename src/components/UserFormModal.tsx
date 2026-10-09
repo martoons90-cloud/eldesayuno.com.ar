@@ -27,6 +27,7 @@ interface UserFormModalProps {
     partName: string;
     cabezaNumber?: number;
     annualQuotaDays: number;
+    sharePercentage?: number;
     color: string;
     password?: string;
     role?: 'owner' | 'admin';
@@ -95,6 +96,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [annualQuotaDays, setAnnualQuotaDays] = useState<number>(30);
+  const [sharePercentage, setSharePercentage] = useState<number>(6.25);
   const [role, setRole] = useState<'owner' | 'admin'>('owner');
 
   // New Cabeza Form State
@@ -119,6 +121,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPhone(editingUser.phone || '');
       setPassword(editingUser.password || '');
       setAnnualQuotaDays(editingUser.annualQuotaDays || 30);
+      setSharePercentage(
+        typeof editingUser.sharePercentage === 'number' && !isNaN(editingUser.sharePercentage)
+          ? editingUser.sharePercentage
+          : 6.25
+      );
       setRole(editingUser.role || 'owner');
 
       // Check if editingUser's partName matches an existing Cabeza
@@ -145,10 +152,13 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       if (existingCabezasList.length > 0) {
         setCabezaSelectionMode('existing');
         setSelectedCabezaKey(existingCabezasList[0].key);
+        const membersCount = existingCabezasList[0].members.length;
+        setSharePercentage(Math.round((25 / Math.max(1, membersCount + 1)) * 100) / 100);
       } else {
         setCabezaSelectionMode('new');
         setNewPartName('Cabeza 1');
         setNewCabezaColor('#DC2626');
+        setSharePercentage(25);
       }
     }
   }, [editingUser]);
@@ -191,6 +201,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       partName: effectivePartName,
       cabezaNumber: effectiveCabezaNumber,
       annualQuotaDays: Number(annualQuotaDays) || 30,
+      sharePercentage: Math.max(0, Math.round(Number(sharePercentage) * 100) / 100),
       color: effectiveColor,
       password: password.trim().toUpperCase() || generateRandomPassword(),
       role,
@@ -500,10 +511,86 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setPassword(generateRandomPassword())}
-                    className="px-2.5 py-2 bg-[#F4EFE6] border border-[#DDD5BF] hover:bg-[#EDE6D7] text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-[#163323]"
+                    className="px-2.5 py-2 bg-[#F4EFE6] border border-[#DDD5BF] hover:bg-[#EDE6D7] text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-[#163323] cursor-pointer"
                     title="Generar nueva clave aleatoria"
                   >
                     Generar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: % Acciones / Aporte para División de Gastos y Cobros */}
+          <div className="space-y-3 pt-2 bg-[#FAF8F5] p-3 border border-[#E3DFC8]">
+            <div className="flex items-center justify-between pb-1.5 border-b border-[#E8E2D2]">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#163323] flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-[#1B3B2B] text-[#FAF8F5] flex items-center justify-center text-[10px] font-bold">%</span>
+                <span>4. Porcentaje de Acciones / Aporte (% División de Gastos)</span>
+              </h4>
+              <span className="px-2 py-0.5 bg-[#EFE9DB] border border-[#DCD4C0] text-[10px] font-mono font-bold text-[#163323]">
+                {sharePercentage}% de Acciones
+              </span>
+            </div>
+
+            <p className="text-[11px] text-[#55695B] leading-relaxed">
+              Define qué proporción de las <strong>expensas, facturas de servicios y gastos reales</strong> se le imputarán a este socio al liquidar cobros.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+              <div className="sm:col-span-5">
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                  % de Participación / Acciones *
+                </label>
+                <div className="flex items-center">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={sharePercentage}
+                    onChange={(e) => setSharePercentage(parseFloat(e.target.value) || 0)}
+                    required
+                    className="w-full p-2.5 bg-white border border-[#DCD4C0] font-mono font-bold text-sm text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                  />
+                  <span className="p-2.5 bg-[#EFE9DB] border border-l-0 border-[#DCD4C0] font-mono font-bold text-sm text-[#163323]">
+                    %
+                  </span>
+                </div>
+              </div>
+
+              <div className="sm:col-span-7 space-y-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#637568]">
+                  Valores Sugeridos según Cabeza:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSharePercentage(25)}
+                    className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    25.00% (Cabeza completa)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSharePercentage(12.5)}
+                    className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    12.50% (2 socios)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSharePercentage(6.25)}
+                    className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    6.25% (4 socios)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSharePercentage(2.78)}
+                    className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    2.78% (9 socios)
                   </button>
                 </div>
               </div>

@@ -128,7 +128,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     setTimeout(() => setCopiedField(null), 2500);
   };
 
-  // Helper calculation for equal cabezas and equal owners
+  // Helper calculation for equal cabezas, equal owners, and share percentage
   const calculateAllocationsForMode = (
     mode: DistributionMode,
     total: number,
@@ -139,7 +139,25 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     const activeUsers = allUsers.filter((u) => u.active !== false);
     if (activeUsers.length === 0) return [];
 
-    if (mode === 'equal_cabezas') {
+    if (mode === 'share_percentage') {
+      // Divided according to co-owner's registered % de acciones / participación in profile
+      return activeUsers.map((m) => {
+        const pct = typeof m.sharePercentage === 'number' && m.sharePercentage > 0
+          ? m.sharePercentage
+          : (100 / activeUsers.length);
+        const assigned = Math.round((total * (pct / 100)) * 100) / 100;
+        return {
+          userId: m.id,
+          userName: m.name,
+          partName: m.partName,
+          cabezaNumber: m.cabezaNumber,
+          percentage: Math.round(pct * 100) / 100,
+          assignedAmount: assigned,
+          paidAmount: 0,
+          status: 'pending',
+        };
+      });
+    } else if (mode === 'equal_cabezas') {
       // Divided into 4 Cabezas equal parts (25% per Cabeza)
       // Group users by cabezaNumber (1, 2, 3, 4)
       const cabezaGroups: Record<number, User[]> = { 1: [], 2: [], 3: [], 4: [] };
@@ -620,6 +638,8 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
             // Distribution Mode Badge
             const getDistributionLabel = (mode: DistributionMode) => {
               switch (mode) {
+                case 'share_percentage':
+                  return '% Acciones del Perfil (Cuota Social)';
                 case 'equal_cabezas':
                   return 'Por Cabezas (4 partes)';
                 case 'equal_owners':
@@ -1230,7 +1250,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
   const [dueDate, setDueDate] = useState<string>(
     new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
-  const [distributionMode, setDistributionMode] = useState<DistributionMode>('equal_cabezas');
+  const [distributionMode, setDistributionMode] = useState<DistributionMode>('share_percentage');
   const [notes, setNotes] = useState('');
 
   // Custom percentages & amounts mapping
@@ -1423,7 +1443,27 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
           {/* Distribution Mode */}
           <div>
             <label className="block font-bold text-[#163323] mb-1">Modo de División entre Copropietarios *</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+              <button
+                type="button"
+                onClick={() => setDistributionMode('share_percentage')}
+                className={`p-2.5 border text-left transition-all cursor-pointer relative ${
+                  distributionMode === 'share_percentage'
+                    ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
+                    : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs">% de Acciones</span>
+                  <span className={`px-1.5 py-0.2 text-[9px] font-bold uppercase rounded ${
+                    distributionMode === 'share_percentage' ? 'bg-[#BFA270] text-[#163323]' : 'bg-[#1B3B2B] text-[#FAF8F5]'
+                  }`}>
+                    Recomendado
+                  </span>
+                </div>
+                <div className="text-[10px] opacity-80 mt-0.5">Divide según el % de participación cargado en cada perfil de Ajustes.</div>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setDistributionMode('equal_cabezas')}
@@ -1433,8 +1473,8 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
                 }`}
               >
-                <div className="font-bold text-xs">Por Cabezas (25% x Cabeza)</div>
-                <div className="text-[10px] opacity-80 mt-0.5">Divide el monto en 4 partes iguales (Cabeza 1, 2, 3, 4) y prorratea según integrantes.</div>
+                <div className="font-bold text-xs">Por Cabezas (25%)</div>
+                <div className="text-[10px] opacity-80 mt-0.5">Divide el monto en 4 partes iguales (Cabeza 1, 2, 3, 4) y prorratea.</div>
               </button>
 
               <button
@@ -1446,8 +1486,8 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
                 }`}
               >
-                <div className="font-bold text-xs">Igual por Copropietario</div>
-                <div className="text-[10px] opacity-80 mt-0.5">Divide el monto en 15 partes exactas iguales para todos ({ (100/15).toFixed(2) }% c/u).</div>
+                <div className="font-bold text-xs">Igual por Socio</div>
+                <div className="text-[10px] opacity-80 mt-0.5">Divide el monto en partes exactas iguales para todos los socios.</div>
               </button>
 
               <button
@@ -1459,8 +1499,8 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
                 }`}
               >
-                <div className="font-bold text-xs">Porcentaje Personalizado</div>
-                <div className="text-[10px] opacity-80 mt-0.5">Permite ingresar un % específico para cada uno de los 15 copropietarios.</div>
+                <div className="font-bold text-xs">% Manual</div>
+                <div className="text-[10px] opacity-80 mt-0.5">Permite ingresar un % ad-hoc para esta emisión.</div>
               </button>
 
               <button
@@ -1472,8 +1512,8 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
                 }`}
               >
-                <div className="font-bold text-xs">Monto Fijo Personalizado</div>
-                <div className="text-[10px] opacity-80 mt-0.5">Permite ingresar un importe en pesos exacto para cada persona.</div>
+                <div className="font-bold text-xs">Monto Fijo</div>
+                <div className="text-[10px] opacity-80 mt-0.5">Permite ingresar un importe en pesos exacto para cada uno.</div>
               </button>
             </div>
           </div>

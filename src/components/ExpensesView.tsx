@@ -85,10 +85,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [transferDueDate, setTransferDueDate] = useState(
     new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
-  const [transferDistributionMode, setTransferDistributionMode] = useState<DistributionMode>('equal_cabezas');
+  const [transferDistributionMode, setTransferDistributionMode] = useState<DistributionMode>('share_percentage');
   const [transferCustomPercentages, setTransferCustomPercentages] = useState<Record<string, number>>({});
   const [transferCustomAmounts, setTransferCustomAmounts] = useState<Record<string, number>>({});
   const [transferSuccessMsg, setTransferSuccessMsg] = useState(false);
+  const [isSharesBreakdownModalOpen, setIsSharesBreakdownModalOpen] = useState(false);
 
   const loadExpenses = () => {
     setExpenses(storageService.getExpenses());
@@ -149,8 +150,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   });
 
   // Projections
+  const allCurrentUsers = storageService.getUsers().filter((u) => u.active !== false);
+  const activeOwnersCount = allCurrentUsers.length || 1;
   const costPerCabeza = Math.round(periodTotalAmount / 4);
-  const costPerOwner = Math.round(periodTotalAmount / 15);
+  const costPerOwner = Math.round(periodTotalAmount / activeOwnersCount);
+  const mySharePct = currentUser?.sharePercentage ?? 6.25;
+  const myEstimatedCost = Math.round((periodTotalAmount * (mySharePct / 100)) * 100) / 100;
 
   // Category Category Badges
   const getCategoryBadge = (cat: ExpenseCategory) => {
@@ -261,7 +266,24 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     const activeUsers = storageService.getUsers().filter((u) => u.active !== false);
     if (activeUsers.length === 0) return [];
 
-    if (transferDistributionMode === 'equal_cabezas') {
+    if (transferDistributionMode === 'share_percentage') {
+      return activeUsers.map((m) => {
+        const pct = typeof m.sharePercentage === 'number' && m.sharePercentage > 0
+          ? m.sharePercentage
+          : (100 / activeUsers.length);
+        const assigned = Math.round((periodTotalAmount * (pct / 100)) * 100) / 100;
+        return {
+          userId: m.id,
+          userName: m.name,
+          partName: m.partName,
+          cabezaNumber: m.cabezaNumber,
+          percentage: Math.round(pct * 100) / 100,
+          assignedAmount: assigned,
+          paidAmount: 0,
+          status: 'pending',
+        };
+      });
+    } else if (transferDistributionMode === 'equal_cabezas') {
       const cabezaGroups: Record<number, User[]> = { 1: [], 2: [], 3: [], 4: [] };
       activeUsers.forEach((u) => {
         const cNum = u.cabezaNumber || 1;
@@ -420,6 +442,15 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsSharesBreakdownModalOpen(true)}
+              className="px-3.5 py-2 bg-[#FAF8F5] hover:bg-[#F4EFE6] border border-[#DDD5BF] text-[#163323] text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-2xs cursor-pointer"
+              title="Ver cómo se dividen los gastos totales del mes según el porcentaje de acciones de cada socio"
+            >
+              <PieChart className="w-4 h-4 text-[#BFA270]" />
+              <span>Reparto por % de Acciones</span>
+            </button>
+
             {isAdmin && (
               <>
                 <button
@@ -944,15 +975,24 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     </span>
                   </div>
 
-                  <div className="border-t border-[#E3DFC8] pt-2 space-y-1">
-                    <p className="text-[11px] font-bold text-[#163323]">Simulación de Cuotas:</p>
+                  <div className="border-t border-[#E3DFC8] pt-2 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-[#163323]">
+                      <span>Modo Predeterminado:</span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded font-mono">
+                        % de Acciones del Perfil
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px] bg-[#FAF8F5] p-1.5 border border-[#E3DFC8]">
+                      <span>Tu Cuota Estimada ({mySharePct.toFixed(2)}% de Acciones):</span>
+                      <strong className="font-mono text-emerald-800">${myEstimatedCost.toLocaleString()} ARS</strong>
+                    </div>
                     <div className="flex justify-between text-[11px]">
-                      <span>Si se divide por Cabezas (4 partes):</span>
+                      <span>División equitativa por Cabezas (4 partes):</span>
                       <strong className="font-mono text-[#1B3B2B]">${costPerCabeza.toLocaleString()} / Cabeza</strong>
                     </div>
                     <div className="flex justify-between text-[11px]">
-                      <span>Si se divide por Copropietario (15 partes):</span>
-                      <strong className="font-mono text-[#1B3B2B]">${costPerOwner.toLocaleString()} / Copropietario</strong>
+                      <span>División equitativa 1/N ({activeOwnersCount} socios):</span>
+                      <strong className="font-mono text-[#1B3B2B]">${costPerOwner.toLocaleString()} / Socio</strong>
                     </div>
                   </div>
                 </div>
@@ -964,9 +1004,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     onChange={(e) => setTransferDistributionMode(e.target.value as DistributionMode)}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   >
+                    <option value="share_percentage">Según % de Acciones del Perfil (Recomendado - Cuota Social)</option>
                     <option value="equal_cabezas">Por Cabezas (4 partes iguales de 25%)</option>
-                    <option value="equal_owners">Por Copropietario (15 partes iguales de 1/15)</option>
-                    <option value="percentage">Porcentaje Personalizado (% para cada socio)</option>
+                    <option value="equal_owners">Por Copropietario (Partes iguales 1/N)</option>
+                    <option value="percentage">Porcentaje Personalizado Manual (% para cada socio)</option>
                     <option value="custom_amount">Monto Fijo Personalizado ($ para cada socio)</option>
                   </select>
                 </div>
@@ -1108,6 +1149,102 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Modal: Shares Breakdown Table */}
+      {isSharesBreakdownModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
+          <div className="bg-white border border-[#E3DFC8] max-w-2xl w-full p-6 shadow-xl relative max-h-[90vh] flex flex-col">
+            <button
+              onClick={() => setIsSharesBreakdownModalOpen(false)}
+              className="absolute top-4 right-4 p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-3 border-b border-[#E3DFC8] pb-3 shrink-0">
+              <div className="w-9 h-9 bg-[#1B3B2B] text-[#BFA270] rounded flex items-center justify-center font-bold">
+                <PieChart className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#163323]">Reparto Teórico de Gastos según % de Acciones</h3>
+                <p className="text-xs text-[#637568]">
+                  Total a Distribuir ({selectedPeriod === 'all' ? 'Meses Acumulados' : selectedPeriod}):{' '}
+                  <strong className="font-mono text-[#163323]">${periodTotalAmount.toLocaleString()} ARS</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* My Share Banner */}
+            {currentUser && (
+              <div className="mb-3 p-3 bg-[#FAF8F5] border border-[#DDD5BF] flex items-center justify-between shrink-0">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#637568] block">Tu Participación Personal</span>
+                  <span className="text-xs font-bold text-[#163323]">{currentUser.name} ({currentUser.partName})</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[11px] font-mono font-bold text-[#BFA270] bg-[#1B3B2B] px-2 py-0.5 rounded">
+                    {(currentUser.sharePercentage ?? 6.25).toFixed(2)}% de Acciones
+                  </span>
+                  <span className="block text-sm font-bold font-mono text-[#163323] mt-0.5">
+                    ${Math.round((periodTotalAmount * ((currentUser.sharePercentage ?? 6.25) / 100))).toLocaleString()} ARS
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Detailed Table */}
+            <div className="overflow-y-auto flex-1 border border-[#E3DFC8] bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#1B3B2B] text-white font-mono text-[10px] sticky top-0">
+                  <tr>
+                    <th className="p-2">Copropietario</th>
+                    <th className="p-2">Parte / Cabeza</th>
+                    <th className="p-2 text-right">% Acciones</th>
+                    <th className="p-2 text-right">Gasto Imputable ($)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E3DFC8]">
+                  {storageService.getUsers().filter((u) => u.active !== false).map((u) => {
+                    const isMe = u.id === currentUser.id;
+                    const pct = typeof u.sharePercentage === 'number' && u.sharePercentage > 0 ? u.sharePercentage : (100 / 15);
+                    const amt = Math.round((periodTotalAmount * (pct / 100)) * 100) / 100;
+
+                    return (
+                      <tr key={u.id} className={`hover:bg-[#FAF8F5] transition-colors ${isMe ? 'bg-amber-50/70 font-semibold' : ''}`}>
+                        <td className="p-2 flex items-center gap-1.5 text-[#163323]">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: u.color }}
+                          />
+                          <span>{u.name}</span>
+                          {isMe && <span className="text-[9px] px-1 py-0.2 bg-[#1B3B2B] text-white rounded">Tú</span>}
+                        </td>
+                        <td className="p-2 text-[#56685B]">{u.partName}</td>
+                        <td className="p-2 text-right font-mono text-[#56685B]">{pct.toFixed(2)}%</td>
+                        <td className="p-2 text-right font-mono font-bold text-[#163323]">
+                          ${amt.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pt-3 border-t border-[#E3DFC8] flex items-center justify-between shrink-0 mt-3">
+              <p className="text-[11px] text-[#637568]">
+                Los porcentajes de acciones se configuran en <strong>Ajustes &gt; Copropietarios &gt; Matriz de Acciones</strong>.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsSharesBreakdownModalOpen(false)}
+                className="px-4 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

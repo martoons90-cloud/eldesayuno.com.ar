@@ -49,6 +49,8 @@ import {
   Eye,
   EyeOff,
   Building,
+  PieChart,
+  X,
 } from 'lucide-react';
 
 export type SettingsTabId =
@@ -99,6 +101,28 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
   const [copiedAllSuccess, setCopiedAllSuccess] = useState(false);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  // Shares / Equity Matrix Modal State
+  const [isSharesMatrixModalOpen, setIsSharesMatrixModalOpen] = useState(false);
+  const [sharesMatrixData, setSharesMatrixData] = useState<Record<string, number>>({});
+
+  const handleOpenSharesMatrix = () => {
+    const initialMap: Record<string, number> = {};
+    users.forEach((u) => {
+      initialMap[u.id] = typeof u.sharePercentage === 'number' && !isNaN(u.sharePercentage)
+        ? u.sharePercentage
+        : 6.25;
+    });
+    setSharesMatrixData(initialMap);
+    setIsSharesMatrixModalOpen(true);
+  };
+
+  const handleSaveSharesMatrix = (e: React.FormEvent) => {
+    e.preventDefault();
+    storageService.updateBulkSharePercentages(sharesMatrixData);
+    setIsSharesMatrixModalOpen(false);
+    showSuccess('¡Matriz de porcentajes de acciones actualizada y guardada para todos los socios!');
+  };
 
   const handleCopyAllCredentials = () => {
     const lines = [
@@ -494,6 +518,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     partName: string;
     cabezaNumber?: number;
     annualQuotaDays: number;
+    sharePercentage?: number;
     color: string;
     password?: string;
     role?: 'owner' | 'admin';
@@ -509,6 +534,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           partName: userData.partName,
           cabezaNumber: userData.cabezaNumber,
           annualQuotaDays: userData.annualQuotaDays,
+          sharePercentage: typeof userData.sharePercentage === 'number' ? userData.sharePercentage : (existing.sharePercentage ?? 6.25),
           color: userData.color,
           password: userData.password || existing.password,
           role: userData.role || existing.role,
@@ -525,6 +551,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
         cabezaNumber: userData.cabezaNumber,
         role: userData.role || 'owner',
         annualQuotaDays: userData.annualQuotaDays,
+        sharePercentage: typeof userData.sharePercentage === 'number' ? userData.sharePercentage : 6.25,
         usedDays: 0,
         pendingDays: 0,
         color: userData.color,
@@ -753,6 +780,16 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    onClick={handleOpenSharesMatrix}
+                    className="px-3.5 py-2 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#D5CDBC] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Modificar % de participación y acciones para la división de gastos de cada socio"
+                  >
+                    <PieChart className="w-3.5 h-3.5 text-[#BFA270]" />
+                    <span>Matriz % de Acciones</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleCopyAllCredentials}
                     className="px-3.5 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
                     title="Copiar lista completa de usuarios, accesos y contraseñas al portapapeles"
@@ -801,6 +838,48 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 </div>
               </div>
 
+              {/* KPI Shares Distribution Banner */}
+              {(() => {
+                const totalAssignedShares = users.reduce((acc, u) => acc + (u.sharePercentage || 0), 0);
+                const isSharesBalanced = Math.abs(totalAssignedShares - 100) < 0.05;
+                return (
+                  <div className={`p-3.5 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs ${
+                    isSharesBalanced
+                      ? 'bg-[#F4F8F5] border-emerald-300 text-emerald-950'
+                      : 'bg-amber-50 border-amber-300 text-amber-950'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <PieChart className={`w-5 h-5 shrink-0 ${isSharesBalanced ? 'text-emerald-700' : 'text-amber-700'}`} />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs uppercase tracking-wider">
+                            Distribución de Cuotas Sociales & Acciones:
+                          </span>
+                          <span className={`px-2 py-0.5 text-xs font-mono font-bold rounded ${
+                            isSharesBalanced ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'
+                          }`}>
+                            {totalAssignedShares.toFixed(2)}% Asignado
+                          </span>
+                        </div>
+                        <p className="text-[11px] opacity-90 mt-0.5">
+                          {isSharesBalanced
+                            ? '✓ Las acciones están perfectamente balanceadas al 100.00%. Todos los gastos y cobros de expensas se dividen exactamente según estos porcentajes.'
+                            : `⚠️ Atención: La suma de acciones difiere del 100% (diferencia: ${(100 - totalAssignedShares).toFixed(2)}%). Ajuste las cuotas para un reparto exacto.`}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenSharesMatrix}
+                      className="px-3 py-1.5 bg-white border border-current text-xs font-bold uppercase tracking-wider hover:opacity-80 transition-opacity cursor-pointer shrink-0 self-start sm:self-auto shadow-2xs flex items-center gap-1.5"
+                    >
+                      <PieChart className="w-3.5 h-3.5 text-[#BFA270]" />
+                      <span>Ajustar Matriz de %</span>
+                    </button>
+                  </div>
+                );
+              })()}
+
               {/* Owners Table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
@@ -808,6 +887,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     <tr>
                       <th className="py-3 px-3">Copropietario</th>
                       <th className="py-3 px-3">Cabeza / Grupo</th>
+                      <th className="py-3 px-3">% Acciones / Aporte</th>
                       <th className="py-3 px-3">Color Calendario</th>
                       <th className="py-3 px-3">Contraseña de Acceso</th>
                       <th className="py-3 px-3">Administración</th>
@@ -847,6 +927,24 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.color }} />
                               <span>{u.partName}</span>
                             </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-xs text-[#163323] bg-[#EFE9DB] px-2 py-0.5 border border-[#DCD4C0]">
+                                {(u.sharePercentage ?? 6.25).toFixed(2)}%
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingUser(u);
+                                  setIsNewUserModalOpen(true);
+                                }}
+                                className="text-[10px] text-[#1B3B2B] hover:underline font-semibold cursor-pointer"
+                                title="Ajustar porcentaje de acciones"
+                              >
+                                Ajustar
+                              </button>
+                            </div>
                           </td>
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-1.5">
@@ -2243,6 +2341,294 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
             showSuccess(`Poder de administración transferido exitosamente a ${newAdmin.name}.`);
           }}
         />
+      )}
+
+      {/* Modal: Matriz % de Acciones y Aporte Social */}
+      {isSharesMatrixModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
+          <div className="bg-[#FFFFFF] w-full max-w-3xl border border-[#DED7C2] shadow-2xl flex flex-col my-6 max-h-[92vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <PieChart className="w-5 h-5 text-[#BFA270]" />
+                <div>
+                  <h3
+                    className="text-base font-bold tracking-wide"
+                    style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}
+                  >
+                    Matriz de Acciones & % de Participación Social
+                  </h3>
+                  <p className="text-[11px] text-[#C9D6CC]">
+                    Configure la proporción de cada socio para la liquidación automática de gastos, facturas y expensas.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSharesMatrixModalOpen(false)}
+                className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSaveSharesMatrix} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+                {/* Summary / Balance Status */}
+                {(() => {
+                  const total = Object.values(sharesMatrixData).reduce((acc, v) => acc + (Number(v) || 0), 0);
+                  const isBalanced = Math.abs(total - 100) < 0.05;
+                  const diff = 100 - total;
+
+                  return (
+                    <div
+                      className={`p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs ${
+                        isBalanced
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                          : 'bg-amber-50 border-amber-300 text-amber-950'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 font-bold text-sm">
+                          <span>Total de Acciones Asignadas:</span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded font-mono text-sm ${
+                              isBalanced ? 'bg-emerald-200 text-emerald-950' : 'bg-amber-200 text-amber-950'
+                            }`}
+                          >
+                            {total.toFixed(2)}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] mt-1 opacity-90">
+                          {isBalanced ? (
+                            '✓ Las acciones suman exactamente el 100.00%. Toda expensa o gasto liquidado se dividirá de forma armónica.'
+                          ) : (
+                            <>
+                              ⚠️ Atención: Hay una diferencia de{' '}
+                              <strong>{Math.abs(diff).toFixed(2)}%</strong> ({diff > 0 ? 'Falta asignar' : 'Excedente'}).
+                              Para un reparto exacto, la suma debe ser 100.00%.
+                            </>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Quick Auto-balance Buttons */}
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Auto balance: 25% for each Cabeza 1..4 divided equally among its members
+                            const newMap: Record<string, number> = {};
+                            const cabezasMap: Record<number, User[]> = { 1: [], 2: [], 3: [], 4: [] };
+                            users.forEach((u) => {
+                              const cNum = u.cabezaNumber || 1;
+                              if (!cabezasMap[cNum]) cabezasMap[cNum] = [];
+                              cabezasMap[cNum].push(u);
+                            });
+
+                            [1, 2, 3, 4].forEach((cNum) => {
+                              const members = cabezasMap[cNum] || [];
+                              if (members.length > 0) {
+                                const perMember = Math.round((25 / members.length) * 100) / 100;
+                                members.forEach((m) => {
+                                  newMap[m.id] = perMember;
+                                });
+                              }
+                            });
+                            setSharesMatrixData(newMap);
+                          }}
+                          className="px-2.5 py-1.5 bg-white border border-current text-[11px] font-bold uppercase tracking-wider hover:opacity-80 transition-opacity cursor-pointer shadow-2xs"
+                        >
+                          Auto 25% por Cabeza
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Equal among all active users
+                            const newMap: Record<string, number> = {};
+                            const count = users.length;
+                            if (count > 0) {
+                              const perUser = Math.round((100 / count) * 100) / 100;
+                              users.forEach((u) => {
+                                newMap[u.id] = perUser;
+                              });
+                            }
+                            setSharesMatrixData(newMap);
+                          }}
+                          className="px-2.5 py-1.5 bg-white border border-current text-[11px] font-bold uppercase tracking-wider hover:opacity-80 transition-opacity cursor-pointer shadow-2xs"
+                        >
+                          Partes Iguales (1/N)
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Grouped by Cabeza */}
+                {(() => {
+                  const cabezasKeys = Array.from(new Set(users.map((u) => u.cabezaNumber || 1))).sort((a, b) => a - b);
+
+                  return (
+                    <div className="space-y-4">
+                      {cabezasKeys.map((cNum) => {
+                        const members = users.filter((u) => (u.cabezaNumber || 1) === cNum);
+                        const cabezaSubtotal = members.reduce(
+                          (acc, m) => acc + (Number(sharesMatrixData[m.id]) || 0),
+                          0
+                        );
+                        const sampleColor = members[0]?.color || '#163323';
+
+                        return (
+                          <div
+                            key={cNum}
+                            className="bg-[#FAF8F5] border border-[#DDD5BF] overflow-hidden shadow-2xs"
+                          >
+                            <div className="p-3 bg-[#F2EDE1] border-b border-[#DDD5BF] flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full border border-black/20 shrink-0"
+                                  style={{ backgroundColor: sampleColor }}
+                                />
+                                <h4 className="font-bold text-xs uppercase tracking-wider text-[#163323]">
+                                  Cabeza {cNum} ({members.length} {members.length === 1 ? 'Socio' : 'Socios'})
+                                </h4>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const share = Math.round((25 / members.length) * 100) / 100;
+                                    setSharesMatrixData((prev) => {
+                                      const next = { ...prev };
+                                      members.forEach((m) => {
+                                        next[m.id] = share;
+                                      });
+                                      return next;
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold uppercase tracking-wider text-[#1B3B2B] hover:underline cursor-pointer"
+                                >
+                                  Dividir 25% equitativo entre miembros
+                                </button>
+
+                                <span className="px-2 py-0.5 bg-white border border-[#D5CDBC] font-mono font-bold text-xs text-[#163323]">
+                                  Subtotal Cabeza: {cabezaSubtotal.toFixed(2)}%
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="divide-y divide-[#EAE4D5] bg-white">
+                              {members.map((u) => {
+                                const currentVal = sharesMatrixData[u.id] ?? u.sharePercentage ?? 6.25;
+
+                                return (
+                                  <div
+                                    key={u.id}
+                                    className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <div
+                                        className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0 shadow-2xs"
+                                        style={{ backgroundColor: u.color }}
+                                      >
+                                        {u.avatarInitials || u.name.slice(0, 2).toUpperCase()}
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-[#163323] text-xs">{u.name}</span>
+                                          {u.role === 'admin' && (
+                                            <span className="px-1.5 py-0.2 bg-[#1B3B2B] text-[#FAF8F5] text-[9px] font-bold uppercase rounded">
+                                              Admin
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-[#637568]">
+                                          {u.email} • <span className="font-medium text-[#46574B]">{u.partName}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                                      {/* Quick Presets */}
+                                      <div className="hidden md:flex items-center gap-1">
+                                        {[25, 12.5, 6.25, 2.78].map((preset) => (
+                                          <button
+                                            key={preset}
+                                            type="button"
+                                            onClick={() =>
+                                              setSharesMatrixData((prev) => ({
+                                                ...prev,
+                                                [u.id]: preset,
+                                              }))
+                                            }
+                                            className={`px-1.5 py-0.5 text-[10px] border transition-colors cursor-pointer ${
+                                              Math.abs(currentVal - preset) < 0.01
+                                                ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
+                                                : 'bg-white hover:bg-[#FAF8F5] text-[#55695B] border-[#DDD5BF]'
+                                            }`}
+                                          >
+                                            {preset}%
+                                          </button>
+                                        ))}
+                                      </div>
+
+                                      <div className="flex items-center">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          max="100"
+                                          value={currentVal}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0;
+                                            setSharesMatrixData((prev) => ({
+                                              ...prev,
+                                              [u.id]: val,
+                                            }));
+                                          }}
+                                          required
+                                          className="w-24 p-2 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-xs text-right text-[#163323] focus:outline-none focus:border-[#1B3B2B] focus:bg-white"
+                                        />
+                                        <span className="p-2 bg-[#EFE9DB] border border-l-0 border-[#DCD4C0] font-mono font-bold text-xs text-[#163323]">
+                                          %
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-3.5 bg-[#FAF8F5] border-t border-[#DDD5BF] flex items-center justify-between shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsSharesMatrixModalOpen(false)}
+                  className="px-4 py-2 text-[#637568] hover:text-[#19231A] text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Save className="w-4 h-4 text-[#BFA270]" />
+                  <span>Guardar Matriz de Acciones en la Nube</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

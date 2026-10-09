@@ -129,20 +129,23 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
 
           {/* Metric / Information Cards (Clean, no quota mechanics) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-6">
-            {/* Grupo / Cabeza */}
+            {/* Grupo / Cabeza & Acciones */}
             <div className="border-l-2 border-[#1B3B2B] pl-4">
               <span className="text-[11px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
-                Pertenencia Societaria
+                Pertenencia Societaria & Cuota Social
               </span>
-              <div className="text-lg font-bold text-[#19231A] mt-1">
-                {currentUser.partName}
+              <div className="text-lg font-bold text-[#19231A] mt-1 flex items-center gap-2 flex-wrap">
+                <span>{currentUser.partName}</span>
+                <span className="px-2 py-0.5 bg-[#1B3B2B] text-[#FAF8F5] text-xs font-mono font-bold rounded shadow-2xs">
+                  {(currentUser.sharePercentage ?? 6.25).toFixed(2)}% de Acciones
+                </span>
               </div>
               <p className="text-xs text-[#7A8E7E] mt-1 flex items-center gap-1.5">
                 <span
                   className="w-2.5 h-2.5 rounded-full inline-block"
                   style={{ backgroundColor: currentUser.color }}
                 />
-                <span>Color en calendario: {currentUser.color}</span>
+                <span>Base activa para la división de expensas y gastos</span>
               </p>
             </div>
 

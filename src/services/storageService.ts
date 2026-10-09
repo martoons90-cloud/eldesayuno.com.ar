@@ -29,503 +29,33 @@ const FEES_KEY = 'el_desayuno_fees_v3';
 const EXPENSES_KEY = 'el_desayuno_expenses_v1';
 const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
 
-export const DEFAULT_USERS: User[] = [
-  // CABEZA 1 (Color Rojo)
-  {
-    id: 'user-c1-jose',
-    name: 'José Casares',
-    username: 'jose.casares',
-    email: 'jose.casares@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 1',
-    cabezaNumber: 1,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#DC2626',
-    avatarInitials: 'JC',
-    phone: '',
-    password: 'J8K2M9',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c1-arturo',
-    name: 'Arturo Casares',
-    username: 'arturo.casares',
-    email: 'arturo.casares@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 1',
-    cabezaNumber: 1,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#DC2626',
-    avatarInitials: 'AC',
-    phone: '',
-    password: 'A4X7W2',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c1-marcos',
-    name: 'Marcos Montaldi',
-    username: 'marcos.montaldi',
-    email: 'marcos.montaldi@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 1',
-    cabezaNumber: 1,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#DC2626',
-    avatarInitials: 'MM',
-    phone: '',
-    password: 'M9T3P8',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c1-hugo',
-    name: 'Hugo Tobchi',
-    username: 'hugo.tobchi',
-    email: 'hugo.tobchi@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 1',
-    cabezaNumber: 1,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#DC2626',
-    avatarInitials: 'HT',
-    phone: '',
-    password: 'H6N8L4',
-    active: true,
-    createdAt: '2026-01-01',
-  },
+import {
+  SEED_USERS,
+  SEED_SETTINGS,
+  SEED_BOOKINGS,
+  SEED_BLOCKS,
+  SEED_HOUSE_RULES,
+  SEED_CONTACTS,
+  SEED_DOCUMENTS,
+  SEED_INVENTORY,
+  SEED_INCIDENTS,
+  SEED_NOTIFICATIONS,
+  SEED_FEE_COLLECTIONS,
+  SEED_EXPENSES,
+} from './defaultSeedData';
 
-  // CABEZA 2 (Color Verde)
-  {
-    id: 'user-c2-alejandro',
-    name: 'Alejandro Guerrero',
-    username: 'alejandro.guerrero',
-    email: 'alejandro.guerrero@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 2',
-    cabezaNumber: 2,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#16A34A',
-    avatarInitials: 'AG',
-    phone: '',
-    password: 'G3B9R7',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c2-natalia',
-    name: 'Natalia Guerrero',
-    username: 'natalia.guerrero',
-    email: 'natalia.guerrero@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 2',
-    cabezaNumber: 2,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#16A34A',
-    avatarInitials: 'NG',
-    phone: '',
-    password: 'N7W4K2',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-
-  // CABEZA 3 (Color Azul)
-  {
-    id: 'user-c3-roberto',
-    name: 'Roberto Condori',
-    username: 'roberto.condori',
-    email: 'roberto.condori@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 3',
-    cabezaNumber: 3,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#2563EB',
-    avatarInitials: 'RC',
-    phone: '',
-    password: 'R5D9V3',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-
-  // CABEZA 4 (Color Ámbar)
-  {
-    id: 'user-c4-efrain',
-    name: 'Efraín Rodríguez',
-    username: 'efrain.rodriguez',
-    email: 'efrain.rodriguez@eldesayuno.com.ar',
-    role: 'admin',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'ER',
-    phone: '',
-    password: '123456',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-rafael',
-    name: 'Rafael Huespe',
-    username: 'rafael.huespe',
-    email: 'rafael.huespe@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'RH',
-    phone: '',
-    password: 'H2X8Y5',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-fairuz',
-    name: 'Fairuz Kuncar',
-    username: 'fairuz.kuncar',
-    email: 'fairuz.kuncar@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'FK',
-    phone: '',
-    password: 'F7M4Z9',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-daniel',
-    name: 'Daniel Pederiva',
-    username: 'daniel.pederiva',
-    email: 'daniel.pederiva@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'DP',
-    phone: '',
-    password: 'D6P3Q8',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-gonzalo',
-    name: 'Gonzalo Lamas',
-    username: 'gonzalo.lamas',
-    email: 'gonzalo.lamas@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'GL',
-    phone: '',
-    password: 'L9K5T2',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-german',
-    name: 'Germán Jiménez',
-    username: 'german.jimenez',
-    email: 'german.jimenez@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'GJ',
-    phone: '',
-    password: 'J4V8X6',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-gabriela',
-    name: 'Gabriela Zadir',
-    username: 'gabriela.zadir',
-    email: 'gabriela.zadir@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'GZ',
-    phone: '',
-    password: 'Z8W3H7',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-arturo',
-    name: 'Arturo Tezanos Pinto',
-    username: 'arturo.tezanos',
-    email: 'arturo.tezanos@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'AT',
-    phone: '',
-    password: 'T5B9N4',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'user-c4-franco',
-    name: "Franco D'Michel",
-    username: 'franco.dmichel',
-    email: 'franco.dmichel@eldesayuno.com.ar',
-    role: 'owner',
-    partName: 'Cabeza 4',
-    cabezaNumber: 4,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#D97706',
-    avatarInitials: 'FD',
-    phone: '',
-    password: 'F9D4M2',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-];
-
-export const DEFAULT_SETTINGS: TrustSettings = {
-  houseName: 'Estancia El Desayuno',
-  location: 'Ruta Provincial 41, Km 82, San Antonio de Areco / Mercedes, Bs. As.',
-  wifiSsid: 'ElDesayuno_Casa_5G',
-  wifiPassword: 'sociedad_cuatro_partes',
-  checkInTime: '14:00',
-  checkOutTime: '11:00',
-  autoCleaningBufferHours: 24,
-  cancellationMinDays: 7,
-  maxGuestsLimit: 12,
-  emergencyAddress: 'Estancia El Desayuno, Acceso Principal Tranquera Verde, Coordenadas: -34.4820, -59.4120',
-  cbu: '0070123430000012345678',
-  aliasBancario: 'EL.DESAYUNO.FIDEICOMISO',
-  cuitFideicomiso: '30-71829304-5',
-  bancoNombre: 'Banco Galicia (Cuenta Corriente Pesos)',
-  titularCuenta: 'Fideicomiso Estancia El Desayuno',
-  wifiCoverageNotes: 'La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.',
-};
-
-export const DEFAULT_BOOKINGS: Booking[] = [];
-
-export const DEFAULT_BLOCKS: DateBlock[] = [];
-
-export const DEFAULT_HOUSE_RULES: HouseRule[] = [];
-
-export const DEFAULT_CONTACTS: UsefulContact[] = [];
-
-export const DEFAULT_DOCUMENTS: DocumentItem[] = [];
-
-export const DEFAULT_INVENTORY: InventoryItem[] = [];
-
-export const DEFAULT_INCIDENTS: IncidentReport[] = [];
-
-export const DEFAULT_NOTIFICATIONS: NotificationPush[] = [];
-
-export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = [
-  {
-    id: 'fee-101',
-    concept: 'Expensas Mensuales Ordinarias - Mantenimiento & Servicios Octubre 2026',
-    category: 'expensas_ordinarias',
-    totalAmount: 1600000,
-    currency: 'ARS',
-    recurrence: 'monthly',
-    issueDate: '2026-10-01',
-    dueDate: '2026-10-20',
-    distributionMode: 'equal_cabezas',
-    status: 'active',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-10-01T09:00:00.000Z',
-    notes: 'Incluye servicios generales, parquización, insumos de limpieza y honorarios de mantenimiento.',
-    allocations: [
-      { userId: 'user-c1-jose', userName: 'José Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 100000, status: 'paid', paidAt: '2026-10-05', paymentMethod: 'transfer', notes: 'Transferencia Banco Galicia' },
-      { userId: 'user-c1-arturo', userName: 'Arturo Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 100000, status: 'paid', paidAt: '2026-10-06', paymentMethod: 'transfer' },
-      { userId: 'user-c1-marcos', userName: 'Marcos Montaldi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c1-hugo', userName: 'Hugo Tobchi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.25, assignedAmount: 100000, paidAmount: 100000, status: 'paid', paidAt: '2026-10-08', paymentMethod: 'transfer' },
-      { userId: 'user-c2-alejandro', userName: 'Alejandro Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 12.5, assignedAmount: 200000, paidAmount: 200000, status: 'paid', paidAt: '2026-10-03', paymentMethod: 'transfer' },
-      { userId: 'user-c2-natalia', userName: 'Natalia Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 12.5, assignedAmount: 200000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c3-roberto', userName: 'Roberto Condori', partName: 'Cabeza 3', cabezaNumber: 3, percentage: 25.0, assignedAmount: 400000, paidAmount: 400000, status: 'paid', paidAt: '2026-10-02', paymentMethod: 'transfer' },
-      { userId: 'user-c4-efrain', userName: 'Efraín Rodríguez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-01', paymentMethod: 'transfer' },
-      { userId: 'user-c4-rafael', userName: 'Rafael Huespe', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-04', paymentMethod: 'transfer' },
-      { userId: 'user-c4-fairuz', userName: 'Fairuz Kuncar', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c4-daniel', userName: 'Daniel Pederiva', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-07', paymentMethod: 'transfer' },
-      { userId: 'user-c4-gonzalo', userName: 'Gonzalo Lamas', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c4-german', userName: 'Germán Jiménez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-05', paymentMethod: 'transfer' },
-      { userId: 'user-c4-gabriela', userName: 'Gabriela Zadir', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c4-arturo-tp', userName: 'Arturo Tezanos Pinto', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 3.125, assignedAmount: 50000, paidAmount: 50000, status: 'paid', paidAt: '2026-10-06', paymentMethod: 'transfer' },
-    ],
-  },
-  {
-    id: 'fee-102',
-    concept: 'Fondo Especial Obras: Pintura Exterior & Renovación Deck Piscina',
-    category: 'obras_extraordinarias',
-    totalAmount: 2250000,
-    currency: 'ARS',
-    recurrence: 'days_45',
-    customRecurrenceDays: 45,
-    issueDate: '2026-09-15',
-    dueDate: '2026-10-30',
-    distributionMode: 'equal_owners',
-    status: 'active',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-09-15T10:30:00.000Z',
-    notes: 'Pago en partes iguales entre los 15 copropietarios ($150.000 c/u).',
-    allocations: [
-      { userId: 'user-c1-jose', userName: 'José Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-20', paymentMethod: 'transfer' },
-      { userId: 'user-c1-arturo', userName: 'Arturo Casares', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-22', paymentMethod: 'transfer' },
-      { userId: 'user-c1-marcos', userName: 'Marcos Montaldi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c1-hugo', userName: 'Hugo Tobchi', partName: 'Cabeza 1', cabezaNumber: 1, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-25', paymentMethod: 'transfer' },
-      { userId: 'user-c2-alejandro', userName: 'Alejandro Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-18', paymentMethod: 'transfer' },
-      { userId: 'user-c2-natalia', userName: 'Natalia Guerrero', partName: 'Cabeza 2', cabezaNumber: 2, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c3-roberto', userName: 'Roberto Condori', partName: 'Cabeza 3', cabezaNumber: 3, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-19', paymentMethod: 'transfer' },
-      { userId: 'user-c4-efrain', userName: 'Efraín Rodríguez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-16', paymentMethod: 'transfer' },
-      { userId: 'user-c4-rafael', userName: 'Rafael Huespe', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-21', paymentMethod: 'transfer' },
-      { userId: 'user-c4-fairuz', userName: 'Fairuz Kuncar', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c4-daniel', userName: 'Daniel Pederiva', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-28', paymentMethod: 'transfer' },
-      { userId: 'user-c4-gonzalo', userName: 'Gonzalo Lamas', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c4-german', userName: 'Germán Jiménez', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-24', paymentMethod: 'transfer' },
-      { userId: 'user-c4-gabriela', userName: 'Gabriela Zadir', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 0, status: 'pending' },
-      { userId: 'user-c4-arturo-tp', userName: 'Arturo Tezanos Pinto', partName: 'Cabeza 4', cabezaNumber: 4, percentage: 6.6667, assignedAmount: 150000, paidAmount: 150000, status: 'paid', paidAt: '2026-09-27', paymentMethod: 'transfer' },
-    ],
-  },
-];
-
-export const DEFAULT_EXPENSES: ExpenseItem[] = [
-  {
-    id: 'exp-101',
-    concept: 'Factura Energía Eléctrica EPEC (Consumo Septiembre / Octubre)',
-    category: 'servicios',
-    amount: 285000,
-    currency: 'ARS',
-    periodMonth: '2026-10',
-    date: '2026-10-05',
-    provider: 'EPEC Empresa Provincial de Energía',
-    status: 'paid',
-    paidAt: '2026-10-06',
-    paymentMethod: 'transfer',
-    notes: 'Factura N° 82910-A. Incluye medidor principal y caserío.',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-10-05T10:00:00.000Z',
-  },
-  {
-    id: 'exp-102',
-    concept: 'Honorarios & Sueldo Encargado / Casero del Campo (Octubre)',
-    category: 'personal_casero',
-    amount: 680000,
-    currency: 'ARS',
-    periodMonth: '2026-10',
-    date: '2026-10-02',
-    provider: 'Ramón Casero (Personal Permanente)',
-    status: 'paid',
-    paidAt: '2026-10-02',
-    paymentMethod: 'transfer',
-    notes: 'Sueldo mensual casero + cargas sociales.',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-10-02T12:00:00.000Z',
-  },
-  {
-    id: 'exp-103',
-    concept: 'Mantenimiento de Parque, Parquización y Productos Piscina',
-    category: 'mantenimiento',
-    amount: 320000,
-    currency: 'ARS',
-    periodMonth: '2026-10',
-    date: '2026-10-08',
-    provider: 'Parquización Areco SRL & Cloro Norte',
-    status: 'paid',
-    paidAt: '2026-10-08',
-    paymentMethod: 'transfer',
-    notes: 'Corte de césped 12 hectáreas + 50kg Cloro + Clarificador.',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-10-08T15:30:00.000Z',
-  },
-  {
-    id: 'exp-104',
-    concept: 'Servicio de Internet Satelital Starlink y Conectividad Wi-Fi',
-    category: 'servicios',
-    amount: 68000,
-    currency: 'ARS',
-    periodMonth: '2026-10',
-    date: '2026-10-01',
-    provider: 'Starlink Argentina',
-    status: 'paid',
-    paidAt: '2026-10-01',
-    paymentMethod: 'mercadopago',
-    notes: 'Abono residencial de alta velocidad.',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-10-01T08:00:00.000Z',
-  },
-  {
-    id: 'exp-105',
-    concept: 'Insumos de Limpieza, Blanquería y Artículos del Quincho',
-    category: 'insumos',
-    amount: 97000,
-    currency: 'ARS',
-    periodMonth: '2026-10',
-    date: '2026-10-09',
-    provider: 'Distribuidora Mayorista San Antonio',
-    status: 'paid',
-    paidAt: '2026-10-09',
-    paymentMethod: 'cash',
-    notes: 'Repuesto de papel, detergentes, bolsas y carbón para quincho.',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-10-09T11:20:00.000Z',
-  },
-  {
-    id: 'exp-106',
-    concept: 'Impuesto Inmobiliario Rural / Tasas Municipales (Cuota 5/2026)',
-    category: 'impuestos',
-    amount: 150000,
-    currency: 'ARS',
-    periodMonth: '2026-10',
-    date: '2026-10-10',
-    provider: 'ARBA / Municipalidad San Antonio de Areco',
-    status: 'pending',
-    notes: 'Vence el 25/10/2026.',
-    createdBy: 'Efraín Rodríguez',
-    createdAt: '2026-10-10T09:00:00.000Z',
-  },
-];
+export const DEFAULT_USERS: User[] = SEED_USERS;
+export const DEFAULT_SETTINGS: TrustSettings = SEED_SETTINGS;
+export const DEFAULT_BOOKINGS: Booking[] = SEED_BOOKINGS;
+export const DEFAULT_BLOCKS: DateBlock[] = SEED_BLOCKS;
+export const DEFAULT_HOUSE_RULES: HouseRule[] = SEED_HOUSE_RULES;
+export const DEFAULT_CONTACTS: UsefulContact[] = SEED_CONTACTS;
+export const DEFAULT_DOCUMENTS: DocumentItem[] = SEED_DOCUMENTS;
+export const DEFAULT_INVENTORY: InventoryItem[] = SEED_INVENTORY;
+export const DEFAULT_INCIDENTS: IncidentReport[] = SEED_INCIDENTS;
+export const DEFAULT_NOTIFICATIONS: NotificationPush[] = SEED_NOTIFICATIONS;
+export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = SEED_FEE_COLLECTIONS;
+export const DEFAULT_EXPENSES: ExpenseItem[] = SEED_EXPENSES;
 
 // Helper to calculate days used per user from active bookings
 function recalculateUsersUsedDays(users: User[], bookings: Booking[]): User[] {
@@ -597,26 +127,52 @@ class StorageService {
     // Hydrate server state for cross-browser synchronization
     this.hydrateFromAppStateAsync();
 
-    // Auto-refresh from server database on window focus or every 12 seconds
+    // Auto-refresh from cloud server on focus, visibility change, and every 2 seconds
     window.addEventListener('focus', () => this.hydrateFromAppStateAsync());
-    setInterval(() => this.hydrateFromAppStateAsync(), 12000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this.hydrateFromAppStateAsync();
+      }
+    });
+    setInterval(() => this.hydrateFromAppStateAsync(), 2000);
   }
 
   public async hydrateFromAppStateAsync() {
     if (typeof window === 'undefined') return;
     try {
       const res = await fetch('/api/app-state');
+      if (!res.ok) return;
       const data = await res.json();
       if (data.success && data.data) {
-        if (data.data.users && Array.isArray(data.data.users) && data.data.users.length > 0) {
-          localStorage.setItem(USERS_KEY, JSON.stringify(data.data.users));
+        let hasChanges = false;
+
+        const currentBookingsRaw = localStorage.getItem(BOOKINGS_KEY) || '[]';
+        const serverBookingsRaw = JSON.stringify(data.data.bookings || []);
+        if (currentBookingsRaw !== serverBookingsRaw) {
+          localStorage.setItem(BOOKINGS_KEY, serverBookingsRaw);
+          hasChanges = true;
         }
-        if (data.data.bookings && Array.isArray(data.data.bookings)) {
-          localStorage.setItem(BOOKINGS_KEY, JSON.stringify(data.data.bookings));
+
+        const currentUsersRaw = localStorage.getItem(USERS_KEY) || '[]';
+        const serverUsersRaw = JSON.stringify(data.data.users || []);
+        if (
+          currentUsersRaw !== serverUsersRaw &&
+          Array.isArray(data.data.users) &&
+          data.data.users.length > 0
+        ) {
+          localStorage.setItem(USERS_KEY, serverUsersRaw);
+          hasChanges = true;
         }
+
         if (data.data.blocks && Array.isArray(data.data.blocks)) {
-          localStorage.setItem(BLOCKS_KEY, JSON.stringify(data.data.blocks));
+          const currentBlocksRaw = localStorage.getItem(BLOCKS_KEY) || '[]';
+          const serverBlocksRaw = JSON.stringify(data.data.blocks);
+          if (currentBlocksRaw !== serverBlocksRaw) {
+            localStorage.setItem(BLOCKS_KEY, serverBlocksRaw);
+            hasChanges = true;
+          }
         }
+
         if (data.data.fees && Array.isArray(data.data.fees)) {
           localStorage.setItem(FEES_KEY, JSON.stringify(data.data.fees));
         }
@@ -647,7 +203,10 @@ class StorageService {
         if (data.data.notifications && Array.isArray(data.data.notifications)) {
           localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(data.data.notifications));
         }
-        this.notify(false);
+
+        if (hasChanges) {
+          this.notify(false);
+        }
       }
     } catch {
       // Offline fallback
@@ -852,6 +411,8 @@ class StorageService {
     if (!raw) return DEFAULT_USERS;
     try {
       const parsed: User[] = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return DEFAULT_USERS;
+
       // 1. Merge DEFAULT_USERS with stored updates
       const defaultMerged = DEFAULT_USERS.map((defUser) => {
         const found = parsed.find(
@@ -859,11 +420,16 @@ class StorageService {
         );
         if (!found) return defUser;
         const cleanPartName = found.partName && !found.partName.includes('%') ? found.partName : defUser.partName;
+        const effectiveShare = typeof found.sharePercentage === 'number' && !isNaN(found.sharePercentage)
+          ? found.sharePercentage
+          : (defUser.sharePercentage ?? 6.25);
+
         return {
           ...defUser,
           ...found,
           partName: cleanPartName,
-          active: true,
+          sharePercentage: effectiveShare,
+          active: found.active !== undefined ? found.active : true,
           role: defUser.id === 'user-c4-efrain' ? ('admin' as const) : (found.role || defUser.role),
         };
       });
@@ -872,9 +438,14 @@ class StorageService {
       const customUsers = parsed.filter(
         (p) =>
           !DEFAULT_USERS.some(
-            (def) => def.id === p.id || def.email === p.email || (p.username && p.username === def.username)
+            (def) => def.id === p.id || def.email === p.email || (def.username && p.username && def.username === p.username)
           )
-      );
+      ).map((cu) => ({
+        ...cu,
+        sharePercentage: typeof cu.sharePercentage === 'number' && !isNaN(cu.sharePercentage)
+          ? cu.sharePercentage
+          : Math.round((100 / Math.max(1, parsed.length)) * 100) / 100,
+      }));
 
       return [...defaultMerged, ...customUsers];
     } catch {
@@ -885,7 +456,7 @@ class StorageService {
   public saveUser(user: User) {
     const users = this.getUsers();
     const index = users.findIndex(
-      (u) => u.id === user.id || u.email === user.email || (u.username && u.username === user.username)
+      (u) => u.id === user.id || u.email === user.email || (u.username && user.username && u.username === user.username)
     );
     let updated: User[];
     if (index >= 0) {
@@ -895,7 +466,22 @@ class StorageService {
       updated = [...users, user];
     }
     localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-    this.notify();
+    this.notify(true);
+  }
+
+  public updateBulkSharePercentages(sharesMap: Record<string, number>) {
+    const users = this.getUsers();
+    const updated = users.map((u) => {
+      if (sharesMap[u.id] !== undefined) {
+        return {
+          ...u,
+          sharePercentage: Math.max(0, Math.round(Number(sharesMap[u.id]) * 100) / 100),
+        };
+      }
+      return u;
+    });
+    localStorage.setItem(USERS_KEY, JSON.stringify(updated));
+    this.notify(true);
   }
 
   public deleteUser(userId: string) {
@@ -983,14 +569,24 @@ class StorageService {
     return raw ? JSON.parse(raw) : DEFAULT_BOOKINGS;
   }
 
-  public createBooking(booking: Omit<Booking, 'id' | 'createdAt'>): Booking {
-    const bookings = this.getBookings();
-    const newBooking: Booking = {
-      ...booking,
-      id: 'book-' + Date.now(),
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [newBooking, ...bookings];
+  // Primary Authoritative Cloud Booking Method (Validates against Cloud Server)
+  public async createBookingAsync(booking: Omit<Booking, 'id' | 'createdAt'>): Promise<Booking> {
+    const res = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(booking),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      // Instantly refresh cache from cloud so user sees what is occupied
+      await this.hydrateFromAppStateAsync();
+      throw new Error(data.error || 'Conflicto de fechas: no fue posible confirmar la reserva.');
+    }
+
+    const newBooking: Booking = data.booking;
+    const currentBookings = this.getBookings().filter((b) => b.id !== newBooking.id);
+    const updated = [newBooking, ...currentBookings];
     localStorage.setItem(BOOKINGS_KEY, JSON.stringify(updated));
 
     // Update user quota
@@ -1006,7 +602,39 @@ class StorageService {
       bookingId: newBooking.id,
     });
 
-    this.notify();
+    this.notify(false);
+    return newBooking;
+  }
+
+  // Synchronous fallback (calls cloud async in background)
+  public createBooking(booking: Omit<Booking, 'id' | 'createdAt'>): Booking {
+    const bookings = this.getBookings();
+    const newBooking: Booking = {
+      ...booking,
+      id: 'book-' + Date.now(),
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [newBooking, ...bookings];
+    localStorage.setItem(BOOKINGS_KEY, JSON.stringify(updated));
+
+    const users = this.getUsers();
+    const recalculated = recalculateUsersUsedDays(users, updated);
+    localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
+
+    this.addNotification({
+      title: 'Nueva Reserva Confirmada',
+      body: `${newBooking.userName} reservó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} días).`,
+      type: 'booking_created',
+      bookingId: newBooking.id,
+    });
+
+    this.notify(false);
+
+    // Call cloud server in background
+    this.createBookingAsync(booking).catch((err) => {
+      console.warn('Syncing booking to cloud server:', err);
+    });
+
     return newBooking;
   }
 
@@ -1030,12 +658,10 @@ class StorageService {
 
     localStorage.setItem(BOOKINGS_KEY, JSON.stringify(updated));
 
-    // Update quotas
     const users = this.getUsers();
     const recalculated = recalculateUsersUsedDays(users, updated);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
-    // Add push notification
     this.addNotification({
       title: 'Reserva Cancelada',
       body: `La reserva de ${booking.userName} (${booking.checkInDate} a ${booking.checkOutDate}) fue cancelada por ${cancelledByName}.`,
@@ -1043,7 +669,14 @@ class StorageService {
       bookingId: booking.id,
     });
 
-    this.notify();
+    this.notify(false);
+
+    // Cancel on cloud server
+    fetch(`/api/bookings/${bookingId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason, cancelledByName }),
+    }).catch((err) => console.error('Error cancelando en servidor:', err));
   }
 
   // Blocks

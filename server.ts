@@ -4,12 +4,22 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 
+import fs from 'fs';
+
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: '15mb' }));
+// Ensure persistent uploads directory on server
+const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+app.use('/uploads', express.static(UPLOADS_DIR));
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Helper to query Cloudflare D1 REST API
 async function queryCloudflareD1(
@@ -626,8 +636,8 @@ app.get('/api/r2/status', async (_req, res) => {
   }
 });
 
-// 2. Upload Photo to Cloudflare R2 Bucket 'el-desayuno'
-app.post('/api/r2/upload', async (req, res) => {
+// 2. Upload Photo to Cloudflare R2 Bucket 'el-desayuno' or Server-Side Persistent Storage
+app.post(['/api/r2/upload', '/api/upload'], async (req, res) => {
   try {
     const { image, filename, folder = 'fotos', config } = req.body;
     const accountId = config?.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -635,13 +645,6 @@ app.post('/api/r2/upload', async (req, res) => {
     const secretAccessKey = config?.secretAccessKey || process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
     const bucketName = config?.bucketName || process.env.CLOUDFLARE_R2_BUCKET_NAME || 'el-desayuno';
     const publicUrl = config?.publicUrl || process.env.CLOUDFLARE_R2_PUBLIC_URL || '';
-
-    if (!accountId || !accessKeyId || !secretAccessKey) {
-      return res.status(400).json({
-        success: false,
-        error: 'Credenciales de Cloudflare R2 incompletas.',
-      });
-    }
 
     if (!image) {
       return res.status(400).json({ success: false, error: 'No se envió imagen en base64.' });
@@ -661,34 +664,59 @@ app.post('/api/r2/upload', async (req, res) => {
 
     const ext = contentType.split('/')[1] || 'jpg';
     const cleanFilename = (filename || `foto-${Date.now()}`).replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const objectKey = `${folder}/${Date.now()}_${cleanFilename}.${ext}`;
+    const uniqueFile = `${Date.now()}_${cleanFilename}.${ext}`;
+    const objectKey = `${folder}/${uniqueFile}`;
 
-    const s3 = createR2S3Client(accountId, accessKeyId, secretAccessKey);
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucketName,
-        Key: objectKey,
-        Body: buffer,
-        ContentType: contentType,
-      })
-    );
+    // Try Cloudflare R2 if credentials present
+    if (accountId && accessKeyId && secretAccessKey) {
+      try {
+        const s3 = createR2S3Client(accountId, accessKeyId, secretAccessKey);
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucketName,
+            Key: objectKey,
+            Body: buffer,
+            ContentType: contentType,
+          })
+        );
 
-    // Construct final URL
-    const fileUrl = publicUrl
-      ? `${publicUrl.replace(/\/$/, '')}/${objectKey}`
-      : `/api/r2/file?key=${encodeURIComponent(objectKey)}`;
+        const fileUrl = publicUrl
+          ? `${publicUrl.replace(/\/$/, '')}/${objectKey}`
+          : `/api/r2/file?key=${encodeURIComponent(objectKey)}`;
 
+        return res.json({
+          success: true,
+          url: fileUrl,
+          key: objectKey,
+          bucketName,
+          storageType: 'cloudflare-r2',
+          message: `Foto subida exitosamente al bucket '${bucketName}'.`,
+        });
+      } catch (r2Err) {
+        console.warn('R2 upload failed, falling back to local server storage:', r2Err);
+      }
+    }
+
+    // Fallback: Save to server persistent uploads directory
+    const targetFolder = path.join(UPLOADS_DIR, folder);
+    if (!fs.existsSync(targetFolder)) {
+      fs.mkdirSync(targetFolder, { recursive: true });
+    }
+    const filePath = path.join(targetFolder, uniqueFile);
+    fs.writeFileSync(filePath, buffer);
+
+    const serverUrl = `/uploads/${folder}/${uniqueFile}`;
     return res.json({
       success: true,
-      url: fileUrl,
+      url: serverUrl,
       key: objectKey,
-      bucketName,
-      message: `Foto subida exitosamente al bucket '${bucketName}'.`,
+      storageType: 'server-uploads',
+      message: 'Foto guardada permanentemente en el servidor en la nube.',
     });
   } catch (err: unknown) {
     return res.status(500).json({
       success: false,
-      error: err instanceof Error ? err.message : 'Error subiendo foto a Cloudflare R2',
+      error: err instanceof Error ? err.message : 'Error procesando archivo de imagen',
     });
   }
 });
@@ -784,35 +812,385 @@ app.get('/api/r2/file', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// SERVER-SIDE SHARED STATE PERSISTENCE (CROSS-BROWSER SYNC)
+// SERVER-SIDE SHARED STATE PERSISTENCE & CLOUD LOCKING
 // -------------------------------------------------------------
-import fs from 'fs';
+import { getFullSeedState } from './src/services/defaultSeedData';
 
 const STATE_FILE_PATH = path.resolve(process.cwd(), 'app-server-state.json');
 
-app.get('/api/app-state', (_req, res) => {
+function loadServerState(): Record<string, any> {
   try {
     if (fs.existsSync(STATE_FILE_PATH)) {
       const raw = fs.readFileSync(STATE_FILE_PATH, 'utf-8');
-      const data = JSON.parse(raw);
-      return res.json({ success: true, data });
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
     }
-    return res.json({ success: false, message: 'Sin estado guardado en servidor' });
+  } catch (err) {
+    console.error('[Server State] Error leyendo STATE_FILE_PATH, re-inicializando semilla:', err);
+  }
+  const seed = getFullSeedState();
+  fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(seed, null, 2), 'utf-8');
+  return seed;
+}
+
+function saveServerState(state: Record<string, any>): void {
+  try {
+    state.updatedAt = new Date().toISOString();
+    fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[Server State] Error escribiendo STATE_FILE_PATH:', err);
+  }
+}
+
+// Initialize seed on startup
+loadServerState();
+
+// 1. Get full App State (Canonical Cloud Truth)
+app.get('/api/app-state', (_req, res) => {
+  try {
+    const data = loadServerState();
+    return res.json({ success: true, data });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error leyendo estado en servidor' });
   }
 });
 
+// 2. Set/Restore full App State
 app.post('/api/app-state', (req, res) => {
   try {
     const data = req.body;
     if (data && typeof data === 'object') {
-      fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+      saveServerState(data);
       return res.json({ success: true, message: 'Estado actualizado en servidor' });
     }
     return res.status(400).json({ success: false, error: 'Datos no válidos' });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error guardando estado en servidor' });
+  }
+});
+
+// 3. Get bookings from server
+app.get('/api/bookings', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, bookings: state.bookings || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo reservas' });
+  }
+});
+
+// 4. Create Booking with STRICT SERVER-SIDE CONFLICT DETECTION & LOCKING
+app.post('/api/bookings', (req, res) => {
+  try {
+    const {
+      userId,
+      userName,
+      userColor = '#16A34A',
+      partName = 'Cabeza 1',
+      checkInDate,
+      checkOutDate,
+      totalDays,
+      guestsCount = 4,
+      arrivalTime = '14:00',
+      notes,
+      cleaningBufferApplied = false,
+    } = req.body;
+
+    if (!checkInDate || !checkOutDate || !userId || !userName) {
+      return res.status(400).json({ success: false, error: 'Faltan campos obligatorios para la reserva.' });
+    }
+
+    if (checkOutDate < checkInDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'La fecha de check-out no puede ser anterior a la fecha de check-in.',
+      });
+    }
+
+    // Always read freshest state from disk to avoid race conditions
+    const state = loadServerState();
+    const bookings = Array.isArray(state.bookings) ? state.bookings : [];
+    const blocks = Array.isArray(state.blocks) ? state.blocks : [];
+
+    // Overlap validation with active bookings
+    const activeBookings = bookings.filter((b: any) => b.status !== 'cancelled');
+    const conflictBooking = activeBookings.find((b: any) => {
+      // Overlap formula: !(newCheckOut < existingCheckIn || newCheckIn > existingCheckOut)
+      return !(checkOutDate < b.checkInDate || checkInDate > b.checkOutDate);
+    });
+
+    if (conflictBooking) {
+      return res.status(409).json({
+        success: false,
+        code: 'DATE_CONFLICT',
+        error: `Conflicto de fechas en la nube: El período del ${checkInDate} al ${checkOutDate} YA ESTÁ RESERVADO por ${conflictBooking.userName} (${conflictBooking.checkInDate} al ${conflictBooking.checkOutDate}). No es posible duplicar reservas en la estancia.`,
+        conflictBooking,
+      });
+    }
+
+    // Overlap validation with maintenance blocks
+    const conflictBlock = blocks.find((bl: any) => {
+      return !(checkOutDate < bl.startDate || checkInDate > bl.endDate);
+    });
+
+    if (conflictBlock) {
+      return res.status(409).json({
+        success: false,
+        code: 'BLOCK_CONFLICT',
+        error: `Conflicto con bloqueo oficial de la estancia: "${conflictBlock.title}" (${conflictBlock.startDate} al ${conflictBlock.endDate}).`,
+        conflictBlock,
+      });
+    }
+
+    // Calculate days
+    const s = new Date(checkInDate + 'T00:00:00');
+    const e = new Date(checkOutDate + 'T00:00:00');
+    const computedDays = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const finalDays = totalDays || computedDays;
+
+    const newBooking = {
+      id: 'book-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      userId,
+      userName,
+      userColor,
+      partName,
+      checkInDate,
+      checkOutDate,
+      totalDays: finalDays,
+      status: 'confirmed',
+      guestsCount,
+      arrivalTime,
+      notes: notes ? notes.trim() : undefined,
+      cleaningBufferApplied,
+      createdAt: new Date().toISOString(),
+    };
+
+    state.bookings = [newBooking, ...bookings];
+
+    // Recalculate user quotas in server state
+    if (Array.isArray(state.users)) {
+      state.users = state.users.map((u: any) => {
+        if (u.role === 'admin') return u;
+        const uBookings = state.bookings.filter(
+          (b: any) => b.userId === u.id && (b.status === 'confirmed' || b.status === 'completed')
+        );
+        const used = uBookings.reduce((sum: number, b: any) => sum + (b.totalDays || 0), 0);
+        return { ...u, usedDays: used };
+      });
+    }
+
+    // Add push notification in server state
+    if (!Array.isArray(state.notifications)) state.notifications = [];
+    state.notifications.unshift({
+      id: 'notif-' + Date.now(),
+      title: 'Nueva Reserva Confirmada',
+      body: `${userName} reservó del ${checkInDate} al ${checkOutDate} (${finalDays} días).`,
+      type: 'booking_created',
+      bookingId: newBooking.id,
+      createdAt: new Date().toISOString(),
+      read: false,
+    });
+
+    saveServerState(state);
+
+    return res.status(201).json({
+      success: true,
+      booking: newBooking,
+      message: `Reserva guardada y bloqueada en la nube para ${userName}.`,
+    });
+  } catch (err: unknown) {
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Error procesando reserva en el servidor',
+    });
+  }
+});
+
+// 5. Cancel Booking
+app.post('/api/bookings/:id/cancel', (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { reason = 'Cancelado por el usuario', cancelledByName = 'Usuario' } = req.body;
+    const state = loadServerState();
+    const bookings = Array.isArray(state.bookings) ? state.bookings : [];
+    const target = bookings.find((b: any) => b.id === bookingId);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Reserva no encontrada.' });
+    }
+
+    state.bookings = bookings.map((b: any) => {
+      if (b.id === bookingId) {
+        return {
+          ...b,
+          status: 'cancelled',
+          cancellationReason: reason,
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: cancelledByName,
+        };
+      }
+      return b;
+    });
+
+    // Recalculate user quotas
+    if (Array.isArray(state.users)) {
+      state.users = state.users.map((u: any) => {
+        if (u.role === 'admin') return u;
+        const uBookings = state.bookings.filter(
+          (b: any) => b.userId === u.id && (b.status === 'confirmed' || b.status === 'completed')
+        );
+        const used = uBookings.reduce((sum: number, b: any) => sum + (b.totalDays || 0), 0);
+        return { ...u, usedDays: used };
+      });
+    }
+
+    if (!Array.isArray(state.notifications)) state.notifications = [];
+    state.notifications.unshift({
+      id: 'notif-' + Date.now(),
+      title: 'Reserva Cancelada',
+      body: `La reserva de ${target.userName} (${target.checkInDate} a ${target.checkOutDate}) fue cancelada por ${cancelledByName}.`,
+      type: 'booking_cancelled',
+      bookingId: target.id,
+      createdAt: new Date().toISOString(),
+      read: false,
+    });
+
+    saveServerState(state);
+    return res.json({ success: true, message: 'Reserva cancelada en el servidor.' });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error cancelando reserva' });
+  }
+});
+
+// 6. Save/Update User on server
+app.post('/api/users', (req, res) => {
+  try {
+    const user = req.body;
+    if (!user || !user.id) {
+      return res.status(400).json({ success: false, error: 'Usuario no válido' });
+    }
+    const state = loadServerState();
+    const users = Array.isArray(state.users) ? state.users : [];
+    const idx = users.findIndex((u: any) => u.id === user.id);
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], ...user };
+    } else {
+      users.push(user);
+    }
+    state.users = users;
+    saveServerState(state);
+    return res.json({ success: true, user });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando usuario' });
+  }
+});
+
+// 7. Bulk Shares Update
+app.post('/api/users/bulk-shares', (req, res) => {
+  try {
+    const { sharesMap } = req.body;
+    if (!sharesMap || typeof sharesMap !== 'object') {
+      return res.status(400).json({ success: false, error: 'Mapa de acciones no válido' });
+    }
+    const state = loadServerState();
+    if (Array.isArray(state.users)) {
+      state.users = state.users.map((u: any) => {
+        if (sharesMap[u.id] !== undefined) {
+          return {
+            ...u,
+            sharePercentage: Math.max(0, Math.round(Number(sharesMap[u.id]) * 100) / 100),
+          };
+        }
+        return u;
+      });
+    }
+    saveServerState(state);
+    return res.json({ success: true, message: 'Acciones actualizadas en servidor' });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error actualizando acciones' });
+  }
+});
+
+// 8. Create Date Block
+app.post('/api/blocks', (req, res) => {
+  try {
+    const block = req.body;
+    if (!block || !block.startDate || !block.endDate) {
+      return res.status(400).json({ success: false, error: 'Fechas de bloqueo requeridas' });
+    }
+    const state = loadServerState();
+    const blocks = Array.isArray(state.blocks) ? state.blocks : [];
+    const newBlock = {
+      ...block,
+      id: 'block-' + Date.now(),
+      createdAt: new Date().toISOString(),
+    };
+    state.blocks = [newBlock, ...blocks];
+    saveServerState(state);
+    return res.status(201).json({ success: true, block: newBlock });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error creando bloqueo' });
+  }
+});
+
+// 9. Delete Date Block
+app.delete('/api/blocks/:id', (req, res) => {
+  try {
+    const blockId = req.params.id;
+    const state = loadServerState();
+    state.blocks = (state.blocks || []).filter((b: any) => b.id !== blockId);
+    saveServerState(state);
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando bloqueo' });
+  }
+});
+
+// 10. Save Fee Collection
+app.post('/api/fees', (req, res) => {
+  try {
+    const fee = req.body;
+    if (!fee || !fee.id) {
+      return res.status(400).json({ success: false, error: 'Cobranza no válida' });
+    }
+    const state = loadServerState();
+    const fees = Array.isArray(state.fees) ? state.fees : [];
+    const idx = fees.findIndex((f: any) => f.id === fee.id);
+    if (idx >= 0) {
+      fees[idx] = fee;
+    } else {
+      fees.unshift(fee);
+    }
+    state.fees = fees;
+    saveServerState(state);
+    return res.json({ success: true, fee });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando cobranza' });
+  }
+});
+
+// 11. Save Expense
+app.post('/api/expenses', (req, res) => {
+  try {
+    const expense = req.body;
+    if (!expense || !expense.id) {
+      return res.status(400).json({ success: false, error: 'Gasto no válido' });
+    }
+    const state = loadServerState();
+    const expenses = Array.isArray(state.expenses) ? state.expenses : [];
+    const idx = expenses.findIndex((e: any) => e.id === expense.id);
+    if (idx >= 0) {
+      expenses[idx] = expense;
+    } else {
+      expenses.unshift(expense);
+    }
+    state.expenses = expenses;
+    saveServerState(state);
+    return res.json({ success: true, expense });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando gasto' });
   }
 });
 async function bootstrap() {

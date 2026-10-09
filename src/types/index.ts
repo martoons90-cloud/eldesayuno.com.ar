@@ -8,6 +8,7 @@ export interface User {
   role: UserRole;
   partName: string; // e.g. "Cabeza 1 - Parte I (25%)"
   cabezaNumber?: number; // 1, 2, 3, 4
+  sharePercentage?: number; // % de participación / aporte / acciones en gastos y expensas (ej: 6.25, 12.5, 25)
   annualQuotaDays: number;
   usedDays: number;
   pendingDays: number;
@@ -178,7 +179,7 @@ export interface TrustSettings {
 // -------------------------------------------------------------
 // COBRANZAS, EXPENSAS Y DISTRIBUCIÓN DE GASTOS
 // -------------------------------------------------------------
-export type DistributionMode = 'equal_cabezas' | 'equal_owners' | 'percentage' | 'custom_amount';
+export type DistributionMode = 'share_percentage' | 'equal_cabezas' | 'equal_owners' | 'percentage' | 'custom_amount';
 
 export type RecurrenceType = 'monthly' | 'days_45' | 'days_60' | 'custom_days' | 'one_time';
 
