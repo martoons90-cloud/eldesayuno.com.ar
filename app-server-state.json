@@ -306,9 +306,9 @@
     }
   ],
   "settings": {
-    "houseName": "Estancia El Desayuno",
+    "houseName": "Estancia El Desayuno Oficial",
     "location": "Ruta Provincial 41, Km 82, San Antonio de Areco / Mercedes, Bs. As.",
-    "wifiSsid": "ElDesayuno_Casa_5G",
+    "wifiSsid": "ElDesayuno_Casa_5G_Fiber",
     "wifiPassword": "sociedad_cuatro_partes",
     "checkInTime": "14:00",
     "checkOutTime": "11:00",
@@ -321,9 +321,47 @@
     "cuitFideicomiso": "30-71829304-5",
     "bancoNombre": "Banco Galicia (Cuenta Corriente Pesos)",
     "titularCuenta": "Fideicomiso Estancia El Desayuno",
-    "wifiCoverageNotes": "La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural."
+    "wifiCoverageNotes": "La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.",
+    "updatedAt": "2026-10-09T00:18:37.874Z"
   },
-  "bookings": [],
+  "bookings": [
+    {
+      "id": "book-1791505157175-ev2o",
+      "userId": "user-c2-alejandro",
+      "userName": "Alejandro Guerrero",
+      "userColor": "#16A34A",
+      "partName": "Cabeza 2",
+      "checkInDate": "2026-11-10",
+      "checkOutDate": "2026-11-15",
+      "totalDays": 6,
+      "status": "cancelled",
+      "guestsCount": 6,
+      "arrivalTime": "14:00",
+      "cleaningBufferApplied": false,
+      "createdAt": "2026-10-09T00:19:17.175Z",
+      "cancellationReason": "Limpieza test",
+      "cancelledAt": "2026-10-09T00:19:20.253Z",
+      "cancelledBy": "Admin"
+    },
+    {
+      "id": "book-1791505128347-8mg1",
+      "userId": "user-c1-jose",
+      "userName": "José Casares",
+      "userColor": "#16A34A",
+      "partName": "Cabeza 1",
+      "checkInDate": "2026-11-10",
+      "checkOutDate": "2026-11-15",
+      "totalDays": 6,
+      "status": "cancelled",
+      "guestsCount": 4,
+      "arrivalTime": "14:00",
+      "cleaningBufferApplied": false,
+      "createdAt": "2026-10-09T00:18:48.347Z",
+      "cancellationReason": "Prueba de verificación técnica",
+      "cancelledAt": "2026-10-09T00:19:12.296Z",
+      "cancelledBy": "Admin"
+    }
+  ],
   "blocks": [],
   "rules": [
     {
@@ -472,7 +510,44 @@
     }
   ],
   "incidents": [],
-  "notifications": [],
+  "notifications": [
+    {
+      "id": "notif-1791505160253",
+      "title": "Reserva Cancelada",
+      "body": "La reserva de Alejandro Guerrero (2026-11-10 a 2026-11-15) fue cancelada por Admin.",
+      "type": "booking_cancelled",
+      "bookingId": "book-1791505157175-ev2o",
+      "createdAt": "2026-10-09T00:19:20.253Z",
+      "read": false
+    },
+    {
+      "id": "notif-1791505157175",
+      "title": "Nueva Reserva Confirmada",
+      "body": "Alejandro Guerrero reservó del 2026-11-10 al 2026-11-15 (6 días).",
+      "type": "booking_created",
+      "bookingId": "book-1791505157175-ev2o",
+      "createdAt": "2026-10-09T00:19:17.175Z",
+      "read": false
+    },
+    {
+      "id": "notif-1791505152296",
+      "title": "Reserva Cancelada",
+      "body": "La reserva de José Casares (2026-11-10 a 2026-11-15) fue cancelada por Admin.",
+      "type": "booking_cancelled",
+      "bookingId": "book-1791505128347-8mg1",
+      "createdAt": "2026-10-09T00:19:12.296Z",
+      "read": false
+    },
+    {
+      "id": "notif-1791505128348",
+      "title": "Nueva Reserva Confirmada",
+      "body": "José Casares reservó del 2026-11-10 al 2026-11-15 (6 días).",
+      "type": "booking_created",
+      "bookingId": "book-1791505128347-8mg1",
+      "createdAt": "2026-10-09T00:18:48.348Z",
+      "read": false
+    }
+  ],
   "fees": [
     {
       "id": "fee-101",
@@ -772,5 +847,5 @@
     }
   ],
   "version": "2.0-eldesayuno",
-  "updatedAt": "2026-10-08T21:02:32.464Z"
+  "updatedAt": "2026-10-09T00:19:20.253Z"
 }

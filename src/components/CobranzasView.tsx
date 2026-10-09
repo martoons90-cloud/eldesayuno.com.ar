@@ -77,9 +77,9 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     });
   }, [settings]);
 
-  const handleSaveBankDetails = (e: React.FormEvent) => {
+  const handleSaveBankDetails = async (e: React.FormEvent) => {
     e.preventDefault();
-    storageService.saveSettings({
+    await storageService.saveSettingsAsync({
       ...settings,
       cbu: bankFormData.cbu.trim(),
       aliasBancario: bankFormData.aliasBancario.trim(),

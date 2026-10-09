@@ -93,6 +93,9 @@ export default function App() {
 
   useEffect(() => {
     refreshData();
+    storageService.hydrateFromAppStateAsync().finally(() => {
+      refreshData();
+    });
     const unsubscribe = storageService.subscribe(() => {
       refreshData();
     });

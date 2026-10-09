@@ -174,53 +174,85 @@ class StorageService {
         }
 
         if (data.data.fees && Array.isArray(data.data.fees)) {
-          localStorage.setItem(FEES_KEY, JSON.stringify(data.data.fees));
+          const currentFeesRaw = localStorage.getItem(FEES_KEY) || '[]';
+          const serverFeesRaw = JSON.stringify(data.data.fees);
+          if (currentFeesRaw !== serverFeesRaw) {
+            localStorage.setItem(FEES_KEY, serverFeesRaw);
+            hasChanges = true;
+          }
         }
         if (data.data.expenses && Array.isArray(data.data.expenses)) {
-          localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.data.expenses));
+          const currentExpensesRaw = localStorage.getItem(EXPENSES_KEY) || '[]';
+          const serverExpensesRaw = JSON.stringify(data.data.expenses);
+          if (currentExpensesRaw !== serverExpensesRaw) {
+            localStorage.setItem(EXPENSES_KEY, serverExpensesRaw);
+            hasChanges = true;
+          }
         }
-        if (data.data.settings) {
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.data.settings));
-          if (data.data.settings.logoUrl) {
-            localStorage.setItem('el_desayuno_custom_logo', data.data.settings.logoUrl);
+        if (data.data.settings && typeof data.data.settings === 'object') {
+          const currentSettingsRaw = localStorage.getItem(SETTINGS_KEY) || '{}';
+          const serverSettingsRaw = JSON.stringify(data.data.settings);
+          if (currentSettingsRaw !== serverSettingsRaw) {
+            localStorage.setItem(SETTINGS_KEY, serverSettingsRaw);
+            if (data.data.settings.logoUrl) {
+              localStorage.setItem('el_desayuno_custom_logo', data.data.settings.logoUrl);
+            }
+            hasChanges = true;
           }
         }
         if (data.data.rules && Array.isArray(data.data.rules)) {
-          localStorage.setItem(RULES_KEY, JSON.stringify(data.data.rules));
+          const currentRulesRaw = localStorage.getItem(RULES_KEY) || '[]';
+          const serverRulesRaw = JSON.stringify(data.data.rules);
+          if (currentRulesRaw !== serverRulesRaw) {
+            localStorage.setItem(RULES_KEY, serverRulesRaw);
+            hasChanges = true;
+          }
         }
         if (data.data.contacts && Array.isArray(data.data.contacts)) {
-          localStorage.setItem(CONTACTS_KEY, JSON.stringify(data.data.contacts));
+          const currentContactsRaw = localStorage.getItem(CONTACTS_KEY) || '[]';
+          const serverContactsRaw = JSON.stringify(data.data.contacts);
+          if (currentContactsRaw !== serverContactsRaw) {
+            localStorage.setItem(CONTACTS_KEY, serverContactsRaw);
+            hasChanges = true;
+          }
         }
         if (data.data.documents && Array.isArray(data.data.documents)) {
-          localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(data.data.documents));
+          const currentDocsRaw = localStorage.getItem(DOCUMENTS_KEY) || '[]';
+          const serverDocsRaw = JSON.stringify(data.data.documents);
+          if (currentDocsRaw !== serverDocsRaw) {
+            localStorage.setItem(DOCUMENTS_KEY, serverDocsRaw);
+            hasChanges = true;
+          }
         }
         if (data.data.inventory && Array.isArray(data.data.inventory)) {
-          localStorage.setItem(INVENTORY_KEY, JSON.stringify(data.data.inventory));
+          const currentInvRaw = localStorage.getItem(INVENTORY_KEY) || '[]';
+          const serverInvRaw = JSON.stringify(data.data.inventory);
+          if (currentInvRaw !== serverInvRaw) {
+            localStorage.setItem(INVENTORY_KEY, serverInvRaw);
+            hasChanges = true;
+          }
         }
         if (data.data.incidents && Array.isArray(data.data.incidents)) {
-          localStorage.setItem(INCIDENTS_KEY, JSON.stringify(data.data.incidents));
+          const currentIncRaw = localStorage.getItem(INCIDENTS_KEY) || '[]';
+          const serverIncRaw = JSON.stringify(data.data.incidents);
+          if (currentIncRaw !== serverIncRaw) {
+            localStorage.setItem(INCIDENTS_KEY, serverIncRaw);
+            hasChanges = true;
+          }
         }
         if (data.data.notifications && Array.isArray(data.data.notifications)) {
-          localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(data.data.notifications));
+          const currentNotifRaw = localStorage.getItem(NOTIFICATIONS_KEY) || '[]';
+          const serverNotifRaw = JSON.stringify(data.data.notifications);
+          if (currentNotifRaw !== serverNotifRaw) {
+            localStorage.setItem(NOTIFICATIONS_KEY, serverNotifRaw);
+            hasChanges = true;
+          }
         }
 
         if (hasChanges) {
           this.notify(false);
         }
       }
-    } catch {
-      // Offline fallback
-    }
-  }
-
-  private async syncToAppStateAsync() {
-    if (typeof window === 'undefined') return;
-    try {
-      await fetch('/api/app-state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.getAllDataPackage()),
-      });
     } catch {
       // Offline fallback
     }
@@ -304,7 +336,6 @@ class StorageService {
     });
     if (syncD1) {
       this.syncToD1Async();
-      this.syncToAppStateAsync();
     }
   }
 
@@ -466,7 +497,13 @@ class StorageService {
       updated = [...users, user];
     }
     localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-    this.notify(true);
+    this.notify(false);
+
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    }).catch((err) => console.error('Error guardando usuario en servidor:', err));
   }
 
   public updateBulkSharePercentages(sharesMap: Record<string, number>) {
@@ -481,13 +518,19 @@ class StorageService {
       return u;
     });
     localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-    this.notify(true);
+    this.notify(false);
+
+    fetch('/api/users/bulk-shares', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sharesMap }),
+    }).catch((err) => console.error('Error actualizando acciones en servidor:', err));
   }
 
   public deleteUser(userId: string) {
     const users = this.getUsers().filter((u) => u.id !== userId);
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    this.notify();
+    this.notify(false);
   }
 
   // Transfer Administrator role to another user
@@ -525,7 +568,14 @@ class StorageService {
       type: 'system',
     });
 
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/users/transfer-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newAdminUserId, currentAdminUserId }),
+    }).catch((err) => console.error('Error transfiriendo administración en servidor:', err));
+
     return {
       success: true,
       message: `Poder de administración transferido exitosamente a ${newAdmin.name}.`,
@@ -555,7 +605,14 @@ class StorageService {
       this.setCurrentUser({ ...current, password: code });
     }
 
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/users/${userId}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: code }),
+    }).catch((err) => console.error('Error actualizando contraseña en servidor:', err));
+
     return {
       success: true,
       message: `Contraseña de ${user.name} actualizada correctamente a "${code}".`,
@@ -702,26 +759,62 @@ class StorageService {
       type: 'block_added',
     });
 
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/blocks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newBlock),
+    }).catch((err) => console.error('Error guardando bloqueo en servidor:', err));
+
     return newBlock;
   }
 
   public deleteBlock(blockId: string) {
     const blocks = this.getBlocks().filter((b) => b.id !== blockId);
     localStorage.setItem(BLOCKS_KEY, JSON.stringify(blocks));
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/blocks/${blockId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando bloqueo en servidor:', err));
   }
 
-  // Settings
+  // Settings (Authoritative Cloud Persistence)
   public getSettings(): TrustSettings {
     if (typeof window === 'undefined') return DEFAULT_SETTINGS;
     const raw = localStorage.getItem(SETTINGS_KEY);
     return raw ? JSON.parse(raw) : DEFAULT_SETTINGS;
   }
 
+  public async saveSettingsAsync(settings: TrustSettings): Promise<TrustSettings> {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      const data = await res.json();
+      if (data.success && data.settings) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
+        if (data.settings.logoUrl) {
+          localStorage.setItem('el_desayuno_custom_logo', data.settings.logoUrl);
+        }
+        this.notify(false);
+        return data.settings;
+      }
+    } catch (err) {
+      console.warn('Error guardando ajustes en la nube:', err);
+    }
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    this.notify(false);
+    return settings;
+  }
+
   public saveSettings(settings: TrustSettings) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    this.notify();
+    this.notify(false);
+    this.saveSettingsAsync(settings).catch((err) => console.error('Cloud saveSettings error:', err));
   }
 
   // Rules
@@ -736,13 +829,23 @@ class StorageService {
     const exists = list.some((r) => r.id === rule.id);
     const updated = exists ? list.map((r) => (r.id === rule.id ? rule : r)) : [...list, rule];
     localStorage.setItem(RULES_KEY, JSON.stringify(updated));
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rule),
+    }).catch((err) => console.error('Error guardando regla en servidor:', err));
   }
 
   public deleteRule(ruleId: string) {
     const list = this.getRules().filter((r) => r.id !== ruleId);
     localStorage.setItem(RULES_KEY, JSON.stringify(list));
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/rules/${ruleId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando regla en servidor:', err));
   }
 
   // Contacts
@@ -757,13 +860,23 @@ class StorageService {
     const exists = list.some((c) => c.id === contact.id);
     const updated = exists ? list.map((c) => (c.id === contact.id ? contact : c)) : [...list, contact];
     localStorage.setItem(CONTACTS_KEY, JSON.stringify(updated));
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(contact),
+    }).catch((err) => console.error('Error guardando contacto en servidor:', err));
   }
 
   public deleteContact(contactId: string) {
     const list = this.getContacts().filter((c) => c.id !== contactId);
     localStorage.setItem(CONTACTS_KEY, JSON.stringify(list));
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/contacts/${contactId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando contacto en servidor:', err));
   }
 
   // Documents
@@ -778,13 +891,23 @@ class StorageService {
     const exists = list.some((d) => d.id === doc.id);
     const updated = exists ? list.map((d) => (d.id === doc.id ? doc : d)) : [...list, doc];
     localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(updated));
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/documents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(doc),
+    }).catch((err) => console.error('Error guardando documento en servidor:', err));
   }
 
   public deleteDocument(docId: string) {
     const list = this.getDocuments().filter((d) => d.id !== docId);
     localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(list));
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/documents/${docId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando documento en servidor:', err));
   }
 
   // Inventory & Stock of the Estate
@@ -799,13 +922,23 @@ class StorageService {
     const exists = list.some((i) => i.id === item.id);
     const updated = exists ? list.map((i) => (i.id === item.id ? item : i)) : [item, ...list];
     localStorage.setItem(INVENTORY_KEY, JSON.stringify(updated));
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    }).catch((err) => console.error('Error guardando inventario en servidor:', err));
   }
 
   public deleteInventoryItem(itemId: string) {
     const list = this.getInventory().filter((i) => i.id !== itemId);
     localStorage.setItem(INVENTORY_KEY, JSON.stringify(list));
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/inventory/${itemId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando inventario en servidor:', err));
   }
 
   // Incident Reports (Daños, novedades, roturas con fotos)
@@ -834,7 +967,14 @@ class StorageService {
       incidentId: newInc.id,
     });
 
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/incidents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newInc),
+    }).catch((err) => console.error('Error guardando incidente en servidor:', err));
+
     return newInc;
   }
 
@@ -852,13 +992,19 @@ class StorageService {
       });
     }
 
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/incidents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(incident),
+    }).catch((err) => console.error('Error actualizando incidente en servidor:', err));
   }
 
   public deleteIncident(incidentId: string) {
     const list = this.getIncidents().filter((i) => i.id !== incidentId);
     localStorage.setItem(INCIDENTS_KEY, JSON.stringify(list));
-    this.notify();
+    this.notify(false);
   }
 
   // Fee Collections & Cobranzas
@@ -887,7 +1033,14 @@ class StorageService {
       type: 'system',
     });
 
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/fees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collection),
+    }).catch((err) => console.error('Error guardando cobranza en servidor:', err));
+
     return collection;
   }
 
@@ -1005,14 +1158,25 @@ class StorageService {
       updated = [expense, ...list];
     }
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
-    this.notify();
+    this.notify(false);
+
+    fetch('/api/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(expense),
+    }).catch((err) => console.error('Error guardando gasto en servidor:', err));
+
     return expense;
   }
 
   public deleteExpense(expenseId: string) {
     const list = this.getExpenses().filter((e) => e.id !== expenseId);
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/expenses/${expenseId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando gasto en servidor:', err));
   }
 
   // Get complete package of local data for D1 push & backup

@@ -42,6 +42,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [cloudBookings, setCloudBookings] = useState<Booking[]>(bookings);
+
+  useEffect(() => {
+    setCloudBookings(bookings);
+  }, [bookings]);
 
   useEffect(() => {
     if (initialStartDate) setCheckInDate(initialStartDate);
@@ -49,6 +54,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (isOpen) {
       // Re-hydrate from cloud to guarantee fresh reservations from all devices
       storageService.hydrateFromAppStateAsync();
+      fetch('/api/bookings')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.bookings)) {
+            setCloudBookings(data.bookings);
+          }
+        })
+        .catch(() => {});
     }
   }, [initialStartDate, initialEndDate, isOpen]);
 
@@ -76,18 +89,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return 'El rango de días no es válido.';
     }
 
-    // Overlap validation with active bookings in memory
+    // Overlap validation with active bookings from cloud and memory
     const requestedStart = checkInDate;
     const requestedEnd = checkOutDate;
+    const effectiveBookings = cloudBookings.length >= bookings.length ? cloudBookings : bookings;
 
     // Check with bookings
-    for (const b of bookings) {
+    for (const b of effectiveBookings) {
       if (b.status === 'cancelled') continue;
       const bEffectiveEnd = b.checkOutDate;
 
       const overlap = !(requestedEnd < b.checkInDate || requestedStart > bEffectiveEnd);
       if (overlap) {
-        return `Conflicto de fechas: el período se solapa con la reserva de ${b.userName} (${b.checkInDate} al ${b.checkOutDate}).`;
+        return `Conflicto de fechas en la nube: el período se solapa con la reserva de ${b.userName} (${b.checkInDate} al ${b.checkOutDate}).`;
       }
     }
 

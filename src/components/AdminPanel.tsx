@@ -351,9 +351,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Handle Save Settings
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    storageService.saveSettings(settingsFormData);
+    await storageService.saveSettingsAsync(settingsFormData);
     setSettingsSavedMessage(true);
     setTimeout(() => setSettingsSavedMessage(false), 3000);
   };

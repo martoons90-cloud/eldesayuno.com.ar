@@ -167,10 +167,21 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     setSettingsFormData(settings);
   }, [settings]);
 
-  const handleSaveSettingsGeneral = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.settings) {
+          setSettingsFormData((prev) => ({ ...prev, ...data.settings }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveSettingsGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
-    storageService.saveSettings(settingsFormData);
-    showSuccess('Parámetros guardados y sincronizados en tiempo real.');
+    await storageService.saveSettingsAsync(settingsFormData);
+    showSuccess('Parámetros guardados y persistidos en la base de datos de la nube.');
   };
 
   // -------------------------------------------------------------

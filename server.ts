@@ -817,13 +817,18 @@ app.get('/api/r2/file', async (req, res) => {
 import { getFullSeedState } from './src/services/defaultSeedData';
 
 const STATE_FILE_PATH = path.resolve(process.cwd(), 'app-server-state.json');
+let memoryServerState: Record<string, any> | null = null;
 
 function loadServerState(): Record<string, any> {
+  if (memoryServerState) {
+    return memoryServerState;
+  }
   try {
     if (fs.existsSync(STATE_FILE_PATH)) {
       const raw = fs.readFileSync(STATE_FILE_PATH, 'utf-8');
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        memoryServerState = parsed;
         return parsed;
       }
     }
@@ -831,14 +836,22 @@ function loadServerState(): Record<string, any> {
     console.error('[Server State] Error leyendo STATE_FILE_PATH, re-inicializando semilla:', err);
   }
   const seed = getFullSeedState();
-  fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(seed, null, 2), 'utf-8');
+  memoryServerState = seed;
+  try {
+    fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(seed, null, 2), 'utf-8');
+  } catch (writeErr) {
+    console.error('[Server State] Error escribiendo semilla inicial:', writeErr);
+  }
   return seed;
 }
 
 function saveServerState(state: Record<string, any>): void {
   try {
     state.updatedAt = new Date().toISOString();
-    fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+    memoryServerState = state;
+    const tempPath = `${STATE_FILE_PATH}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), 'utf-8');
+    fs.renameSync(tempPath, STATE_FILE_PATH);
   } catch (err) {
     console.error('[Server State] Error escribiendo STATE_FILE_PATH:', err);
   }
@@ -857,19 +870,145 @@ app.get('/api/app-state', (_req, res) => {
   }
 });
 
-// 2. Set/Restore full App State
+// 2. Safe Set/Merge App State (Never blindly wipes out bookings or settings)
 app.post('/api/app-state', (req, res) => {
   try {
-    const data = req.body;
-    if (data && typeof data === 'object') {
-      saveServerState(data);
-      return res.json({ success: true, message: 'Estado actualizado en servidor' });
+    const incoming = req.body;
+    if (!incoming || typeof incoming !== 'object') {
+      return res.status(400).json({ success: false, error: 'Datos no válidos' });
     }
-    return res.status(400).json({ success: false, error: 'Datos no válidos' });
+    const current = loadServerState();
+
+    // Safe merge settings
+    if (incoming.settings && typeof incoming.settings === 'object') {
+      current.settings = { ...current.settings, ...incoming.settings };
+    }
+
+    // Safe merge users
+    if (Array.isArray(incoming.users) && incoming.users.length > 0) {
+      const userMap = new Map<string, any>();
+      (current.users || []).forEach((u: any) => userMap.set(u.id, u));
+      incoming.users.forEach((u: any) => {
+        if (u && u.id) {
+          const prev = userMap.get(u.id) || {};
+          userMap.set(u.id, { ...prev, ...u });
+        }
+      });
+      current.users = Array.from(userMap.values());
+    }
+
+    // Safe merge bookings - NEVER discard existing active bookings unless incoming is non-empty
+    if (Array.isArray(incoming.bookings) && incoming.bookings.length > 0) {
+      const bookingMap = new Map<string, any>();
+      (current.bookings || []).forEach((b: any) => bookingMap.set(b.id, b));
+      incoming.bookings.forEach((b: any) => {
+        if (b && b.id) bookingMap.set(b.id, b);
+      });
+      current.bookings = Array.from(bookingMap.values());
+    }
+
+    if (Array.isArray(incoming.blocks)) {
+      current.blocks = incoming.blocks;
+    }
+    if (Array.isArray(incoming.rules) && incoming.rules.length > 0) {
+      current.rules = incoming.rules;
+    }
+    if (Array.isArray(incoming.contacts) && incoming.contacts.length > 0) {
+      current.contacts = incoming.contacts;
+    }
+    if (Array.isArray(incoming.documents) && incoming.documents.length > 0) {
+      current.documents = incoming.documents;
+    }
+    if (Array.isArray(incoming.inventory) && incoming.inventory.length > 0) {
+      current.inventory = incoming.inventory;
+    }
+    if (Array.isArray(incoming.incidents)) {
+      current.incidents = incoming.incidents;
+    }
+    if (Array.isArray(incoming.fees)) {
+      current.fees = incoming.fees;
+    }
+    if (Array.isArray(incoming.expenses)) {
+      current.expenses = incoming.expenses;
+    }
+
+    saveServerState(current);
+    return res.json({ success: true, message: 'Estado sincronizado de forma segura en el servidor' });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error guardando estado en servidor' });
   }
 });
+
+// 2b. Dedicated Settings Endpoints (Canonical Cloud Database for Ajustes)
+app.get('/api/settings', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, settings: state.settings || {} });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo ajustes del servidor' });
+  }
+});
+
+const handleSaveSettings = async (req: express.Request, res: express.Response) => {
+  try {
+    const updatedSettings = req.body;
+    if (!updatedSettings || typeof updatedSettings !== 'object') {
+      return res.status(400).json({ success: false, error: 'Datos de configuración no válidos.' });
+    }
+
+    const state = loadServerState();
+    state.settings = {
+      ...(state.settings || {}),
+      ...updatedSettings,
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveServerState(state);
+
+    // Also push to Cloudflare D1 if configured
+    const actId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const dbId = process.env.CLOUDFLARE_DATABASE_ID;
+    const token = process.env.CLOUDFLARE_API_TOKEN;
+    if (actId && dbId && token) {
+      const s = state.settings;
+      queryCloudflareD1(
+        actId,
+        dbId,
+        token,
+        `INSERT OR REPLACE INTO trust_settings (id, house_name, location, wifi_ssid, wifi_password, check_in_time, check_out_time, auto_cleaning_buffer_hours, cancellation_min_days, max_guests_limit, emergency_address, logo_url, updated_at)
+         VALUES ('default_settings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          s.houseName || 'Estancia El Desayuno',
+          s.location || '',
+          s.wifiSsid || '',
+          s.wifiPassword || '',
+          s.checkInTime || '14:00',
+          s.checkOutTime || '11:00',
+          s.autoCleaningBufferHours || 24,
+          s.cancellationMinDays || 7,
+          s.maxGuestsLimit || 12,
+          s.emergencyAddress || '',
+          s.logoUrl || '',
+          new Date().toISOString(),
+        ]
+      ).catch((err) => console.warn('[D1 Background Sync] Error guardando settings en D1:', err));
+    }
+
+    return res.json({
+      success: true,
+      settings: state.settings,
+      message: 'Ajustes guardados y persistidos en la base de datos de la nube.',
+    });
+  } catch (err: unknown) {
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Error guardando ajustes en la nube',
+    });
+  }
+};
+
+app.post('/api/settings', handleSaveSettings);
+app.put('/api/settings', handleSaveSettings);
 
 // 3. Get bookings from server
 app.get('/api/bookings', (_req, res) => {
@@ -1064,7 +1203,16 @@ app.post('/api/bookings/:id/cancel', (req, res) => {
   }
 });
 
-// 6. Save/Update User on server
+// 6. Users endpoints
+app.get('/api/users', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, users: state.users || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo usuarios' });
+  }
+});
+
 app.post('/api/users', (req, res) => {
   try {
     const user = req.body;
@@ -1084,6 +1232,80 @@ app.post('/api/users', (req, res) => {
     return res.json({ success: true, user });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error guardando usuario' });
+  }
+});
+
+// Transfer Admin Power
+app.post('/api/users/transfer-admin', (req, res) => {
+  try {
+    const { newAdminUserId, currentAdminUserId } = req.body;
+    if (!newAdminUserId) {
+      return res.status(400).json({ success: false, error: 'Falta newAdminUserId' });
+    }
+    const state = loadServerState();
+    const users = Array.isArray(state.users) ? state.users : [];
+    const newAdmin = users.find((u: any) => u.id === newAdminUserId);
+    if (!newAdmin) {
+      return res.status(404).json({ success: false, error: 'Nuevo administrador no encontrado' });
+    }
+
+    state.users = users.map((u: any) => {
+      if (u.id === newAdminUserId) {
+        return { ...u, role: 'admin' };
+      }
+      if (u.role === 'admin' || (currentAdminUserId && u.id === currentAdminUserId)) {
+        return { ...u, role: 'owner' };
+      }
+      return u;
+    });
+
+    if (!Array.isArray(state.notifications)) state.notifications = [];
+    state.notifications.unshift({
+      id: 'notif-' + Date.now(),
+      title: 'Traspaso de Poder de Administración',
+      body: `${newAdmin.name} ha asumido como Administrador de la sociedad.`,
+      type: 'system',
+      createdAt: new Date().toISOString(),
+      read: false,
+    });
+
+    saveServerState(state);
+    return res.json({
+      success: true,
+      message: `Poder de administración transferido exitosamente a ${newAdmin.name}.`,
+      users: state.users,
+    });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error transfiriendo administración' });
+  }
+});
+
+// Update User Password
+app.post('/api/users/:id/password', (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { password } = req.body;
+    const code = (password || '').trim().toUpperCase();
+    if (code.length !== 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'La contraseña debe ser un código alfanumérico de exactamente 6 caracteres.',
+      });
+    }
+
+    const state = loadServerState();
+    const users = Array.isArray(state.users) ? state.users : [];
+    const idx = users.findIndex((u: any) => u.id === userId);
+    if (idx < 0) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    }
+
+    users[idx] = { ...users[idx], password: code };
+    state.users = users;
+    saveServerState(state);
+    return res.json({ success: true, message: `Contraseña actualizada a "${code}"` });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error actualizando contraseña' });
   }
 });
 
@@ -1107,13 +1329,22 @@ app.post('/api/users/bulk-shares', (req, res) => {
       });
     }
     saveServerState(state);
-    return res.json({ success: true, message: 'Acciones actualizadas en servidor' });
+    return res.json({ success: true, message: 'Acciones actualizadas en servidor', users: state.users });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error actualizando acciones' });
   }
 });
 
-// 8. Create Date Block
+// 8. Date Blocks
+app.get('/api/blocks', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, blocks: state.blocks || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo bloqueos' });
+  }
+});
+
 app.post('/api/blocks', (req, res) => {
   try {
     const block = req.body;
@@ -1124,7 +1355,7 @@ app.post('/api/blocks', (req, res) => {
     const blocks = Array.isArray(state.blocks) ? state.blocks : [];
     const newBlock = {
       ...block,
-      id: 'block-' + Date.now(),
+      id: block.id || 'block-' + Date.now(),
       createdAt: new Date().toISOString(),
     };
     state.blocks = [newBlock, ...blocks];
@@ -1135,7 +1366,6 @@ app.post('/api/blocks', (req, res) => {
   }
 });
 
-// 9. Delete Date Block
 app.delete('/api/blocks/:id', (req, res) => {
   try {
     const blockId = req.params.id;
@@ -1148,7 +1378,224 @@ app.delete('/api/blocks/:id', (req, res) => {
   }
 });
 
-// 10. Save Fee Collection
+// 9. Rules Endpoints
+app.get('/api/rules', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, rules: state.rules || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo reglas' });
+  }
+});
+
+app.post('/api/rules', (req, res) => {
+  try {
+    const rule = req.body;
+    if (!rule || !rule.title) {
+      return res.status(400).json({ success: false, error: 'Regla inválida' });
+    }
+    const state = loadServerState();
+    const rules = Array.isArray(state.rules) ? state.rules : [];
+    const idx = rules.findIndex((r: any) => r.id === rule.id);
+    if (idx >= 0) {
+      rules[idx] = rule;
+    } else {
+      rules.push({ ...rule, id: rule.id || 'rule-' + Date.now() });
+    }
+    state.rules = rules;
+    saveServerState(state);
+    return res.json({ success: true, rules: state.rules });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando regla' });
+  }
+});
+
+app.delete('/api/rules/:id', (req, res) => {
+  try {
+    const ruleId = req.params.id;
+    const state = loadServerState();
+    state.rules = (state.rules || []).filter((r: any) => r.id !== ruleId);
+    saveServerState(state);
+    return res.json({ success: true, rules: state.rules });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando regla' });
+  }
+});
+
+// 10. Contacts Endpoints
+app.get('/api/contacts', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, contacts: state.contacts || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo contactos' });
+  }
+});
+
+app.post('/api/contacts', (req, res) => {
+  try {
+    const contact = req.body;
+    if (!contact || !contact.name) {
+      return res.status(400).json({ success: false, error: 'Contacto inválido' });
+    }
+    const state = loadServerState();
+    const contacts = Array.isArray(state.contacts) ? state.contacts : [];
+    const idx = contacts.findIndex((c: any) => c.id === contact.id);
+    if (idx >= 0) {
+      contacts[idx] = contact;
+    } else {
+      contacts.push({ ...contact, id: contact.id || 'cnt-' + Date.now() });
+    }
+    state.contacts = contacts;
+    saveServerState(state);
+    return res.json({ success: true, contacts: state.contacts });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando contacto' });
+  }
+});
+
+app.delete('/api/contacts/:id', (req, res) => {
+  try {
+    const cntId = req.params.id;
+    const state = loadServerState();
+    state.contacts = (state.contacts || []).filter((c: any) => c.id !== cntId);
+    saveServerState(state);
+    return res.json({ success: true, contacts: state.contacts });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando contacto' });
+  }
+});
+
+// 11. Documents Endpoints
+app.get('/api/documents', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, documents: state.documents || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo documentos' });
+  }
+});
+
+app.post('/api/documents', (req, res) => {
+  try {
+    const doc = req.body;
+    if (!doc || !doc.title) {
+      return res.status(400).json({ success: false, error: 'Documento inválido' });
+    }
+    const state = loadServerState();
+    const docs = Array.isArray(state.documents) ? state.documents : [];
+    const idx = docs.findIndex((d: any) => d.id === doc.id);
+    if (idx >= 0) {
+      docs[idx] = doc;
+    } else {
+      docs.push({ ...doc, id: doc.id || 'doc-' + Date.now() });
+    }
+    state.documents = docs;
+    saveServerState(state);
+    return res.json({ success: true, documents: state.documents });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando documento' });
+  }
+});
+
+app.delete('/api/documents/:id', (req, res) => {
+  try {
+    const docId = req.params.id;
+    const state = loadServerState();
+    state.documents = (state.documents || []).filter((d: any) => d.id !== docId);
+    saveServerState(state);
+    return res.json({ success: true, documents: state.documents });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando documento' });
+  }
+});
+
+// 12. Inventory Endpoints
+app.get('/api/inventory', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, inventory: state.inventory || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo inventario' });
+  }
+});
+
+app.post('/api/inventory', (req, res) => {
+  try {
+    const item = req.body;
+    if (!item || !item.name) {
+      return res.status(400).json({ success: false, error: 'Artículo inválido' });
+    }
+    const state = loadServerState();
+    const inv = Array.isArray(state.inventory) ? state.inventory : [];
+    const idx = inv.findIndex((i: any) => i.id === item.id);
+    if (idx >= 0) {
+      inv[idx] = item;
+    } else {
+      inv.push({ ...item, id: item.id || 'inv-' + Date.now() });
+    }
+    state.inventory = inv;
+    saveServerState(state);
+    return res.json({ success: true, inventory: state.inventory });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando inventario' });
+  }
+});
+
+app.delete('/api/inventory/:id', (req, res) => {
+  try {
+    const invId = req.params.id;
+    const state = loadServerState();
+    state.inventory = (state.inventory || []).filter((i: any) => i.id !== invId);
+    saveServerState(state);
+    return res.json({ success: true, inventory: state.inventory });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando inventario' });
+  }
+});
+
+// 13. Incidents Endpoints
+app.get('/api/incidents', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, incidents: state.incidents || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo incidentes' });
+  }
+});
+
+app.post('/api/incidents', (req, res) => {
+  try {
+    const incident = req.body;
+    if (!incident || !incident.title) {
+      return res.status(400).json({ success: false, error: 'Incidente inválido' });
+    }
+    const state = loadServerState();
+    const incs = Array.isArray(state.incidents) ? state.incidents : [];
+    const idx = incs.findIndex((i: any) => i.id === incident.id);
+    if (idx >= 0) {
+      incs[idx] = incident;
+    } else {
+      incs.unshift({ ...incident, id: incident.id || 'inc-' + Date.now() });
+    }
+    state.incidents = incs;
+    saveServerState(state);
+    return res.json({ success: true, incidents: state.incidents });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando incidente' });
+  }
+});
+
+// 14. Fee Collections
+app.get('/api/fees', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, fees: state.fees || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo cobranzas' });
+  }
+});
+
 app.post('/api/fees', (req, res) => {
   try {
     const fee = req.body;
@@ -1171,7 +1618,16 @@ app.post('/api/fees', (req, res) => {
   }
 });
 
-// 11. Save Expense
+// 15. Expenses
+app.get('/api/expenses', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, expenses: state.expenses || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo gastos' });
+  }
+});
+
 app.post('/api/expenses', (req, res) => {
   try {
     const expense = req.body;
@@ -1191,6 +1647,18 @@ app.post('/api/expenses', (req, res) => {
     return res.json({ success: true, expense });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error guardando gasto' });
+  }
+});
+
+app.delete('/api/expenses/:id', (req, res) => {
+  try {
+    const expId = req.params.id;
+    const state = loadServerState();
+    state.expenses = (state.expenses || []).filter((e: any) => e.id !== expId);
+    saveServerState(state);
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando gasto' });
   }
 });
 async function bootstrap() {
