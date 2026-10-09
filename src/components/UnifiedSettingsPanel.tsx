@@ -869,13 +869,13 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                           <span className={`px-2 py-0.5 text-xs font-mono font-bold rounded ${
                             isSharesBalanced ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'
                           }`}>
-                            {totalAssignedShares.toFixed(2)}% Asignado
+                            {totalAssignedShares.toFixed(4)}% Asignado
                           </span>
                         </div>
                         <p className="text-[11px] opacity-90 mt-0.5">
                           {isSharesBalanced
-                            ? '✓ Las acciones están perfectamente balanceadas al 100.00%. Todos los gastos y cobros de expensas se dividen exactamente según estos porcentajes.'
-                            : `⚠️ Atención: La suma de acciones difiere del 100% (diferencia: ${(100 - totalAssignedShares).toFixed(2)}%). Ajuste las cuotas para un reparto exacto.`}
+                            ? '✓ Las acciones están perfectamente balanceadas al 100.0000%. Todos los gastos y cobros de expensas se dividen exactamente según estos porcentajes.'
+                            : `⚠️ Atención: La suma de acciones difiere del 100% (diferencia: ${(100 - totalAssignedShares).toFixed(4)}%). Ajuste las cuotas para un reparto exacto.`}
                         </p>
                       </div>
                     </div>
@@ -942,7 +942,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono font-bold text-xs text-[#163323] bg-[#EFE9DB] px-2 py-0.5 border border-[#DCD4C0]">
-                                {(u.sharePercentage ?? 6.25).toFixed(2)}%
+                                {(u.sharePercentage ?? 6.25).toFixed(4)}%
                               </span>
                               <button
                                 type="button"
@@ -2408,17 +2408,17 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                               isBalanced ? 'bg-emerald-200 text-emerald-950' : 'bg-amber-200 text-amber-950'
                             }`}
                           >
-                            {total.toFixed(2)}%
+                            {total.toFixed(4)}%
                           </span>
                         </div>
                         <p className="text-[11px] mt-1 opacity-90">
                           {isBalanced ? (
-                            '✓ Las acciones suman exactamente el 100.00%. Toda expensa o gasto liquidado se dividirá de forma armónica.'
+                            '✓ Las acciones suman exactamente el 100.0000%. Toda expensa o gasto liquidado se dividirá de forma armónica.'
                           ) : (
                             <>
                               ⚠️ Atención: Hay una diferencia de{' '}
-                              <strong>{Math.abs(diff).toFixed(2)}%</strong> ({diff > 0 ? 'Falta asignar' : 'Excedente'}).
-                              Para un reparto exacto, la suma debe ser 100.00%.
+                              <strong>{Math.abs(diff).toFixed(4)}%</strong> ({diff > 0 ? 'Falta asignar' : 'Excedente'}).
+                              Para un reparto exacto, la suma debe ser 100.0000%.
                             </>
                           )}
                         </p>
@@ -2441,7 +2441,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                             [1, 2, 3, 4].forEach((cNum) => {
                               const members = cabezasMap[cNum] || [];
                               if (members.length > 0) {
-                                const perMember = Math.round((25 / members.length) * 100) / 100;
+                                const perMember = Math.round((25 / members.length) * 10000) / 10000;
                                 members.forEach((m) => {
                                   newMap[m.id] = perMember;
                                 });
@@ -2461,7 +2461,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                             const newMap: Record<string, number> = {};
                             const count = users.length;
                             if (count > 0) {
-                              const perUser = Math.round((100 / count) * 100) / 100;
+                              const perUser = Math.round((100 / count) * 10000) / 10000;
                               users.forEach((u) => {
                                 newMap[u.id] = perUser;
                               });
@@ -2511,7 +2511,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const share = Math.round((25 / members.length) * 100) / 100;
+                                    const share = Math.round((25 / members.length) * 10000) / 10000;
                                     setSharesMatrixData((prev) => {
                                       const next = { ...prev };
                                       members.forEach((m) => {
@@ -2526,7 +2526,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                 </button>
 
                                 <span className="px-2 py-0.5 bg-white border border-[#D5CDBC] font-mono font-bold text-xs text-[#163323]">
-                                  Subtotal Cabeza: {cabezaSubtotal.toFixed(2)}%
+                                  Subtotal Cabeza: {cabezaSubtotal.toFixed(4)}%
                                 </span>
                               </div>
                             </div>
@@ -2565,7 +2565,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                     <div className="flex items-center gap-2 self-end sm:self-auto">
                                       {/* Quick Presets */}
                                       <div className="hidden md:flex items-center gap-1">
-                                        {[25, 12.5, 6.25, 2.78].map((preset) => (
+                                        {[25, 12.5, 6.25, 2.7778].map((preset) => (
                                           <button
                                             key={preset}
                                             type="button"
@@ -2576,7 +2576,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                               }))
                                             }
                                             className={`px-1.5 py-0.5 text-[10px] border transition-colors cursor-pointer ${
-                                              Math.abs(currentVal - preset) < 0.01
+                                              Math.abs(currentVal - preset) < 0.0001
                                                 ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
                                                 : 'bg-white hover:bg-[#FAF8F5] text-[#55695B] border-[#DDD5BF]'
                                             }`}
@@ -2589,7 +2589,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                       <div className="flex items-center">
                                         <input
                                           type="number"
-                                          step="0.01"
+                                          step="0.0001"
                                           min="0"
                                           max="100"
                                           value={currentVal}

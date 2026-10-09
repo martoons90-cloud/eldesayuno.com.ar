@@ -277,7 +277,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           userName: m.name,
           partName: m.partName,
           cabezaNumber: m.cabezaNumber,
-          percentage: Math.round(pct * 100) / 100,
+          percentage: Math.round(pct * 10000) / 10000,
           assignedAmount: assigned,
           paidAmount: 0,
           status: 'pending',
@@ -983,7 +983,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       </span>
                     </div>
                     <div className="flex justify-between text-[11px] bg-[#FAF8F5] p-1.5 border border-[#E3DFC8]">
-                      <span>Tu Cuota Estimada ({mySharePct.toFixed(2)}% de Acciones):</span>
+                      <span>Tu Cuota Estimada ({mySharePct.toFixed(4)}% de Acciones):</span>
                       <strong className="font-mono text-emerald-800">${myEstimatedCost.toLocaleString()} ARS</strong>
                     </div>
                     <div className="flex justify-between text-[11px]">
@@ -1017,8 +1017,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2 max-h-48 overflow-y-auto">
                     <div className="flex justify-between items-center font-bold text-[#163323]">
                       <span>Ingresar Porcentajes por Socio (%):</span>
-                      <span className={`font-mono text-xs ${Math.abs(liveTransferTotalPct - 100) < 0.1 ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}`}>
-                        Total: {liveTransferTotalPct.toFixed(2)}% / 100%
+                      <span className={`font-mono text-xs ${Math.abs(liveTransferTotalPct - 100) < 0.005 ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}`}>
+                        Total: {liveTransferTotalPct.toFixed(4)}% / 100%
                       </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -1027,10 +1027,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                           <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
                           <input
                             type="number"
-                            step={0.1}
+                            step={0.0001}
                             min={0}
                             max={100}
-                            value={transferCustomPercentages[u.id] ?? (100 / 15).toFixed(2)}
+                            value={transferCustomPercentages[u.id] ?? (100 / 15).toFixed(4)}
                             onChange={(e) =>
                               setTransferCustomPercentages({
                                 ...transferCustomPercentages,
@@ -1098,7 +1098,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                           <tr key={alloc.userId} className="hover:bg-[#FAF8F5]">
                             <td className="p-1.5 font-semibold text-[#163323]">{alloc.userName}</td>
                             <td className="p-1.5 text-[#56685B]">{alloc.partName}</td>
-                            <td className="p-1.5 text-right font-mono text-[#56685B]">{alloc.percentage.toFixed(2)}%</td>
+                            <td className="p-1.5 text-right font-mono text-[#56685B]">{alloc.percentage.toFixed(4)}%</td>
                             <td className="p-1.5 text-right font-mono font-bold text-[#163323]">
                               ${alloc.assignedAmount.toLocaleString()}
                             </td>
@@ -1185,7 +1185,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
                 <div className="text-right">
                   <span className="text-[11px] font-mono font-bold text-[#BFA270] bg-[#1B3B2B] px-2 py-0.5 rounded">
-                    {(currentUser.sharePercentage ?? 6.25).toFixed(2)}% de Acciones
+                    {(currentUser.sharePercentage ?? 6.25).toFixed(4)}% de Acciones
                   </span>
                   <span className="block text-sm font-bold font-mono text-[#163323] mt-0.5">
                     ${Math.round((periodTotalAmount * ((currentUser.sharePercentage ?? 6.25) / 100))).toLocaleString()} ARS
@@ -1222,7 +1222,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                           {isMe && <span className="text-[9px] px-1 py-0.2 bg-[#1B3B2B] text-white rounded">Tú</span>}
                         </td>
                         <td className="p-2 text-[#56685B]">{u.partName}</td>
-                        <td className="p-2 text-right font-mono text-[#56685B]">{pct.toFixed(2)}%</td>
+                        <td className="p-2 text-right font-mono text-[#56685B]">{pct.toFixed(4)}%</td>
                         <td className="p-2 text-right font-mono font-bold text-[#163323]">
                           ${amt.toLocaleString()}
                         </td>

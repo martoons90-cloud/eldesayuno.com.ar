@@ -1322,7 +1322,7 @@ app.post('/api/users/bulk-shares', (req, res) => {
         if (sharesMap[u.id] !== undefined) {
           return {
             ...u,
-            sharePercentage: Math.max(0, Math.round(Number(sharesMap[u.id]) * 100) / 100),
+            sharePercentage: Math.max(0, Math.round(Number(sharesMap[u.id]) * 10000) / 10000),
           };
         }
         return u;

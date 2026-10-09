@@ -137,7 +137,7 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
               <div className="text-lg font-bold text-[#19231A] mt-1 flex items-center gap-2 flex-wrap">
                 <span>{currentUser.partName}</span>
                 <span className="px-2 py-0.5 bg-[#1B3B2B] text-[#FAF8F5] text-xs font-mono font-bold rounded shadow-2xs">
-                  {(currentUser.sharePercentage ?? 6.25).toFixed(2)}% de Acciones
+                  {(currentUser.sharePercentage ?? 6.25).toFixed(4)}% de Acciones
                 </span>
               </div>
               <p className="text-xs text-[#7A8E7E] mt-1 flex items-center gap-1.5">

@@ -475,7 +475,7 @@ class StorageService {
         ...cu,
         sharePercentage: typeof cu.sharePercentage === 'number' && !isNaN(cu.sharePercentage)
           ? cu.sharePercentage
-          : Math.round((100 / Math.max(1, parsed.length)) * 100) / 100,
+          : Math.round((100 / Math.max(1, parsed.length)) * 10000) / 10000,
       }));
 
       return [...defaultMerged, ...customUsers];
@@ -512,7 +512,7 @@ class StorageService {
       if (sharesMap[u.id] !== undefined) {
         return {
           ...u,
-          sharePercentage: Math.max(0, Math.round(Number(sharesMap[u.id]) * 100) / 100),
+          sharePercentage: Math.max(0, Math.round(Number(sharesMap[u.id]) * 10000) / 10000),
         };
       }
       return u;

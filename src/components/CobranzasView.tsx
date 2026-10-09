@@ -151,7 +151,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           userName: m.name,
           partName: m.partName,
           cabezaNumber: m.cabezaNumber,
-          percentage: Math.round(pct * 100) / 100,
+          percentage: Math.round(pct * 10000) / 10000,
           assignedAmount: assigned,
           paidAmount: 0,
           status: 'pending',
@@ -814,7 +814,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                                 </td>
                                 <td className="py-2 px-3 text-[#56685B]">{alloc.partName}</td>
                                 <td className="py-2 px-3 text-right font-mono text-[#56685B]">
-                                  {alloc.percentage.toFixed(2)}%
+                                  {alloc.percentage.toFixed(4)}%
                                 </td>
                                 <td className="py-2 px-3 text-right font-mono font-bold text-[#163323]">
                                   ${alloc.assignedAmount.toLocaleString()}
@@ -1011,7 +1011,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                 <div className="flex justify-between">
                   <span className="text-[#637568]">Porcentaje de la Cobranza:</span>
                   <span className="font-mono text-[#56685B]">
-                    {recordPaymentState.userAllocation.percentage.toFixed(2)}%
+                    {recordPaymentState.userAllocation.percentage.toFixed(4)}%
                   </span>
                 </div>
               </div>
@@ -1523,8 +1523,8 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
             <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2 max-h-48 overflow-y-auto">
               <div className="flex justify-between items-center font-bold text-[#163323]">
                 <span>Ajustar Porcentajes Individuales:</span>
-                <span className={`font-mono text-xs ${Math.abs(totalCalculatedPercentages - 100) < 0.1 ? 'text-emerald-700' : 'text-red-600'}`}>
-                  Suma Total: {totalCalculatedPercentages.toFixed(2)}% / 100%
+                <span className={`font-mono text-xs ${Math.abs(totalCalculatedPercentages - 100) < 0.005 ? 'text-emerald-700' : 'text-red-600'}`}>
+                  Suma Total: {totalCalculatedPercentages.toFixed(4)}% / 100%
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -1533,7 +1533,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
                     <input
                       type="number"
-                      step={0.1}
+                      step={0.0001}
                       min={0}
                       max={100}
                       value={customPercentages[u.id] ?? 0}
@@ -1593,7 +1593,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     <tr key={alloc.userId} className="hover:bg-[#FAF8F5]">
                       <td className="p-1.5 font-semibold text-[#163323]">{alloc.userName}</td>
                       <td className="p-1.5 text-[#56685B]">{alloc.partName}</td>
-                      <td className="p-1.5 text-right font-mono text-[#56685B]">{alloc.percentage.toFixed(2)}%</td>
+                      <td className="p-1.5 text-right font-mono text-[#56685B]">{alloc.percentage.toFixed(4)}%</td>
                       <td className="p-1.5 text-right font-mono font-bold text-[#163323]">
                         ${alloc.assignedAmount.toLocaleString()}
                       </td>

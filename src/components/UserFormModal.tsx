@@ -153,7 +153,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         setCabezaSelectionMode('existing');
         setSelectedCabezaKey(existingCabezasList[0].key);
         const membersCount = existingCabezasList[0].members.length;
-        setSharePercentage(Math.round((25 / Math.max(1, membersCount + 1)) * 100) / 100);
+        setSharePercentage(Math.round((25 / Math.max(1, membersCount + 1)) * 10000) / 10000);
       } else {
         setCabezaSelectionMode('new');
         setNewPartName('Cabeza 1');
@@ -201,7 +201,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       partName: effectivePartName,
       cabezaNumber: effectiveCabezaNumber,
       annualQuotaDays: Number(annualQuotaDays) || 30,
-      sharePercentage: Math.max(0, Math.round(Number(sharePercentage) * 100) / 100),
+      sharePercentage: Math.max(0, Math.round(Number(sharePercentage) * 10000) / 10000),
       color: effectiveColor,
       password: password.trim().toUpperCase() || generateRandomPassword(),
       role,
@@ -529,7 +529,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 <span>4. Porcentaje de Acciones / Aporte (% División de Gastos)</span>
               </h4>
               <span className="px-2 py-0.5 bg-[#EFE9DB] border border-[#DCD4C0] text-[10px] font-mono font-bold text-[#163323]">
-                {sharePercentage}% de Acciones
+                {Number(sharePercentage).toFixed(4)}% de Acciones
               </span>
             </div>
 
@@ -545,7 +545,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 <div className="flex items-center">
                   <input
                     type="number"
-                    step="0.01"
+                    step="0.0001"
                     min="0"
                     max="100"
                     value={sharePercentage}
@@ -569,28 +569,28 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                     onClick={() => setSharePercentage(25)}
                     className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
                   >
-                    25.00% (Cabeza completa)
+                    25.000% (Cabeza completa)
                   </button>
                   <button
                     type="button"
                     onClick={() => setSharePercentage(12.5)}
                     className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
                   >
-                    12.50% (2 socios)
+                    12.500% (2 socios)
                   </button>
                   <button
                     type="button"
                     onClick={() => setSharePercentage(6.25)}
                     className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
                   >
-                    6.25% (4 socios)
+                    6.250% (4 socios)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSharePercentage(2.78)}
+                    onClick={() => setSharePercentage(2.7778)}
                     className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
                   >
-                    2.78% (9 socios)
+                    2.7778% (9 socios / 25%)
                   </button>
                 </div>
               </div>
