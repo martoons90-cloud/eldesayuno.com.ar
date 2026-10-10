@@ -207,7 +207,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     if (propertySaveTimerRef.current) clearTimeout(propertySaveTimerRef.current);
     setPropertySaveStatus('saving');
     try {
-      await storageService.saveSettingsAsync(settingsFormData);
+      const saved = await storageService.saveSettingsAsync(settingsFormData);
+      if (saved) setSettingsFormData(saved);
       setPropertySaveStatus('saved');
       showSuccess('✓ Ajustes guardados y sincronizados en la base de datos central para todas las sesiones.');
     } catch {
@@ -222,7 +223,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     if (propertySaveTimerRef.current) clearTimeout(propertySaveTimerRef.current);
     propertySaveTimerRef.current = setTimeout(async () => {
       try {
-        await storageService.saveSettingsAsync(updated);
+        const saved = await storageService.saveSettingsAsync(updated);
+        if (saved) setSettingsFormData(saved);
         setPropertySaveStatus('saved');
       } catch {
         setPropertySaveStatus('saved');
@@ -232,7 +234,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
 
   const handlePropertyFieldBlur = () => {
     if (propertySaveTimerRef.current) clearTimeout(propertySaveTimerRef.current);
-    storageService.saveSettingsAsync(settingsFormData).then(() => {
+    storageService.saveSettingsAsync(settingsFormData).then((saved) => {
+      if (saved) setSettingsFormData(saved);
       setPropertySaveStatus('saved');
     });
   };

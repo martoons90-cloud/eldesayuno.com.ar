@@ -43,6 +43,7 @@ import {
   SEED_FEE_COLLECTIONS,
   SEED_EXPENSES,
 } from './defaultSeedData';
+import { d1Service } from './d1Service';
 
 export const DEFAULT_USERS: User[] = SEED_USERS;
 export const DEFAULT_SETTINGS: TrustSettings = SEED_SETTINGS;
@@ -56,6 +57,31 @@ export const DEFAULT_INCIDENTS: IncidentReport[] = SEED_INCIDENTS;
 export const DEFAULT_NOTIFICATIONS: NotificationPush[] = SEED_NOTIFICATIONS;
 export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = SEED_FEE_COLLECTIONS;
 export const DEFAULT_EXPENSES: ExpenseItem[] = SEED_EXPENSES;
+
+export function normalizeSettings(s: any): TrustSettings {
+  if (!s || typeof s !== 'object') return DEFAULT_SETTINGS;
+  return {
+    houseName: s.houseName ?? s.house_name ?? DEFAULT_SETTINGS.houseName,
+    location: s.location ?? DEFAULT_SETTINGS.location,
+    wifiSsid: s.wifiSsid ?? s.wifi_ssid ?? DEFAULT_SETTINGS.wifiSsid,
+    wifiPassword: s.wifiPassword ?? s.wifi_password ?? DEFAULT_SETTINGS.wifiPassword,
+    checkInTime: s.checkInTime ?? s.check_in_time ?? DEFAULT_SETTINGS.checkInTime,
+    checkOutTime: s.checkOutTime ?? s.check_out_time ?? DEFAULT_SETTINGS.checkOutTime,
+    autoCleaningBufferHours: Number(s.autoCleaningBufferHours ?? s.auto_cleaning_buffer_hours ?? DEFAULT_SETTINGS.autoCleaningBufferHours),
+    cancellationMinDays: Number(s.cancellationMinDays ?? s.cancellation_min_days ?? DEFAULT_SETTINGS.cancellationMinDays),
+    maxGuestsLimit: Number(s.maxGuestsLimit ?? s.max_guests_limit ?? DEFAULT_SETTINGS.maxGuestsLimit),
+    emergencyAddress: s.emergencyAddress ?? s.emergency_address ?? DEFAULT_SETTINGS.emergencyAddress,
+    logoUrl: s.logoUrl ?? s.logo_url ?? '',
+    cbu: s.cbu ?? DEFAULT_SETTINGS.cbu,
+    aliasBancario: s.aliasBancario ?? s.alias_bancario ?? DEFAULT_SETTINGS.aliasBancario,
+    titularCuenta: s.titularCuenta ?? s.titular_cuenta ?? DEFAULT_SETTINGS.titularCuenta,
+    cuitFideicomiso: s.cuitFideicomiso ?? s.cuit_fideicomiso ?? DEFAULT_SETTINGS.cuitFideicomiso,
+    bancoNombre: s.bancoNombre ?? s.banco_nombre ?? DEFAULT_SETTINGS.bancoNombre,
+    wifiCoverageNotes: s.wifiCoverageNotes ?? s.wifi_coverage_notes ?? DEFAULT_SETTINGS.wifiCoverageNotes,
+    slogan: s.slogan ?? DEFAULT_SETTINGS.slogan,
+    updatedAt: s.updatedAt ?? s.updated_at ?? new Date().toISOString(),
+  };
+}
 
 // Helper to calculate days used per user from active bookings
 function recalculateUsersUsedDays(users: User[], bookings: Booking[]): User[] {
@@ -259,27 +285,22 @@ class StorageService {
         }
         if (data.data.settings && typeof data.data.settings === 'object') {
           const currentSettings = this.getSettings();
-          const serverSettings = data.data.settings;
-          const mergedSettings = { ...DEFAULT_SETTINGS, ...currentSettings, ...serverSettings };
+          const serverNormalized = normalizeSettings(data.data.settings);
 
           // Deep comparison of all setting fields
           let isDifferent = false;
-          const allKeys = new Set([
-            ...Object.keys(currentSettings),
-            ...Object.keys(serverSettings),
-          ]);
-          for (const key of allKeys) {
+          for (const key of Object.keys(serverNormalized) as (keyof TrustSettings)[]) {
             if (key === 'updatedAt') continue;
-            if ((currentSettings as any)[key] !== (serverSettings as any)[key]) {
+            if (currentSettings[key] !== serverNormalized[key]) {
               isDifferent = true;
               break;
             }
           }
 
           if (isDifferent) {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedSettings));
-            if (mergedSettings.logoUrl) {
-              localStorage.setItem('el_desayuno_custom_logo', mergedSettings.logoUrl);
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(serverNormalized));
+            if (serverNormalized.logoUrl) {
+              localStorage.setItem('el_desayuno_custom_logo', serverNormalized.logoUrl);
             }
             hasChanges = true;
           }
@@ -902,25 +923,49 @@ class StorageService {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.settings && typeof data.settings === 'object') {
-          const current = this.getSettings();
-          const merged = { ...DEFAULT_SETTINGS, ...current, ...data.settings };
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
-          if (merged.logoUrl) {
-            localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
+          const normalized = normalizeSettings(data.settings);
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
+          if (normalized.logoUrl) {
+            localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
           }
           this.notify(false, true);
-          return merged;
+          return normalized;
         }
       }
     } catch (e) {
       console.warn('Error fetching latest settings from DB:', e);
     }
+
+    // Direct Cloudflare D1 query fallback if /api/settings is unavailable (e.g. running on Cloudflare Pages static CDN)
+    if (d1Service.isConnected()) {
+      try {
+        const d1Res = await d1Service.executeQuery("SELECT * FROM trust_settings WHERE id = 'default_settings' LIMIT 1");
+        if (d1Res.success && d1Res.results && d1Res.results[0]) {
+          const normalized = normalizeSettings(d1Res.results[0]);
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
+          if (normalized.logoUrl) {
+            localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
+          }
+          this.notify(false, true);
+          return normalized;
+        }
+      } catch (err) {
+        console.warn('D1 direct fallback error:', err);
+      }
+    }
+
     return this.getSettings();
   }
 
   public async saveSettingsAsync(settings: Partial<TrustSettings>): Promise<TrustSettings> {
     const current = this.getSettings();
-    const mergedToSave = { ...current, ...settings };
+    const mergedToSave = { ...current, ...settings, updatedAt: new Date().toISOString() };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedToSave));
+    if (mergedToSave.logoUrl) {
+      localStorage.setItem('el_desayuno_custom_logo', mergedToSave.logoUrl);
+    }
+    this.notify(false, true);
+
     try {
       const res = await fetch(`/api/settings?_t=${Date.now()}`, {
         method: 'POST',
@@ -933,17 +978,52 @@ class StorageService {
       });
       const data = await res.json();
       if (data.success && data.settings) {
-        const finalMerged = { ...DEFAULT_SETTINGS, ...mergedToSave, ...data.settings };
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(finalMerged));
-        if (finalMerged.logoUrl) {
-          localStorage.setItem('el_desayuno_custom_logo', finalMerged.logoUrl);
+        const finalNormalized = normalizeSettings(data.settings);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(finalNormalized));
+        if (finalNormalized.logoUrl) {
+          localStorage.setItem('el_desayuno_custom_logo', finalNormalized.logoUrl);
         }
         this.notify(false, true);
-        return finalMerged;
+        return finalNormalized;
       }
     } catch (err) {
-      console.warn('Error guardando ajustes en la nube:', err);
+      console.warn('Error guardando ajustes en /api/settings:', err);
     }
+
+    // Direct Cloudflare D1 write fallback if running on Cloudflare Pages
+    if (d1Service.isConnected()) {
+      try {
+        const s = mergedToSave;
+        await d1Service.executeQuery(
+          `INSERT OR REPLACE INTO trust_settings (id, house_name, location, wifi_ssid, wifi_password, check_in_time, check_out_time, auto_cleaning_buffer_hours, cancellation_min_days, max_guests_limit, emergency_address, logo_url, cbu, alias_bancario, cuit_fideicomiso, banco_nombre, titular_cuenta, wifi_coverage_notes, slogan, updated_at)
+           VALUES ('default_settings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            s.houseName || 'Estancia El Desayuno',
+            s.location || '',
+            s.wifiSsid || '',
+            s.wifiPassword || '',
+            s.checkInTime || '14:00',
+            s.checkOutTime || '11:00',
+            s.autoCleaningBufferHours || 24,
+            s.cancellationMinDays || 7,
+            s.maxGuestsLimit || 12,
+            s.emergencyAddress || '',
+            s.logoUrl || '',
+            s.cbu || '',
+            s.aliasBancario || '',
+            s.cuitFideicomiso || '',
+            s.bancoNombre || '',
+            s.titularCuenta || '',
+            s.wifiCoverageNotes || '',
+            s.slogan || 'Cuatro Partes, Un Mismo Objetivo',
+            new Date().toISOString(),
+          ]
+        );
+      } catch (err) {
+        console.warn('Error persistiendo en D1:', err);
+      }
+    }
+
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedToSave));
     this.notify(false, true);
     return mergedToSave;

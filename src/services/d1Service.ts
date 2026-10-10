@@ -180,27 +180,47 @@ class CloudflareD1Service {
   }
 
   public loadConfig(): D1Config {
+    const envAccountId =
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLOUDFLARE_ACCOUNT_ID) ||
+      'b36aef318f314d0aaaef32a2155d9841';
+    const envDatabaseId =
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLOUDFLARE_DATABASE_ID) ||
+      'f0474948-373a-4522-833b-36eb13858100';
+    const envApiToken =
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLOUDFLARE_API_TOKEN) ||
+      'cfat_eAr1X7lzTtl0Mbov4nGM0l1F8BCW61SrNWNQqEVA34a6cee2';
+
     if (typeof window === 'undefined') {
       return {
-        accountId: '',
-        databaseId: '',
-        apiToken: '',
-        enabled: false,
+        accountId: envAccountId,
+        databaseId: envDatabaseId,
+        apiToken: envApiToken,
+        enabled: Boolean(envAccountId && envDatabaseId && envApiToken),
       };
     }
     const raw = localStorage.getItem(D1_CONFIG_KEY);
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        return {
+          accountId: parsed.accountId || envAccountId,
+          databaseId: parsed.databaseId || envDatabaseId,
+          apiToken: parsed.apiToken || envApiToken,
+          enabled: true,
+          lastConnectedAt: parsed.lastConnectedAt || new Date().toISOString(),
+          databaseName: parsed.databaseName || 'el-desayuno-d1',
+        };
       } catch {
         // fallback
       }
     }
     return {
-      accountId: '',
-      databaseId: '',
-      apiToken: '',
-      enabled: false,
+      accountId: envAccountId,
+      databaseId: envDatabaseId,
+      apiToken: envApiToken,
+      enabled: true,
+      lastConnectedAt: new Date().toISOString(),
+      databaseName: 'el-desayuno-d1',
     };
   }
 
@@ -450,17 +470,115 @@ class CloudflareD1Service {
         }),
       });
 
-      const data = await res.json();
-      if (data.success && data.data) {
-        return { success: true, data: data.data };
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          return { success: true, data: data.data };
+        }
       }
-      return { success: false, error: data.error || 'Error al obtener datos desde Cloudflare D1' };
-    } catch (err: unknown) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'Error en la lectura de Cloudflare D1',
-      };
+    } catch {
+      // Fallback to direct Cloudflare REST API below
     }
+
+    // Direct Cloudflare D1 query fallback (essential for Cloudflare Pages static deployment)
+    if (this.config.accountId && this.config.databaseId && this.config.apiToken) {
+      try {
+        const [usersRes, bookingsRes, blocksRes, settingsRes] = await Promise.all([
+          this.executeQuery('SELECT * FROM users ORDER BY name ASC;'),
+          this.executeQuery('SELECT * FROM bookings ORDER BY check_in_date DESC;'),
+          this.executeQuery('SELECT * FROM date_blocks ORDER BY start_date DESC;'),
+          this.executeQuery("SELECT * FROM trust_settings WHERE id = 'default_settings' LIMIT 1;"),
+        ]);
+
+        const users: User[] = (usersRes.results || []).map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          role: row.role,
+          partName: row.part_name,
+          annualQuotaDays: row.annual_quota_days,
+          usedDays: row.used_days,
+          pendingDays: row.pending_days,
+          color: row.color,
+          avatarInitials: row.avatar_initials,
+          phone: row.phone,
+          active: Boolean(row.active),
+          createdAt: row.created_at,
+        }));
+
+        const bookings: Booking[] = (bookingsRes.results || []).map((row: any) => ({
+          id: row.id,
+          userId: row.user_id,
+          userName: row.user_name,
+          userColor: row.user_color,
+          partName: row.part_name,
+          checkInDate: row.check_in_date,
+          checkOutDate: row.check_out_date,
+          totalDays: row.total_days,
+          status: row.status,
+          guestsCount: row.guests_count,
+          arrivalTime: row.arrival_time,
+          notes: row.notes,
+          cleaningBufferApplied: Boolean(row.cleaning_buffer_applied),
+          cleaningBufferEndDate: row.cleaning_buffer_end_date,
+          createdAt: row.created_at,
+        }));
+
+        const blocks: DateBlock[] = (blocksRes.results || []).map((row: any) => ({
+          id: row.id,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          totalDays: row.total_days,
+          reason: row.reason,
+          title: row.title,
+          notes: row.notes,
+          createdBy: row.created_by,
+          createdAt: row.created_at,
+        }));
+
+        const rawSettings = settingsRes.results?.[0] as any;
+        const settings: TrustSettings | undefined = rawSettings
+          ? {
+              houseName: rawSettings.house_name,
+              slogan: rawSettings.slogan || 'Cuatro Partes, Un Mismo Objetivo',
+              location: rawSettings.location,
+              wifiSsid: rawSettings.wifi_ssid,
+              wifiPassword: rawSettings.wifi_password,
+              wifiCoverageNotes: rawSettings.wifi_coverage_notes || '',
+              checkInTime: rawSettings.check_in_time,
+              checkOutTime: rawSettings.check_out_time,
+              autoCleaningBufferHours: rawSettings.auto_cleaning_buffer_hours,
+              cancellationMinDays: rawSettings.cancellation_min_days,
+              maxGuestsLimit: rawSettings.max_guests_limit,
+              emergencyAddress: rawSettings.emergency_address,
+              logoUrl: rawSettings.logo_url,
+              cbu: rawSettings.cbu || '',
+              aliasBancario: rawSettings.alias_bancario || '',
+              cuitFideicomiso: rawSettings.cuit_fideicomiso || '',
+              bancoNombre: rawSettings.banco_nombre || '',
+              titularCuenta: rawSettings.titular_cuenta || '',
+            }
+          : undefined;
+
+        return {
+          success: true,
+          data: {
+            users,
+            bookings,
+            blocks,
+            settings,
+            notifications: [],
+          },
+        };
+      } catch (directErr: any) {
+        return { success: false, error: directErr.message || 'Error en consulta directa a D1' };
+      }
+    }
+
+    return {
+      success: false,
+      error: 'No se pudo consultar Cloudflare D1 (sin conexión).',
+    };
   }
 }
 
