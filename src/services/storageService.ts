@@ -176,7 +176,8 @@ class StorageService {
           if (e.data) {
             const parsed = JSON.parse(e.data);
             if (parsed.payload?.settings && typeof parsed.payload.settings === 'object') {
-              const merged = { ...DEFAULT_SETTINGS, ...parsed.payload.settings };
+              const current = this.getSettings();
+              const merged = { ...DEFAULT_SETTINGS, ...current, ...parsed.payload.settings };
               localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
               if (merged.logoUrl) {
                 localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
@@ -259,24 +260,23 @@ class StorageService {
         if (data.data.settings && typeof data.data.settings === 'object') {
           const currentSettings = this.getSettings();
           const serverSettings = data.data.settings;
-          const isDifferent =
-            currentSettings.wifiSsid !== serverSettings.wifiSsid ||
-            currentSettings.wifiPassword !== serverSettings.wifiPassword ||
-            currentSettings.houseName !== serverSettings.houseName ||
-            currentSettings.location !== serverSettings.location ||
-            currentSettings.checkInTime !== serverSettings.checkInTime ||
-            currentSettings.checkOutTime !== serverSettings.checkOutTime ||
-            currentSettings.autoCleaningBufferHours !== serverSettings.autoCleaningBufferHours ||
-            currentSettings.cbu !== serverSettings.cbu ||
-            currentSettings.aliasBancario !== serverSettings.aliasBancario ||
-            currentSettings.titularCuenta !== serverSettings.titularCuenta ||
-            currentSettings.cuitFideicomiso !== serverSettings.cuitFideicomiso ||
-            currentSettings.bancoNombre !== serverSettings.bancoNombre ||
-            currentSettings.wifiCoverageNotes !== serverSettings.wifiCoverageNotes ||
-            currentSettings.logoUrl !== serverSettings.logoUrl;
+          const mergedSettings = { ...DEFAULT_SETTINGS, ...currentSettings, ...serverSettings };
+
+          // Deep comparison of all setting fields
+          let isDifferent = false;
+          const allKeys = new Set([
+            ...Object.keys(currentSettings),
+            ...Object.keys(serverSettings),
+          ]);
+          for (const key of allKeys) {
+            if (key === 'updatedAt') continue;
+            if ((currentSettings as any)[key] !== (serverSettings as any)[key]) {
+              isDifferent = true;
+              break;
+            }
+          }
 
           if (isDifferent) {
-            const mergedSettings = { ...DEFAULT_SETTINGS, ...serverSettings };
             localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedSettings));
             if (mergedSettings.logoUrl) {
               localStorage.setItem('el_desayuno_custom_logo', mergedSettings.logoUrl);
@@ -902,7 +902,8 @@ class StorageService {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.settings && typeof data.settings === 'object') {
-          const merged = { ...DEFAULT_SETTINGS, ...data.settings };
+          const current = this.getSettings();
+          const merged = { ...DEFAULT_SETTINGS, ...current, ...data.settings };
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
           if (merged.logoUrl) {
             localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
@@ -917,7 +918,9 @@ class StorageService {
     return this.getSettings();
   }
 
-  public async saveSettingsAsync(settings: TrustSettings): Promise<TrustSettings> {
+  public async saveSettingsAsync(settings: Partial<TrustSettings>): Promise<TrustSettings> {
+    const current = this.getSettings();
+    const mergedToSave = { ...current, ...settings };
     try {
       const res = await fetch(`/api/settings?_t=${Date.now()}`, {
         method: 'POST',
@@ -926,29 +929,32 @@ class StorageService {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
         },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(mergedToSave),
       });
       const data = await res.json();
       if (data.success && data.settings) {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
-        if (data.settings.logoUrl) {
-          localStorage.setItem('el_desayuno_custom_logo', data.settings.logoUrl);
+        const finalMerged = { ...DEFAULT_SETTINGS, ...mergedToSave, ...data.settings };
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(finalMerged));
+        if (finalMerged.logoUrl) {
+          localStorage.setItem('el_desayuno_custom_logo', finalMerged.logoUrl);
         }
         this.notify(false, true);
-        return data.settings;
+        return finalMerged;
       }
     } catch (err) {
       console.warn('Error guardando ajustes en la nube:', err);
     }
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedToSave));
     this.notify(false, true);
-    return settings;
+    return mergedToSave;
   }
 
-  public saveSettings(settings: TrustSettings) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  public saveSettings(settings: Partial<TrustSettings>) {
+    const current = this.getSettings();
+    const merged = { ...current, ...settings };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
     this.notify(false);
-    this.saveSettingsAsync(settings).catch((err) => console.error('Cloud saveSettings error:', err));
+    this.saveSettingsAsync(merged).catch((err) => console.error('Cloud saveSettings error:', err));
   }
 
   // Rules

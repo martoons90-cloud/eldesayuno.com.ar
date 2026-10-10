@@ -937,7 +937,7 @@ app.post('/api/app-state', (req, res) => {
     if (!incoming || typeof incoming !== 'object') {
       return res.status(400).json({ success: false, error: 'Datos no válidos' });
     }
-    const current = loadServerState();
+    const current = loadServerState(true);
 
     // Safe merge settings
     if (incoming.settings && typeof incoming.settings === 'object') {
@@ -1016,7 +1016,7 @@ const handleSaveSettings = async (req: express.Request, res: express.Response) =
       return res.status(400).json({ success: false, error: 'Datos de configuración no válidos.' });
     }
 
-    const state = loadServerState();
+    const state = loadServerState(true);
     state.settings = {
       ...(state.settings || {}),
       ...updatedSettings,

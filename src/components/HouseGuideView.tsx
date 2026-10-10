@@ -374,7 +374,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                   Apunta con la cámara de tu celular
                 </span>
                 <span className="text-[10px] text-[#7A8E7E]">
-                  Se conectará automáticamente a {currentSettings.wifiSsid || 'Casa forestal'}
+                  Se conectará automáticamente a {currentSettings.wifiSsid || settings.wifiSsid || 'ElDesayuno_WiFi_2026'}
                 </span>
               </div>
             </div>

@@ -168,15 +168,13 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     setSettingsFormData(settings);
   }, [settings]);
 
+  // Direct fetch from database on mount and whenever the active tab changes
   useEffect(() => {
-    fetch(`/api/settings?_t=${Date.now()}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.settings) {
-          setSettingsFormData((prev) => ({ ...prev, ...data.settings }));
-        }
-      })
-      .catch(() => {});
+    storageService.fetchLatestSettingsFromDatabase().then((dbSettings) => {
+      if (dbSettings) {
+        setSettingsFormData(dbSettings);
+      }
+    });
 
     const unsub = storageService.subscribe(() => {
       setSettingsFormData(storageService.getSettings());
@@ -185,10 +183,24 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       setDocumentsList(storageService.getDocuments());
     });
     return () => unsub();
-  }, []);
+  }, [activeTab]);
 
   const [propertySaveStatus, setPropertySaveStatus] = useState<'saving' | 'saved'>('saved');
+  const [isRefreshingFromDb, setIsRefreshingFromDb] = useState(false);
   const propertySaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleRefreshFromDatabase = async () => {
+    setIsRefreshingFromDb(true);
+    try {
+      const latest = await storageService.fetchLatestSettingsFromDatabase();
+      if (latest) {
+        setSettingsFormData(latest);
+        showSuccess('✓ Ajustes actualizados en tiempo real desde la base de datos central.');
+      }
+    } finally {
+      setIsRefreshingFromDb(false);
+    }
+  };
 
   const handleSaveSettingsGeneral = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -197,7 +209,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     try {
       await storageService.saveSettingsAsync(settingsFormData);
       setPropertySaveStatus('saved');
-      showSuccess('Parámetros guardados y sincronizados en la base de datos de la nube.');
+      showSuccess('✓ Ajustes guardados y sincronizados en la base de datos central para todas las sesiones.');
     } catch {
       setPropertySaveStatus('saved');
     }
@@ -1147,14 +1159,37 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           {/* ========================================================= */}
           {activeTab === 'engine' && (
             <form onSubmit={handleSaveSettingsGeneral} className="space-y-6">
-              <div className="pb-4 border-b border-[#EFEAE0]">
-                <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
-                  <Sliders className="w-5 h-5 text-[#1B3B2B]" />
-                  <span>Parámetros del Motor de Reservas & Operatoria</span>
-                </h3>
-                <p className="text-xs text-[#7A8E7E] mt-0.5">
-                  Configure los límites automáticos de ocupación, márgenes de limpieza y políticas de turno.
-                </p>
+              <div className="pb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FBF9F5] p-3 border border-[#E3DFC8]">
+                <div>
+                  <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
+                    <Sliders className="w-5 h-5 text-[#1B3B2B]" />
+                    <span>Parámetros del Motor de Reservas & Operatoria</span>
+                  </h3>
+                  <p className="text-xs text-[#7A8E7E] mt-0.5">
+                    Configure los límites automáticos de ocupación, márgenes de limpieza y políticas de turno.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleRefreshFromDatabase}
+                    disabled={isRefreshingFromDb}
+                    className="px-3 py-2 bg-white hover:bg-[#F2EDE1] text-[#163323] border border-[#DCD4C0] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    title="Consultar y cargar los ajustes más recientes directamente desde la base de datos central"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-[#2A4D32] ${isRefreshingFromDb ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshingFromDb ? 'Actualizando...' : 'Recargar de BD'}</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Save className="w-4 h-4 text-[#BFA270]" />
+                    <span>Guardar en BD</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
@@ -1376,7 +1411,18 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleRefreshFromDatabase}
+                    disabled={isRefreshingFromDb}
+                    className="px-3 py-2 bg-white hover:bg-[#F2EDE1] text-[#163323] border border-[#DCD4C0] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    title="Consultar y cargar los ajustes más recientes directamente desde la base de datos central"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-[#2A4D32] ${isRefreshingFromDb ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshingFromDb ? 'Actualizando...' : 'Recargar de BD'}</span>
+                  </button>
+
                   <span
                     className={`text-[11px] font-mono px-2.5 py-1 rounded border flex items-center gap-1.5 ${
                       propertySaveStatus === 'saving'
@@ -1390,7 +1436,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                       }`}
                     />
                     <span>
-                      {propertySaveStatus === 'saving' ? 'Guardando en Base de Datos...' : '✓ Sincronizado en BD'}
+                      {propertySaveStatus === 'saving' ? 'Guardando en BD...' : '✓ Sincronizado en BD'}
                     </span>
                   </span>
 

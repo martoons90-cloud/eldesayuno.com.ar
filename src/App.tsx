@@ -94,8 +94,9 @@ export default function App() {
 
   useEffect(() => {
     refreshData();
-    // Direct database fetch on initial application open
-    storageService.fetchLatestSettingsFromDatabase().then(() => {
+    // Direct authoritative database query on application open
+    storageService.fetchLatestSettingsFromDatabase().then((dbSettings) => {
+      if (dbSettings) setSettings(dbSettings);
       refreshData();
     });
     storageService.hydrateFromAppStateAsync().finally(() => {
@@ -114,7 +115,8 @@ export default function App() {
     setCurrentUser(user);
     setActiveTab('dashboard');
     refreshData();
-    storageService.fetchLatestSettingsFromDatabase().then(() => {
+    storageService.fetchLatestSettingsFromDatabase().then((dbSettings) => {
+      if (dbSettings) setSettings(dbSettings);
       refreshData();
     });
     storageService.hydrateFromAppStateAsync().finally(() => {
