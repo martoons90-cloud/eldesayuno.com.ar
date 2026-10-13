@@ -1,5 +1,4 @@
 import { NotificationPush } from '../types';
-import { storageService } from './storageService';
 
 // Audio chime generator using browser Web Audio API
 function playChimeSound() {
@@ -70,6 +69,13 @@ export class PushNotificationService {
     body: string;
     type?: NotificationPush['type'];
     bookingId?: string;
+    targetUserId?: string | null;
+    bookingUserId?: string | null;
+    bookingUserName?: string | null;
+    bookingPartName?: string | null;
+    checkInDate?: string | null;
+    checkOutDate?: string | null;
+    totalDays?: number | null;
   }) {
     // 1. Play auditory chime
     playChimeSound();
@@ -96,6 +102,14 @@ export class PushNotificationService {
           body: notification.body,
           type: notification.type || 'system',
           timestamp: new Date().toISOString(),
+          targetUserId: notification.targetUserId || null,
+          bookingUserId: notification.bookingUserId || null,
+          bookingUserName: notification.bookingUserName || null,
+          bookingPartName: notification.bookingPartName || null,
+          checkInDate: notification.checkInDate || null,
+          checkOutDate: notification.checkOutDate || null,
+          totalDays: notification.totalDays || null,
+          bookingId: notification.bookingId || null,
         },
       });
       window.dispatchEvent(customEvent);

@@ -1917,53 +1917,66 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* Modal: Admin Cancel Booking */}
-      {adminCancelBookingId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
-          <div className="bg-[#FFFFFF] w-full max-w-md border border-[#DED7C2] shadow-2xl p-6">
-            <h3 className="text-base font-bold text-red-800 pb-3 border-b border-[#EFEAE0] flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-              <span>Cancelación Extraordinaria de Reserva</span>
-            </h3>
+      {/* Modal: Admin Cancel / Reject Booking */}
+      {adminCancelBookingId && (() => {
+        const targetBooking = bookings.find((b) => b.id === adminCancelBookingId);
+        const isPending = targetBooking?.status === 'pending';
 
-            <p className="text-xs text-[#4F6254] mt-3 leading-relaxed">
-              Como Administrador Fiduciario, al cancelar esta reserva las fechas quedarán
-              inmediatamente liberadas en el calendario y los días se reintegrarán al saldo del
-              propietario.
-            </p>
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+            <div className="bg-[#FFFFFF] w-full max-w-md border border-[#DED7C2] shadow-2xl p-6">
+              <h3 className="text-base font-bold text-red-800 pb-3 border-b border-[#EFEAE0] flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+                <span>{isPending ? 'Desestimar Solicitud de Reserva' : 'Cancelación Extraordinaria de Reserva'}</span>
+              </h3>
 
-            <div className="mt-4">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1">
-                Motivo Oficial de la Cancelación
-              </label>
-              <textarea
-                value={adminCancelReason}
-                onChange={(e) => setAdminCancelReason(e.target.value)}
-                placeholder="Indique la causa legal o imprevisto de fuerza mayor..."
-                rows={3}
-                required
-                className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none"
-              />
-            </div>
+              <p className="text-xs text-[#4F6254] mt-3 leading-relaxed">
+                {isPending ? (
+                  <>
+                    Como Administrador, al desestimar esta solicitud las fechas solicitadas quedarán liberadas de inmediato en el calendario común.
+                    <span className="block mt-1 font-semibold text-amber-900 bg-amber-50 p-2 border border-amber-200">
+                      🔒 Privacidad garantizada: la notificación y el motivo del rechazo solo serán visibles para el solicitante ({targetBooking?.userName}) y no para los demás copropietarios.
+                    </span>
+                  </>
+                ) : (
+                  'Como Administrador Fiduciario, al cancelar esta reserva las fechas quedarán inmediatamente liberadas en el calendario y los días se reintegrarán al saldo del propietario.'
+                )}
+              </p>
 
-            <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-[#EFEAE0]">
-              <button
-                type="button"
-                onClick={() => setAdminCancelBookingId(null)}
-                className="px-3.5 py-2 text-xs font-semibold text-[#637568] hover:text-[#19231A]"
-              >
-                Volver
-              </button>
-              <button
-                type="button"
-                onClick={handleAdminCancelBooking}
-                className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white text-xs font-semibold uppercase tracking-wider"
-              >
-                Ejecutar Cancelación
-              </button>
+              <div className="mt-4">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1">
+                  {isPending ? 'Motivo del Rechazo (Privado para el solicitante)' : 'Motivo Oficial de la Cancelación'}
+                </label>
+                <textarea
+                  value={adminCancelReason}
+                  onChange={(e) => setAdminCancelReason(e.target.value)}
+                  placeholder={isPending ? 'Ej. Conflicto con mantención programada o documentación incompleta...' : 'Indique la causa legal o imprevisto de fuerza mayor...'}
+                  rows={3}
+                  required
+                  className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none"
+                />
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-[#EFEAE0]">
+                <button
+                  type="button"
+                  onClick={() => setAdminCancelBookingId(null)}
+                  className="px-3.5 py-2 text-xs font-semibold text-[#637568] hover:text-[#19231A]"
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdminCancelBooking}
+                  className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white text-xs font-semibold uppercase tracking-wider"
+                >
+                  {isPending ? 'Confirmar Rechazo' : 'Ejecutar Cancelación'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Modal: Password Management */}
       {passwordModalUser && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { InventoryItem, InventoryCategory, InventoryCondition, User, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
@@ -38,6 +38,17 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedCondition, setSelectedCondition] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Delete Confirmation Modal State
+  const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
+
+  // Subscribe to storage changes
+  useEffect(() => {
+    const unsubscribe = storageService.subscribe(() => {
+      setInventory(storageService.getInventory());
+    });
+    return unsubscribe;
+  }, []);
 
   // Modal State for Add/Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -111,11 +122,15 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
     setInventory(storageService.getInventory());
   };
 
-  const handleDeleteItem = (id: string) => {
-    if (confirm('¿Eliminar este ítem del inventario oficial?')) {
-      storageService.deleteInventoryItem(id);
-      setInventory(storageService.getInventory());
-    }
+  const handleOpenDeleteModal = (item: InventoryItem) => {
+    setItemToDelete(item);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!itemToDelete) return;
+    storageService.deleteInventoryItem(itemToDelete.id);
+    setInventory(storageService.getInventory());
+    setItemToDelete(null);
   };
 
   const handlePrintChecklist = () => {
@@ -402,9 +417,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDeleteItem(item.id)}
+                          onClick={() => handleOpenDeleteModal(item)}
                           className="p-1 hover:bg-red-50 text-red-700 transition-colors cursor-pointer"
-                          title="Eliminar ítem"
+                          title="Eliminar ítem del inventario"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -549,25 +564,112 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                 </div>
               </div>
 
-              <div className="pt-4 flex items-center justify-end gap-2 border-t border-[#EFEAE0]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    setEditingItem(null);
-                  }}
-                  className="px-4 py-2 text-[#637568] hover:text-[#19231A]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#1B3B2B] text-white font-semibold uppercase tracking-wider hover:bg-[#132A1F]"
-                >
-                  Guardar Ítem
-                </button>
+              <div className="pt-4 flex items-center justify-between gap-2 border-t border-[#EFEAE0]">
+                {editingItem && isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = editingItem;
+                      setEditingItem(null);
+                      setIsModalOpen(false);
+                      handleOpenDeleteModal(item);
+                    }}
+                    className="px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 border border-red-200 transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar Ítem</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setEditingItem(null);
+                    }}
+                    className="px-4 py-2 text-[#637568] hover:text-[#19231A] text-xs cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-[#1B3B2B] text-white font-semibold uppercase tracking-wider text-xs hover:bg-[#132A1F] cursor-pointer"
+                  >
+                    Guardar Ítem
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirm Delete Inventory Item */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-[#FFFFFF] w-full max-w-md border border-[#DED7C2] shadow-2xl p-6">
+            <div className="flex items-center gap-3 pb-3 border-b border-[#EFEAE0]">
+              <div className="p-2.5 bg-red-100 text-red-700 rounded-full shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#163323]">
+                  ¿Eliminar ítem del inventario?
+                </h3>
+                <p className="text-[11px] text-[#637568]">
+                  Esta acción dará de baja este elemento del registro oficial de la finca.
+                </p>
+              </div>
+            </div>
+
+            <div className="my-4 p-3.5 bg-[#FAF8F5] border border-[#E8E2D2] text-xs space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-[#637568]">Elemento:</span>
+                <span className="font-bold text-[#163323]">{itemToDelete.name}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#637568]">Ubicación:</span>
+                <span className="font-medium text-[#2E4233] bg-[#F2EDE1] px-2 py-0.5 rounded-2xs text-[11px]">
+                  {itemToDelete.locationRoom}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#637568]">Cantidad:</span>
+                <span className="font-mono font-bold text-[#163323]">
+                  {itemToDelete.quantity} {itemToDelete.unit}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#637568]">Estado:</span>
+                <span>{getConditionBadge(itemToDelete.condition)}</span>
+              </div>
+              {itemToDelete.notes && (
+                <div className="pt-2 border-t border-[#E8E2D2] text-[11px] text-[#637568] italic">
+                  Nota: “{itemToDelete.notes}”
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EFEAE0]">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-4 py-2 text-xs text-[#637568] hover:text-[#19231A] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Confirmar Eliminación
+              </button>
+            </div>
           </div>
         </div>
       )}

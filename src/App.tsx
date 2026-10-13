@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport } from './types';
 import { storageService } from './services/storageService';
 import { LoginScreen } from './components/LoginScreen';
@@ -164,6 +164,17 @@ export default function App() {
     .filter((u) => u.active !== false)
     .reduce((sum, u) => sum + u.annualQuotaDays, 0);
 
+  // Filter notifications according to privacy:
+  // Rejections and targeted alerts are ONLY visible to the applicant (targetUserId) or admin
+  const userNotifications = useMemo(() => {
+    return notifications.filter((n) => {
+      if (n.targetUserId) {
+        return n.targetUserId === currentUser.id || currentUser.role === 'admin';
+      }
+      return true;
+    });
+  }, [notifications, currentUser]);
+
   return (
     <div className="min-h-screen bg-[#FBF9F5] text-[#19231A] flex flex-col font-sans">
       {/* Top Header Contract */}
@@ -188,7 +199,7 @@ export default function App() {
         }}
         onLogout={handleLogout}
         onOpenNewBooking={handleOpenNewBooking}
-        notifications={notifications}
+        notifications={userNotifications}
         onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
       />
 
@@ -665,12 +676,13 @@ export default function App() {
       <NotificationCenterDrawer
         isOpen={isNotificationDrawerOpen}
         onClose={() => setIsNotificationDrawerOpen(false)}
-        notifications={notifications}
+        notifications={userNotifications}
         onMarkAllRead={() => storageService.markAllNotificationsAsRead()}
+        currentUser={currentUser}
       />
 
       {/* Toast Notification Provider */}
-      <PushNotificationToast />
+      <PushNotificationToast currentUser={currentUser} />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   OwnerFeeAllocation,
   ExpenseItem,
 } from '../types';
+import { pushService } from './notificationService';
 
 const USERS_KEY = 'el_desayuno_users_v3';
 const BOOKINGS_KEY = 'el_desayuno_bookings_v3';
@@ -839,11 +840,33 @@ class StorageService {
     const recalculated = recalculateUsersUsedDays(users, updated);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
+    // Add notification with rich metadata for personalized display (both applicant and other owners)
     this.addNotification({
       title: '¡Reserva Aprobada por Administración!',
       body: `La reserva de ${booking.userName} (${booking.checkInDate} al ${booking.checkOutDate}) ha sido confirmada por ${approvedByName}.`,
-      type: 'booking_created',
+      type: 'booking_approved',
       bookingId: booking.id,
+      bookingUserId: booking.userId,
+      bookingUserName: booking.userName,
+      bookingPartName: booking.partName,
+      checkInDate: booking.checkInDate,
+      checkOutDate: booking.checkOutDate,
+      totalDays: booking.totalDays,
+      targetUserId: null, // Visible to all coproprietors
+    });
+
+    // Trigger instant push notification
+    pushService.triggerPush({
+      title: '¡Reserva Aprobada!',
+      body: `La reserva de ${booking.userName} (${booking.checkInDate} al ${booking.checkOutDate}) fue aprobada por ${approvedByName}.`,
+      type: 'booking_approved',
+      bookingId: booking.id,
+      bookingUserId: booking.userId,
+      bookingUserName: booking.userName,
+      bookingPartName: booking.partName,
+      checkInDate: booking.checkInDate,
+      checkOutDate: booking.checkOutDate,
+      totalDays: booking.totalDays,
     });
 
     this.notify(false);
@@ -869,6 +892,8 @@ class StorageService {
     const booking = bookings.find((b) => b.id === bookingId);
     if (!booking) return;
 
+    const isRejection = booking.status === 'pending';
+
     const updated = bookings.map((b) => {
       if (b.id === bookingId) {
         return {
@@ -888,12 +913,53 @@ class StorageService {
     const recalculated = recalculateUsersUsedDays(users, updated);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
-    this.addNotification({
-      title: 'Reserva Cancelada o Rechazada',
-      body: `La reserva de ${booking.userName} (${booking.checkInDate} a ${booking.checkOutDate}) fue cancelada por ${cancelledByName}.`,
-      type: 'booking_cancelled',
-      bookingId: booking.id,
-    });
+    if (isRejection) {
+      // PRIVACY ENFORCEMENT: Rejections are strictly private to applicant (and admin)
+      this.addNotification({
+        title: 'Solicitud de Reserva Desestimada',
+        body: `Tu solicitud de estadía para el período ${booking.checkInDate} al ${booking.checkOutDate} (${booking.totalDays} noches) fue desestimada por la administración: ${reason}. Las fechas han sido liberadas en el calendario común.`,
+        type: 'booking_rejected',
+        targetUserId: booking.userId, // ONLY the applicant and admin see this!
+        bookingId: booking.id,
+        bookingUserId: booking.userId,
+        bookingUserName: booking.userName,
+        bookingPartName: booking.partName,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        totalDays: booking.totalDays,
+      });
+
+      pushService.triggerPush({
+        title: 'Solicitud de Reserva Desestimada',
+        body: `Tu solicitud para el período ${booking.checkInDate} al ${booking.checkOutDate} fue desestimada: ${reason}.`,
+        type: 'booking_rejected',
+        targetUserId: booking.userId,
+        bookingId: booking.id,
+        bookingUserId: booking.userId,
+      });
+    } else {
+      // Cancellation of already confirmed booking: public notification so others know dates are freed
+      this.addNotification({
+        title: 'Reserva Cancelada',
+        body: `La reserva de ${booking.userName} (${booking.checkInDate} a ${booking.checkOutDate}) fue cancelada por ${cancelledByName}. Fechas disponibles en el calendario.`,
+        type: 'booking_cancelled',
+        bookingId: booking.id,
+        bookingUserId: booking.userId,
+        bookingUserName: booking.userName,
+        bookingPartName: booking.partName,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        totalDays: booking.totalDays,
+        targetUserId: null,
+      });
+
+      pushService.triggerPush({
+        title: 'Reserva Cancelada',
+        body: `Se liberaron las fechas del ${booking.checkInDate} al ${booking.checkOutDate} (${booking.userName}).`,
+        type: 'booking_cancelled',
+        bookingId: booking.id,
+      });
+    }
 
     this.notify(false);
 
@@ -1204,14 +1270,24 @@ class StorageService {
     }).catch((err) => console.error('Error guardando inventario en servidor:', err));
   }
 
-  public deleteInventoryItem(itemId: string) {
-    const list = this.getInventory().filter((i) => i.id !== itemId);
+  public async deleteInventoryItemAsync(itemId: string): Promise<boolean> {
+    const prev = this.getInventory();
+    const removedItem = prev.find((i) => i.id === itemId);
+    const list = prev.filter((i) => i.id !== itemId);
     localStorage.setItem(INVENTORY_KEY, JSON.stringify(list));
     this.notify(false);
 
-    fetch(`/api/inventory/${itemId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando inventario en servidor:', err));
+    try {
+      await fetch(`/api/inventory/${itemId}`, { method: 'DELETE' });
+      return true;
+    } catch (err) {
+      console.warn('Advertencia eliminando inventario en servidor:', err);
+      return false;
+    }
+  }
+
+  public deleteInventoryItem(itemId: string) {
+    this.deleteInventoryItemAsync(itemId);
   }
 
   // Incident Reports (Daños, novedades, roturas con fotos)

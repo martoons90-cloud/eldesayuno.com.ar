@@ -141,10 +141,25 @@ export interface NotificationPush {
   body: string;
   timestamp: string;
   read: boolean;
-  type: 'booking_created' | 'booking_cancelled' | 'block_added' | 'quota_updated' | 'incident_reported' | 'incident_resolved' | 'system';
-  targetUserId?: string; // null means all users or admins
-  bookingId?: string;
-  incidentId?: string;
+  type:
+    | 'booking_created'
+    | 'booking_approved'
+    | 'booking_rejected'
+    | 'booking_cancelled'
+    | 'block_added'
+    | 'quota_updated'
+    | 'incident_reported'
+    | 'incident_resolved'
+    | 'system';
+  targetUserId?: string | null; // null/undefined means all users. If set, ONLY that user or admin sees it
+  bookingUserId?: string | null; // The applicant user whose dates were approved or rejected
+  bookingUserName?: string | null;
+  bookingPartName?: string | null;
+  checkInDate?: string | null;
+  checkOutDate?: string | null;
+  totalDays?: number | null;
+  bookingId?: string | null;
+  incidentId?: string | null;
 }
 
 export interface TrustSettings {

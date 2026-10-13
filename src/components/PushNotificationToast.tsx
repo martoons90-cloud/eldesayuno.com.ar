@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, CheckCircle2, AlertTriangle, X, ShieldAlert } from 'lucide-react';
+import { Bell, CheckCircle2, AlertTriangle, X, ShieldAlert, XCircle } from 'lucide-react';
 import { pushService } from '../services/notificationService';
 import { storageService } from '../services/storageService';
-import { NotificationPush } from '../types';
+import { NotificationPush, User } from '../types';
 
 interface ToastItem {
   id: string;
@@ -10,9 +10,14 @@ interface ToastItem {
   body: string;
   type: string;
   timestamp: string;
+  targetUserId?: string | null;
+  bookingUserId?: string | null;
+  bookingUserName?: string | null;
+  checkInDate?: string | null;
+  checkOutDate?: string | null;
 }
 
-export const PushNotificationToast: React.FC = () => {
+export const PushNotificationToast: React.FC<{ currentUser?: User }> = ({ currentUser }) => {
   const [activeToasts, setActiveToasts] = useState<ToastItem[]>([]);
   const [permission, setPermission] = useState<NotificationPermission>('default');
 
@@ -21,7 +26,40 @@ export const PushNotificationToast: React.FC = () => {
 
     const handleCustomToast = (e: Event) => {
       const detail = (e as CustomEvent).detail as ToastItem;
-      setActiveToasts((prev) => [detail, ...prev].slice(0, 3));
+
+      // Privacy check: If notification is targeted to a specific user (e.g. rejection),
+      // ONLY show to that user or admins!
+      if (detail.targetUserId && currentUser) {
+        if (detail.targetUserId !== currentUser.id && currentUser.role !== 'admin') {
+          return; // Suppress for other coproprietors
+        }
+      }
+
+      // Personalize approval toast:
+      let displayTitle = detail.title;
+      let displayBody = detail.body;
+
+      if (detail.type === 'booking_approved' && currentUser) {
+        if (detail.bookingUserId && detail.bookingUserId === currentUser.id) {
+          displayTitle = '¡Tus fechas fueron aprobadas!';
+          displayBody = detail.checkInDate && detail.checkOutDate
+            ? `Tu estadía del ${detail.checkInDate} al ${detail.checkOutDate} fue confirmada por el administrador.`
+            : 'Tu estadía solicitada ha sido confirmada por la administración.';
+        } else if (detail.bookingUserName) {
+          displayTitle = `Fechas aprobadas: ${detail.bookingUserName}`;
+          displayBody = detail.checkInDate && detail.checkOutDate
+            ? `El administrador aprobó la estadía de ${detail.bookingUserName} (${detail.checkInDate} al ${detail.checkOutDate}).`
+            : `El administrador confirmó la estadía de ${detail.bookingUserName}.`;
+        }
+      }
+
+      const item: ToastItem = {
+        ...detail,
+        title: displayTitle,
+        body: displayBody,
+      };
+
+      setActiveToasts((prev) => [item, ...prev].slice(0, 3));
 
       // Auto dismiss after 6 seconds
       setTimeout(() => {
@@ -33,7 +71,7 @@ export const PushNotificationToast: React.FC = () => {
     return () => {
       window.removeEventListener('el-desayuno-push-toast', handleCustomToast);
     };
-  }, []);
+  }, [currentUser]);
 
   const handleDismiss = (id: string) => {
     setActiveToasts((prev) => prev.filter((t) => t.id !== id));
@@ -102,7 +140,8 @@ export const NotificationCenterDrawer: React.FC<{
   onClose: () => void;
   notifications: NotificationPush[];
   onMarkAllRead: () => void;
-}> = ({ isOpen, onClose, notifications, onMarkAllRead }) => {
+  currentUser?: User;
+}> = ({ isOpen, onClose, notifications, onMarkAllRead, currentUser }) => {
   if (!isOpen) return null;
 
   return (
@@ -148,42 +187,76 @@ export const NotificationCenterDrawer: React.FC<{
               <p className="text-xs">No hay notificaciones registradas.</p>
             </div>
           ) : (
-            notifications.map((n) => (
-              <div
-                key={n.id}
-                onClick={() => storageService.markNotificationAsRead(n.id)}
-                className={`p-4 transition-colors cursor-pointer ${
-                  !n.read ? 'bg-[#F9F7F2]' : 'bg-[#FFFFFF] hover:bg-[#FAF8F5]'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {!n.read && (
-                      <span className="w-2 h-2 rounded-full bg-[#1B3B2B] shrink-0" />
-                    )}
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#9E8252]">
-                      {n.type === 'booking_created'
-                        ? 'Reserva'
-                        : n.type === 'booking_cancelled'
-                        ? 'Cancelación'
-                        : n.type === 'block_added'
-                        ? 'Mantenimiento'
-                        : 'Sistema'}
+            notifications.map((n) => {
+              const isMyBooking = currentUser && n.bookingUserId && n.bookingUserId === currentUser.id;
+
+              let displayTitle = n.title;
+              let displayBody = n.body;
+              let typeLabel = 'Sistema';
+              let badgeClass = 'bg-[#FAF8F5] text-[#55695B] border border-[#DDD5BF]';
+
+              if (n.type === 'booking_approved') {
+                if (isMyBooking) {
+                  displayTitle = '¡Tus fechas fueron aprobadas!';
+                  displayBody = n.checkInDate && n.checkOutDate
+                    ? `Tu estadía del ${n.checkInDate} al ${n.checkOutDate} (${n.totalDays || ''} noches) ha sido confirmada por la administración.`
+                    : n.body;
+                  typeLabel = 'Tus Fechas Aprobadas';
+                  badgeClass = 'bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold';
+                } else {
+                  displayTitle = n.bookingUserName ? `Fechas aprobadas: ${n.bookingUserName}` : n.title;
+                  displayBody = n.bookingUserName && n.checkInDate
+                    ? `El administrador aprobó la estadía de ${n.bookingUserName}${n.bookingPartName ? ` (${n.bookingPartName})` : ''} del ${n.checkInDate} al ${n.checkOutDate} (${n.totalDays || ''} noches).`
+                    : n.body;
+                  typeLabel = 'Estadía Confirmada';
+                  badgeClass = 'bg-[#E8EFE9] text-[#1B3B2B] font-semibold';
+                }
+              } else if (n.type === 'booking_rejected') {
+                displayTitle = 'Solicitud de Reserva Desestimada';
+                typeLabel = 'Privado · Solicitante';
+                badgeClass = 'bg-amber-100 text-amber-950 border border-amber-300 font-bold';
+              } else if (n.type === 'booking_created') {
+                typeLabel = 'Nueva Solicitud';
+                badgeClass = 'bg-amber-50 text-amber-900 border border-amber-200';
+              } else if (n.type === 'booking_cancelled') {
+                typeLabel = 'Cancelación';
+                badgeClass = 'bg-red-50 text-red-800 border border-red-200';
+              } else if (n.type === 'block_added') {
+                typeLabel = 'Mantenimiento';
+                badgeClass = 'bg-amber-100 text-amber-950 border border-amber-200';
+              }
+
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => storageService.markNotificationAsRead(n.id)}
+                  className={`p-4 transition-colors cursor-pointer ${
+                    !n.read ? 'bg-[#F9F7F2]' : 'bg-[#FFFFFF] hover:bg-[#FAF8F5]'
+                  } ${isMyBooking && n.type === 'booking_approved' ? 'border-l-4 border-l-emerald-600' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {!n.read && (
+                        <span className="w-2 h-2 rounded-full bg-[#1B3B2B] shrink-0" />
+                      )}
+                      <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 ${badgeClass}`}>
+                        {typeLabel}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-[#7A8E7E]">
+                      {new Date(n.timestamp).toLocaleDateString('es-AR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
                     </span>
                   </div>
-                  <span className="text-[10px] text-[#7A8E7E]">
-                    {new Date(n.timestamp).toLocaleDateString('es-AR', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
+                  <h4 className="text-xs font-semibold text-[#19231A] mt-1.5">{displayTitle}</h4>
+                  <p className="text-xs text-[#4F6254] mt-0.5 leading-relaxed">{displayBody}</p>
                 </div>
-                <h4 className="text-xs font-semibold text-[#19231A] mt-1">{n.title}</h4>
-                <p className="text-xs text-[#4F6254] mt-0.5 leading-relaxed">{n.body}</p>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

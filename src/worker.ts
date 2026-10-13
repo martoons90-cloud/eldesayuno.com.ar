@@ -195,6 +195,12 @@ function mapRowToNotification(row: Record<string, any>): Record<string, any> {
     type: row.type || 'system',
     targetUserId: row.target_user_id ?? row.targetUserId ?? null,
     bookingId: row.booking_id ?? row.bookingId ?? null,
+    bookingUserId: row.booking_user_id ?? row.bookingUserId ?? null,
+    bookingUserName: row.booking_user_name ?? row.bookingUserName ?? null,
+    bookingPartName: row.booking_part_name ?? row.bookingPartName ?? null,
+    checkInDate: row.check_in_date ?? row.checkInDate ?? null,
+    checkOutDate: row.check_out_date ?? row.checkOutDate ?? null,
+    totalDays: row.total_days ? Number(row.total_days) : null,
   };
 }
 
@@ -757,6 +763,18 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
         if (existing.user_id && existing.total_days && existing.status !== 'confirmed') {
           await env.DB.prepare('UPDATE users SET used_days = used_days + ? WHERE id = ?;').bind(existing.total_days, existing.user_id).run().catch(() => {});
         }
+
+        // Add audit notification (visible to all coproprietors)
+        await env.DB.prepare(`
+          INSERT INTO audit_notifications (id, title, body, timestamp, read, type, target_user_id, booking_id)
+          VALUES (?, ?, ?, ?, 0, 'booking_approved', NULL, ?);
+        `).bind(
+          `notif-${Date.now()}`,
+          '¡Reserva Aprobada!',
+          `La reserva de ${existing.user_name} (${existing.check_in_date} al ${existing.check_out_date}) fue confirmada por el administrador.`,
+          new Date().toISOString(),
+          bookingId
+        ).run().catch(() => {});
       }
       return jsonResponse({ success: true, message: 'Reserva aprobada con éxito' }, 200, corsHeaders);
     } catch (err: any) {
@@ -771,15 +789,34 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     try {
       const existing = await env.DB.prepare('SELECT * FROM bookings WHERE id = ? LIMIT 1;').bind(bookingId).first<Record<string, any>>();
       if (existing) {
+        const isRejection = existing.status === 'pending';
+
         await env.DB.prepare(`
           UPDATE bookings
           SET status = 'cancelled', cancelled_at = ?, cancellation_reason = ?
           WHERE id = ?;
-        `).bind(new Date().toISOString(), 'Cancelada por el usuario', bookingId).run();
+        `).bind(new Date().toISOString(), isRejection ? 'Desestimada por la administración' : 'Cancelada por el usuario', bookingId).run();
 
         if (existing.user_id && existing.total_days && existing.status === 'confirmed') {
           await env.DB.prepare('UPDATE users SET used_days = MAX(0, used_days - ?) WHERE id = ?;').bind(existing.total_days, existing.user_id).run().catch(() => {});
         }
+
+        // Add audit notification
+        // PRIVACY RULE: Rejections target_user_id = existing.user_id (ONLY applicant can see it)
+        await env.DB.prepare(`
+          INSERT INTO audit_notifications (id, title, body, timestamp, read, type, target_user_id, booking_id)
+          VALUES (?, ?, ?, ?, 0, ?, ?, ?);
+        `).bind(
+          `notif-${Date.now()}`,
+          isRejection ? 'Solicitud de Reserva Desestimada' : 'Reserva Cancelada',
+          isRejection
+            ? `Tu solicitud para el período ${existing.check_in_date} al ${existing.check_out_date} fue desestimada por la administración.`
+            : `La reserva de ${existing.user_name} (${existing.check_in_date} al ${existing.check_out_date}) fue cancelada. Fechas liberadas.`,
+          new Date().toISOString(),
+          isRejection ? 'booking_rejected' : 'booking_cancelled',
+          isRejection ? existing.user_id : null,
+          bookingId
+        ).run().catch(() => {});
       }
       return jsonResponse({ success: true, message: 'Reserva cancelada' }, 200, corsHeaders);
     } catch (err: any) {
@@ -889,7 +926,64 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     }
   }
 
-  // 11. Realtime Sync Events Stream (/api/sync/events)
+  // 11. Inventory Management CRUD (/api/inventory and /api/inventory/:id)
+  if (pathname === '/api/inventory') {
+    if (method === 'GET') {
+      try {
+        const rows = await env.DB.prepare('SELECT * FROM inventory ORDER BY name ASC;').all<Record<string, any>>();
+        return jsonResponse({ success: true, inventory: (rows.results || []).map(mapRowToInventory) }, 200, corsHeaders);
+      } catch (err: any) {
+        return jsonResponse({ success: false, error: err?.message }, 500, corsHeaders);
+      }
+    }
+
+    if (method === 'POST') {
+      try {
+        const item = (await request.json()) as any;
+        const itemId = item.id || `inv-${Date.now()}`;
+        await env.DB.prepare(`
+          INSERT INTO inventory (id, name, category, location_room, quantity, unit, condition, notes, image_url, last_checked_date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            category = excluded.category,
+            location_room = excluded.location_room,
+            quantity = excluded.quantity,
+            unit = excluded.unit,
+            condition = excluded.condition,
+            notes = excluded.notes,
+            image_url = excluded.image_url,
+            last_checked_date = excluded.last_checked_date;
+        `).bind(
+          itemId,
+          item.name,
+          item.category,
+          item.locationRoom || '',
+          Number(item.quantity || 1),
+          item.unit || 'unidades',
+          item.condition || 'excelente',
+          item.notes || '',
+          item.imageUrl || '',
+          item.lastCheckedDate || new Date().toISOString()
+        ).run();
+        return jsonResponse({ success: true, item: { ...item, id: itemId } }, 201, corsHeaders);
+      } catch (err: any) {
+        return jsonResponse({ success: false, error: err?.message }, 500, corsHeaders);
+      }
+    }
+  }
+
+  if (pathname.startsWith('/api/inventory/') && method === 'DELETE') {
+    const invId = pathname.split('/')[3];
+    try {
+      await env.DB.prepare('DELETE FROM inventory WHERE id = ?;').bind(invId).run();
+      return jsonResponse({ success: true, message: 'Ítem de inventario eliminado' }, 200, corsHeaders);
+    } catch (err: any) {
+      return jsonResponse({ success: false, error: err?.message }, 500, corsHeaders);
+    }
+  }
+
+  // 12. Realtime Sync Events Stream (/api/sync/events)
   if (pathname === '/api/sync/events' && method === 'GET') {
     const stream = new ReadableStream({
       start(controller) {

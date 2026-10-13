@@ -1251,14 +1251,21 @@ app.post('/api/bookings/:id/approve', (req, res) => {
       });
     }
 
-    // Add push notification for approval
+    // Add push notification for approval (visible to all, personalized by client)
     if (!Array.isArray(state.notifications)) state.notifications = [];
     state.notifications.unshift({
       id: 'notif-' + Date.now(),
       title: '¡Reserva Aprobada!',
-      body: `La reserva de ${target.userName} (${target.checkInDate} a ${target.checkOutDate}) fue APROBADA por ${approvedByName}.`,
-      type: 'booking_created',
+      body: `La reserva de ${target.userName} (${target.checkInDate} al ${target.checkOutDate}) fue confirmada por ${approvedByName}.`,
+      type: 'booking_approved',
       bookingId: target.id,
+      bookingUserId: target.userId,
+      bookingUserName: target.userName,
+      bookingPartName: target.partName,
+      checkInDate: target.checkInDate,
+      checkOutDate: target.checkOutDate,
+      totalDays: target.totalDays,
+      targetUserId: null,
       createdAt: new Date().toISOString(),
       read: false,
     });
@@ -1283,6 +1290,8 @@ app.post('/api/bookings/:id/cancel', (req, res) => {
       return res.status(404).json({ success: false, error: 'Reserva no encontrada.' });
     }
 
+    const isRejection = target.status === 'pending';
+
     state.bookings = bookings.map((b: any) => {
       if (b.id === bookingId) {
         return {
@@ -1296,7 +1305,7 @@ app.post('/api/bookings/:id/cancel', (req, res) => {
       return b;
     });
 
-    // Recalculate user quotas
+    // Recalculate user quotas (only for confirmed/completed bookings)
     if (Array.isArray(state.users)) {
       state.users = state.users.map((u: any) => {
         if (u.role === 'admin') return u;
@@ -1309,15 +1318,42 @@ app.post('/api/bookings/:id/cancel', (req, res) => {
     }
 
     if (!Array.isArray(state.notifications)) state.notifications = [];
-    state.notifications.unshift({
-      id: 'notif-' + Date.now(),
-      title: 'Reserva Cancelada',
-      body: `La reserva de ${target.userName} (${target.checkInDate} a ${target.checkOutDate}) fue cancelada por ${cancelledByName}.`,
-      type: 'booking_cancelled',
-      bookingId: target.id,
-      createdAt: new Date().toISOString(),
-      read: false,
-    });
+    if (isRejection) {
+      // Rejections are strictly private to applicant and admin
+      state.notifications.unshift({
+        id: 'notif-' + Date.now(),
+        title: 'Solicitud de Reserva Desestimada',
+        body: `Tu solicitud para el período ${target.checkInDate} al ${target.checkOutDate} fue desestimada por la administración: ${reason}. Las fechas han sido liberadas en el calendario.`,
+        type: 'booking_rejected',
+        bookingId: target.id,
+        bookingUserId: target.userId,
+        bookingUserName: target.userName,
+        bookingPartName: target.partName,
+        checkInDate: target.checkInDate,
+        checkOutDate: target.checkOutDate,
+        totalDays: target.totalDays,
+        targetUserId: target.userId, // PRIVACY: Only applicant and admin see it
+        createdAt: new Date().toISOString(),
+        read: false,
+      });
+    } else {
+      state.notifications.unshift({
+        id: 'notif-' + Date.now(),
+        title: 'Reserva Cancelada',
+        body: `La reserva de ${target.userName} (${target.checkInDate} a ${target.checkOutDate}) fue cancelada por ${cancelledByName}. Fechas liberadas.`,
+        type: 'booking_cancelled',
+        bookingId: target.id,
+        bookingUserId: target.userId,
+        bookingUserName: target.userName,
+        bookingPartName: target.partName,
+        checkInDate: target.checkInDate,
+        checkOutDate: target.checkOutDate,
+        totalDays: target.totalDays,
+        targetUserId: null,
+        createdAt: new Date().toISOString(),
+        read: false,
+      });
+    }
 
     saveServerState(state);
     return res.json({ success: true, message: 'Reserva cancelada en el servidor.' });
