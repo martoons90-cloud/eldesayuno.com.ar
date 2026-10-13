@@ -164,7 +164,7 @@ export const SEED_USERS: User[] = [
     name: 'Efraín Rodríguez',
     username: 'efrain.rodriguez',
     email: 'efrain.rodriguez@eldesayuno.com.ar',
-    role: 'admin',
+    role: 'intendente',
     isCabezaDeEquipo: true,
     partName: 'Cabeza 4',
     cabezaNumber: 4,

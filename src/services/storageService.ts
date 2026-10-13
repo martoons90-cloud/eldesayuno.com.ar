@@ -169,11 +169,11 @@ class StorageService {
     if (!localStorage.getItem(CASH_FLOW_KEY)) {
       localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(SEED_CASH_FLOW));
     }
-    // Ensure Efraín Rodríguez has admin role
+    // Ensure Efraín Rodríguez has intendente role
     let users = this.getUsers();
     const efrainIdx = users.findIndex((u) => u.id === 'user-c4-efrain' || u.name.includes('Efraín'));
-    if (efrainIdx >= 0 && users[efrainIdx].role !== 'admin') {
-      users[efrainIdx].role = 'admin';
+    if (efrainIdx >= 0 && users[efrainIdx].role !== 'intendente') {
+      users[efrainIdx].role = 'intendente';
     }
     const bookings = this.getBookings();
     const updatedUsers = recalculateUsersUsedDays(users, bookings);
@@ -545,9 +545,9 @@ class StorageService {
       }
     }
 
-    // Always ensure Efrain retains admin role
+    // Always ensure Efrain retains intendente role
     if (found.id === 'user-c4-efrain' || found.email === 'efrain.rodriguez@eldesayuno.com' || normalizeStr(found.name).includes('efrain')) {
-      found.role = 'admin';
+      found.role = 'intendente';
     }
 
     this.setCurrentUser(found);
@@ -584,7 +584,7 @@ class StorageService {
           partName: cleanPartName,
           sharePercentage: effectiveShare,
           active: found.active !== undefined ? found.active : true,
-          role: defUser.id === 'user-c4-efrain' ? ('admin' as const) : (found.role || defUser.role),
+          role: defUser.id === 'user-c4-efrain' ? ('intendente' as const) : (found.role || defUser.role),
           isFiduciante: found.isFiduciante !== undefined ? found.isFiduciante : defUser.isFiduciante,
           isCabezaDeEquipo: found.isCabezaDeEquipo !== undefined ? found.isCabezaDeEquipo : defUser.isCabezaDeEquipo,
         };
@@ -671,7 +671,7 @@ class StorageService {
     const target = users.find((u) => u.id === userId);
     if (!target) return;
     const newStatus = !target.isFiduciante;
-    const updatedRole = newStatus ? ('fiduciante' as const) : (target.id === 'user-c4-efrain' ? ('admin' as const) : ('owner' as const));
+    const updatedRole = newStatus ? ('fiduciante' as const) : (target.id === 'user-c4-efrain' ? ('intendente' as const) : ('owner' as const));
     const updatedUser = { ...target, isFiduciante: newStatus, role: updatedRole };
     this.saveUser(updatedUser);
   }
