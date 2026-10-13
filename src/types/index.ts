@@ -174,6 +174,7 @@ export interface TrustSettings {
   bancoNombre?: string;
   titularCuenta?: string;
   wifiCoverageNotes?: string;
+  updatedAt?: string;
 }
 
 // -------------------------------------------------------------

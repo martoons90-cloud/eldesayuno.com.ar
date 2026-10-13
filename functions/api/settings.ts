@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS = {
 
 const CF_ACCOUNT_ID = 'b36aef318f314d0aaaef32a2155d9841';
 const CF_DATABASE_ID = 'f0474948-373a-4522-833b-36eb13858100';
-const CF_API_TOKEN = 'cfat_eAr1X7lzTtl0Mbov4nGM0l1F8BCW61SrNWNQqEVA34a6cee2';
+const CF_API_TOKEN = '';
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',

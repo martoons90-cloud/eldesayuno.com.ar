@@ -384,10 +384,10 @@ class StorageService {
           localStorage.setItem(BLOCKS_KEY, JSON.stringify(data.data.blocks));
         }
         if (data.data.settings) {
-          const mergedSettings = { ...DEFAULT_SETTINGS, ...data.data.settings };
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedSettings));
-          if (mergedSettings.logoUrl) {
-            localStorage.setItem('el_desayuno_custom_logo', mergedSettings.logoUrl);
+          const normalized = normalizeSettings(data.data.settings);
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
+          if (normalized.logoUrl) {
+            localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
           }
         }
         if (data.data.inventory && data.data.inventory.length > 0) {
@@ -396,7 +396,7 @@ class StorageService {
         if (data.data.incidents && data.data.incidents.length > 0) {
           localStorage.setItem(INCIDENTS_KEY, JSON.stringify(data.data.incidents));
         }
-        this.notify(false);
+        this.notify(false, true);
       }
     } catch {
       // Offline fallback to local storage

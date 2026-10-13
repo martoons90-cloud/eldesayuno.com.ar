@@ -182,13 +182,13 @@ class CloudflareD1Service {
   public loadConfig(): D1Config {
     const envAccountId =
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLOUDFLARE_ACCOUNT_ID) ||
-      'b36aef318f314d0aaaef32a2155d9841';
+      '';
     const envDatabaseId =
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLOUDFLARE_DATABASE_ID) ||
-      'f0474948-373a-4522-833b-36eb13858100';
+      '';
     const envApiToken =
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLOUDFLARE_API_TOKEN) ||
-      'cfat_eAr1X7lzTtl0Mbov4nGM0l1F8BCW61SrNWNQqEVA34a6cee2';
+      '';
 
     if (typeof window === 'undefined') {
       return {
@@ -253,14 +253,11 @@ class CloudflareD1Service {
     const cfg = this.config;
 
     try {
-      // First try via local server endpoint (supports both server env secrets and client tokens)
+      // First try via local server / worker endpoint (uses native env.DB)
       const serverRes = await fetch('/api/d1/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: cfg.accountId || undefined,
-          databaseId: cfg.databaseId || undefined,
-          apiToken: cfg.apiToken || undefined,
           sql,
           params,
         }),
@@ -463,11 +460,7 @@ class CloudflareD1Service {
       const res = await fetch('/api/d1/sync-pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: this.config.accountId,
-          databaseId: this.config.databaseId,
-          apiToken: this.config.apiToken,
-        }),
+        body: JSON.stringify({}),
       });
 
       if (res.ok) {
