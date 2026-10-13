@@ -9,7 +9,7 @@ import {
   TrustSettings,
   isUserAdmin,
   isUserIntendente,
-  hasFullOperationalAccess,
+  hasFinancialAccess,
   canUploadExpenses,
 } from '../types';
 import { storageService } from '../services/storageService';
@@ -78,7 +78,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
   const [reimburseAmount, setReimburseAmount] = useState<number>(0);
   const [reimburseNotes, setReimburseNotes] = useState('');
 
-  const fullAdmin = hasFullOperationalAccess(currentUser);
+  const fullAdmin = hasFinancialAccess(currentUser);
   const canUpload = canUploadExpenses(currentUser);
 
   useEffect(() => {

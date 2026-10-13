@@ -29,8 +29,12 @@ export const isUserFiduciante = (user?: User | null): boolean =>
 export const isUserCabezaDeEquipo = (user?: User | null): boolean =>
   Boolean(user?.isCabezaDeEquipo);
 
-// Intendente & Admin have full 100% operational rights
+// Intendente has full complete operational rights (100%)
 export const hasFullOperationalAccess = (user?: User | null): boolean =>
+  Boolean(isUserIntendente(user));
+
+// Financial power: approving expenses, cash flow / incomes & expenses distribution, fee collections (Intendente & Admin)
+export const hasFinancialAccess = (user?: User | null): boolean =>
   Boolean(isUserAdmin(user) || isUserIntendente(user));
 
 // Only Cabezas de Equipo, Admin, Intendente can submit/upload expenses

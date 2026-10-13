@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport } from './types';
+import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport, hasFinancialAccess } from './types';
 import { storageService } from './services/storageService';
 import { LoginScreen } from './components/LoginScreen';
 import { TopBar } from './components/TopBar';
@@ -566,7 +566,7 @@ export default function App() {
                 currentUser={currentUser}
                 users={users}
                 settings={settings}
-                isAdmin={currentUser.role === 'admin'}
+                isAdmin={hasFinancialAccess(currentUser)}
               />
             )}
 
@@ -574,7 +574,7 @@ export default function App() {
               <ExpensesView
                 currentUser={currentUser}
                 settings={settings}
-                isAdmin={currentUser.role === 'admin'}
+                isAdmin={hasFinancialAccess(currentUser)}
                 onNavigateToCobranzas={() => setActiveTab('cobranzas')}
               />
             )}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrandLogo } from './BrandLogo';
-import { User, NotificationPush, hasPrivilegedAccess, isUserAdmin, isUserFiduciante, isUserCabezaDeEquipo } from '../types';
+import { User, NotificationPush, hasPrivilegedAccess, isUserAdmin, isUserIntendente, isUserFiduciante, isUserCabezaDeEquipo, hasFinancialAccess } from '../types';
 import { d1Service } from '../services/d1Service';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { UserProfileModal } from './UserProfileModal';
@@ -52,14 +52,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const userIsAdmin = currentUser.role === 'admin';
-  const isAdmin = userIsAdmin;
-  const effectiveIsAdmin = userIsAdmin && adminViewMode === 'admin';
+  const isIntendente = isUserIntendente(currentUser);
+  const isFinancialOnlyAdmin = isUserAdmin(currentUser);
+  const effectiveIsAdmin = isIntendente && adminViewMode === 'admin';
   const isD1Active = d1Service.isConnected();
 
   // Navigation tabs based on active mode (shortened for crisp fitting)
   const privileged = hasPrivilegedAccess(currentUser);
-  const baseNav = effectiveIsAdmin
+  const baseNav = isIntendente && adminViewMode === 'admin'
     ? [
         { id: 'dashboard', label: 'Resumen' },
         { id: 'calendar', label: 'Calendario' },
@@ -71,6 +71,15 @@ export const TopBar: React.FC<TopBarProps> = ({
         { id: 'inventory', label: 'Inventario' },
         { id: 'incidents', label: 'Novedades' },
         { id: 'settings', label: 'Ajustes' },
+        { id: 'guide', label: 'Reglamento' },
+      ]
+    : isFinancialOnlyAdmin
+    ? [
+        { id: 'dashboard', label: 'Finanzas' },
+        { id: 'calendar', label: 'Calendario' },
+        { id: 'gastos', label: 'Aprobar Gastos' },
+        { id: 'cashflow', label: 'Caja & Cuentas' },
+        { id: 'cobranzas', label: 'Cobranzas' },
         { id: 'guide', label: 'Reglamento' },
       ]
     : [
@@ -141,7 +150,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             </button>
 
             {/* Mode Switcher for Administrators */}
-            {userIsAdmin && onToggleAdminViewMode && (
+            {isIntendente && onToggleAdminViewMode && (
               <div className="hidden lg:flex items-center bg-[#FAF8F5] border border-[#DDD5BF] p-0.5 shadow-2xs shrink-0">
                 <button
                   onClick={() => onToggleAdminViewMode('admin')}
@@ -289,7 +298,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               <div>
                 <p className="text-xs font-bold text-[#163323]">{currentUser.name}</p>
                 <p className="text-[11px] text-[#637568]">
-                  {isAdmin ? 'Administrador Fiduciario' : currentUser.partName}
+                  {isIntendente ? 'Intendente General' : isFinancialOnlyAdmin ? 'Administrador Financiero' : currentUser.partName}
                 </p>
               </div>
             </div>
@@ -306,7 +315,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
 
           {/* Mobile Mode Switcher for Admin */}
-          {userIsAdmin && onToggleAdminViewMode && (
+          {isIntendente && onToggleAdminViewMode && (
             <div className="flex items-center justify-between p-2 bg-[#EFE9DB] border border-[#DDD5BF] mb-2">
               <span className="text-xs font-bold text-[#163323] flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-[#BFA270]" /> Modo de Navegación:
