@@ -112,6 +112,7 @@ export interface DocumentItem {
   fileSize: string;
   description: string;
   downloadUrl?: string;
+  photoUrl?: string;
 }
 
 export type InventoryCategory =
@@ -187,6 +188,12 @@ export interface NotificationPush {
   incidentId?: string | null;
 }
 
+export interface CustomCategory {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 export interface TrustSettings {
   houseName: string;
   slogan?: string;
@@ -217,6 +224,10 @@ export interface TrustSettings {
   titularCuenta?: string;
   wifiCoverageNotes?: string;
   updatedAt?: string;
+  expenseCategories?: CustomCategory[];
+  cashFlowCategories?: CustomCategory[];
+  feeCategories?: CustomCategory[];
+  inventoryCategories?: CustomCategory[];
 }
 
 // -------------------------------------------------------------
@@ -259,6 +270,10 @@ export interface FeeCollection {
   createdBy: string;
   createdAt: string;
   notes?: string;
+  installmentsCount?: number; // Total number of installments (e.g. 12)
+  installmentNumber?: number; // Current installment (e.g. 1)
+  transferredPercentage?: number; // e.g. 10 (%) or 100 (%)
+  originalExpenseId?: string;
 }
 
 // -------------------------------------------------------------
@@ -281,12 +296,15 @@ export interface ExpenseItem {
   periodMonth: string; // "2026-10"
   date: string; // YYYY-MM-DD
   provider?: string; // e.g., "EPEC", "Aguas Cordobesas", "Casero"
+  invoiceNumber?: string; // e.g. "0001-0004812" or "N° 84920"
   status: 'paid' | 'pending';
   paidAt?: string;
   paymentMethod?: string;
   receiptUrl?: string; // Foto factura / comprobante
   notes?: string;
   transferredToFeeCollectionId?: string; // ID of fee collection created from this expense/month
+  transferredPercentage?: number; // % transferred to fee collection
+  transferredInstallments?: number; // Number of installments created
   createdBy: string;
   userId?: string; // User who paid/submitted the expense
   userName?: string;

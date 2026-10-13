@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
+import { CustomDialogModal } from './CustomDialogModal';
 import {
   Users,
   Plus,
@@ -105,6 +106,20 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [role, setRole] = useState<UserRole>('owner');
   const [isCabezaDeEquipo, setIsCabezaDeEquipo] = useState<boolean>(false);
   const [isFiduciante, setIsFiduciante] = useState<boolean>(false);
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'confirm' | 'alert' | 'success' | 'warning';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // New Cabeza Form State
   const [newPartName, setNewPartName] = useState('');
@@ -196,11 +211,25 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('Por favor ingrese el nombre del copropietario.');
+      setDialog({
+        isOpen: true,
+        title: 'Nombre Requerido',
+        message: 'Por favor ingrese el nombre del copropietario.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
       return;
     }
     if (!email.trim()) {
-      alert('Por favor ingrese el email de acceso.');
+      setDialog({
+        isOpen: true,
+        title: 'Email Requerido',
+        message: 'Por favor ingrese el email de acceso.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
       return;
     }
 
@@ -558,11 +587,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 <div className="flex items-center">
                   <input
                     type="number"
-                    step="0.0001"
+                    step="any"
                     min="0"
                     max="100"
-                    value={sharePercentage}
-                    onChange={(e) => setSharePercentage(parseFloat(e.target.value) || 0)}
+                    value={sharePercentage || ''}
+                    onChange={(e) => {
+                      const valStr = e.target.value.replace(',', '.');
+                      setSharePercentage(parseFloat(valStr) || 0);
+                    }}
                     required
                     className="w-full p-2.5 bg-white border border-[#DCD4C0] font-mono font-bold text-sm text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   />
@@ -702,6 +734,16 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
         </form>
       </div>
+      <CustomDialogModal
+        isOpen={dialog.isOpen}
+        title={dialog.title}
+        message={dialog.message}
+        type={dialog.type || 'confirm'}
+        confirmText={dialog.confirmText || 'Aceptar'}
+        cancelText={dialog.cancelText || 'Cancelar'}
+        onConfirm={dialog.onConfirm}
+        onClose={() => setDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

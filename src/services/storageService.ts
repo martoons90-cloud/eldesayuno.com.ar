@@ -14,6 +14,7 @@ import {
   OwnerFeeAllocation,
   ExpenseItem,
   CashFlowTransaction,
+  CustomCategory,
 } from '../types';
 import { pushService } from './notificationService';
 
@@ -62,6 +63,44 @@ export const DEFAULT_NOTIFICATIONS: NotificationPush[] = SEED_NOTIFICATIONS;
 export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = SEED_FEE_COLLECTIONS;
 export const DEFAULT_EXPENSES: ExpenseItem[] = SEED_EXPENSES;
 
+export const DEFAULT_EXPENSE_CATEGORIES: CustomCategory[] = [
+  { id: 'servicios', name: 'Servicios (Luz, Agua, Gas, WiFi)' },
+  { id: 'personal_casero', name: 'Personal / Casero / Limpieza' },
+  { id: 'mantenimiento', name: 'Mantenimiento & Reparaciones' },
+  { id: 'impuestos', name: 'Impuestos & Tasas' },
+  { id: 'insumos', name: 'Insumos & Varios' },
+  { id: 'otro', name: 'Otro' },
+];
+
+export const DEFAULT_CASHFLOW_CATEGORIES: CustomCategory[] = [
+  { id: 'aporte_socio', name: 'Aporte de Socio' },
+  { id: 'pago_expensas', name: 'Pago de Expensas / Tasas' },
+  { id: 'pago_proveedor', name: 'Pago a Proveedor' },
+  { id: 'reintegro_gasto', name: 'Reintegro de Gasto a Socio' },
+  { id: 'fondo_reserva', name: 'Fondo de Reserva' },
+  { id: 'otro_ingreso', name: 'Otro Ingreso' },
+  { id: 'otro_egreso', name: 'Otro Egreso' },
+];
+
+export const DEFAULT_FEE_CATEGORIES: CustomCategory[] = [
+  { id: 'expensas_ordinarias', name: 'Expensas Ordinarias' },
+  { id: 'obras_extraordinarias', name: 'Obras & Mejoras Extraordinarias' },
+  { id: 'servicios', name: 'Servicios' },
+  { id: 'mantenimiento', name: 'Mantenimiento' },
+  { id: 'impuestos', name: 'Impuestos' },
+  { id: 'otro', name: 'Otro' },
+];
+
+export const DEFAULT_INVENTORY_CATEGORIES: CustomCategory[] = [
+  { id: 'living_galeria', name: 'Living & Galería' },
+  { id: 'cocina_vajilla', name: 'Cocina & Vajilla' },
+  { id: 'suites_dormitorios', name: 'Suites & Dormitorios' },
+  { id: 'quincho_asador', name: 'Quincho & Asador' },
+  { id: 'piscina_parque', name: 'Piscina & Parque' },
+  { id: 'blanqueria_ropa', name: 'Blanquería & Ropa' },
+  { id: 'equipamiento_tecnico', name: 'Equipamiento Técnico' },
+];
+
 export function normalizeSettings(s: any): TrustSettings {
   if (!s || typeof s !== 'object') return DEFAULT_SETTINGS;
   return {
@@ -84,6 +123,10 @@ export function normalizeSettings(s: any): TrustSettings {
     wifiCoverageNotes: s.wifiCoverageNotes ?? s.wifi_coverage_notes ?? DEFAULT_SETTINGS.wifiCoverageNotes,
     slogan: s.slogan ?? DEFAULT_SETTINGS.slogan,
     updatedAt: s.updatedAt ?? s.updated_at ?? new Date().toISOString(),
+    expenseCategories: Array.isArray(s.expenseCategories) ? s.expenseCategories : DEFAULT_EXPENSE_CATEGORIES,
+    cashFlowCategories: Array.isArray(s.cashFlowCategories) ? s.cashFlowCategories : DEFAULT_CASHFLOW_CATEGORIES,
+    feeCategories: Array.isArray(s.feeCategories) ? s.feeCategories : DEFAULT_FEE_CATEGORIES,
+    inventoryCategories: Array.isArray(s.inventoryCategories) ? s.inventoryCategories : DEFAULT_INVENTORY_CATEGORIES,
   };
 }
 
@@ -157,17 +200,20 @@ class StorageService {
     if (!localStorage.getItem(NOTIFICATIONS_KEY)) {
       localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(DEFAULT_NOTIFICATIONS));
     }
-    if (!localStorage.getItem(INVENTORY_KEY)) {
+    if (!localStorage.getItem(INVENTORY_KEY) || localStorage.getItem(INVENTORY_KEY)?.includes('inv-1')) {
       localStorage.setItem(INVENTORY_KEY, JSON.stringify(DEFAULT_INVENTORY));
     }
     if (!localStorage.getItem(INCIDENTS_KEY)) {
       localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
     }
     if (!localStorage.getItem(EXPENSES_KEY)) {
-      localStorage.setItem(EXPENSES_KEY, JSON.stringify(DEFAULT_EXPENSES));
+      localStorage.setItem(EXPENSES_KEY, JSON.stringify([]));
     }
     if (!localStorage.getItem(CASH_FLOW_KEY)) {
-      localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(SEED_CASH_FLOW));
+      localStorage.setItem(CASH_FLOW_KEY, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(FEES_KEY)) {
+      localStorage.setItem(FEES_KEY, JSON.stringify([]));
     }
     // Ensure Efraín Rodríguez has intendente role
     let users = this.getUsers();
@@ -1273,21 +1319,14 @@ class StorageService {
 
   // Documents
   public getDocuments(): DocumentItem[] {
-    if (typeof window === 'undefined') return DEFAULT_DOCUMENTS;
+    if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(DOCUMENTS_KEY);
-    if (!raw) return DEFAULT_DOCUMENTS;
+    if (!raw) return [];
     try {
       const parsed: DocumentItem[] = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return DEFAULT_DOCUMENTS;
-      const merged = [...parsed];
-      DEFAULT_DOCUMENTS.forEach((defDoc) => {
-        if (!merged.some((d) => d.id === defDoc.id)) {
-          merged.push(defDoc);
-        }
-      });
-      return merged;
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return DEFAULT_DOCUMENTS;
+      return [];
     }
   }
 
@@ -1313,6 +1352,11 @@ class StorageService {
     fetch(`/api/documents/${docId}`, {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando documento en servidor:', err));
+  }
+
+  public clearAllDocuments() {
+    localStorage.setItem(DOCUMENTS_KEY, JSON.stringify([]));
+    this.notify(false);
   }
 
   // Inventory & Stock of the Estate
@@ -1489,7 +1533,11 @@ class StorageService {
   public deleteFeeCollection(collectionId: string) {
     const list = this.getFeeCollections().filter((f) => f.id !== collectionId);
     localStorage.setItem(FEES_KEY, JSON.stringify(list));
-    this.notify();
+    this.notify(false);
+
+    fetch(`/api/fees/${collectionId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando cobranza en servidor:', err));
   }
 
   // Notifications
@@ -1690,6 +1738,43 @@ class StorageService {
     const recalculated = recalculateUsersUsedDays(DEFAULT_USERS, DEFAULT_BOOKINGS);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
     this.notify();
+  }
+
+  public getExpenseCategories(): CustomCategory[] {
+    const s = this.getSettings();
+    return s.expenseCategories && s.expenseCategories.length > 0 ? s.expenseCategories : DEFAULT_EXPENSE_CATEGORIES;
+  }
+  public saveExpenseCategories(cats: CustomCategory[]) {
+    const s = this.getSettings();
+    s.expenseCategories = cats;
+    this.saveSettings(s);
+  }
+  public getCashFlowCategories(): CustomCategory[] {
+    const s = this.getSettings();
+    return s.cashFlowCategories && s.cashFlowCategories.length > 0 ? s.cashFlowCategories : DEFAULT_CASHFLOW_CATEGORIES;
+  }
+  public saveCashFlowCategories(cats: CustomCategory[]) {
+    const s = this.getSettings();
+    s.cashFlowCategories = cats;
+    this.saveSettings(s);
+  }
+  public getFeeCategories(): CustomCategory[] {
+    const s = this.getSettings();
+    return s.feeCategories && s.feeCategories.length > 0 ? s.feeCategories : DEFAULT_FEE_CATEGORIES;
+  }
+  public saveFeeCategories(cats: CustomCategory[]) {
+    const s = this.getSettings();
+    s.feeCategories = cats;
+    this.saveSettings(s);
+  }
+  public getInventoryCategories(): CustomCategory[] {
+    const s = this.getSettings();
+    return s.inventoryCategories && s.inventoryCategories.length > 0 ? s.inventoryCategories : DEFAULT_INVENTORY_CATEGORIES;
+  }
+  public saveInventoryCategories(cats: CustomCategory[]) {
+    const s = this.getSettings();
+    s.inventoryCategories = cats;
+    this.saveSettings(s);
   }
 }
 

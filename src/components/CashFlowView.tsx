@@ -71,6 +71,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
   const [expAmount, setExpAmount] = useState<number>(0);
   const [expDate, setExpDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [expProvider, setExpProvider] = useState('');
+  const [expInvoiceNumber, setExpInvoiceNumber] = useState('');
+  const [expPayerUserId, setExpPayerUserId] = useState('');
   const [expNotes, setExpNotes] = useState('');
 
   // Partial Reimbursement Modal (for Admin/Intendente managing owner account balances)
@@ -177,6 +179,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
       return;
     }
 
+    const selectedPayer = users.find((u) => u.id === expPayerUserId) || currentUser;
+
     const newExpense: ExpenseItem = {
       id: `exp-${Date.now()}`,
       concept: expConcept.trim(),
@@ -185,14 +189,15 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
       currency: 'ARS',
       periodMonth: expDate.substring(0, 7),
       date: expDate,
-      provider: expProvider.trim() || currentUser.name,
+      provider: expProvider.trim() || selectedPayer.name,
+      invoiceNumber: expInvoiceNumber.trim() || undefined,
       status: 'pending',
       approvalStatus: fullAdmin ? 'approved' : 'pending', // Admin/Intendente auto-approve, others pending
       approvedAt: fullAdmin ? new Date().toISOString() : undefined,
       approvedBy: fullAdmin ? currentUser.name : undefined,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      partName: currentUser.partName,
+      userId: selectedPayer.id,
+      userName: selectedPayer.name,
+      partName: selectedPayer.partName,
       notes: expNotes.trim(),
       createdBy: currentUser.name,
       createdAt: new Date().toISOString(),
@@ -206,13 +211,13 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
         id: `cf-exp-${Date.now()}`,
         type: 'egreso',
         category: 'pago_proveedor',
-        concept: `Gasto Aprobado: ${newExpense.concept}`,
+        concept: `Gasto Aprobado: ${newExpense.concept}${newExpense.invoiceNumber ? ` (Factura N° ${newExpense.invoiceNumber})` : ''}`,
         amount: newExpense.amount,
         currency: 'ARS',
         date: newExpense.date,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        partName: currentUser.partName,
+        userId: selectedPayer.id,
+        userName: selectedPayer.name,
+        partName: selectedPayer.partName,
         expenseId: newExpense.id,
         notes: newExpense.notes,
         createdBy: `${currentUser.name} (Admin/Intendente)`,
@@ -225,6 +230,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
     setExpConcept('');
     setExpAmount(0);
     setExpProvider('');
+    setExpInvoiceNumber('');
+    setExpPayerUserId('');
     setExpNotes('');
     alert(
       fullAdmin
@@ -783,10 +790,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
                   <label className="block font-semibold uppercase text-[#35483A] mb-1">Monto (ARS) *</label>
                   <input
                     type="number"
-                    min="1"
+                    step="any"
+                    min="0"
                     required
                     value={txAmount || ''}
-                    onChange={(e) => setTxAmount(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const valStr = e.target.value.replace(',', '.');
+                      setTxAmount(parseFloat(valStr) || 0);
+                    }}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-sm focus:outline-none"
                   />
                 </div>
@@ -904,11 +915,44 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
                   <label className="block font-semibold uppercase text-[#35483A] mb-1">Monto (ARS) *</label>
                   <input
                     type="number"
-                    min="1"
+                    step="any"
+                    min="0"
                     required
                     value={expAmount || ''}
-                    onChange={(e) => setExpAmount(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const valStr = e.target.value.replace(',', '.');
+                      setExpAmount(parseFloat(valStr) || 0);
+                    }}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-[#FAF8F5] p-2.5 border border-[#DCD4C0]">
+                <div>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">👤 ¿Quién realizó / pagó el gasto?</label>
+                  <select
+                    value={expPayerUserId}
+                    onChange={(e) => setExpPayerUserId(e.target.value)}
+                    className="w-full p-2 bg-white border border-[#DCD4C0] font-semibold text-xs focus:outline-none"
+                  >
+                    <option value="">{currentUser.name} ({currentUser.partName}) [Tú]</option>
+                    {users.filter((u) => u.id !== currentUser.id).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.partName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">🧾 N° Factura / Comprobante</label>
+                  <input
+                    type="text"
+                    placeholder="ej. 0001-0004812"
+                    value={expInvoiceNumber}
+                    onChange={(e) => setExpInvoiceNumber(e.target.value)}
+                    className="w-full p-2 bg-white border border-[#DCD4C0] font-mono font-bold text-xs focus:outline-none"
                   />
                 </div>
               </div>
@@ -997,11 +1041,15 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
                 <label className="block font-semibold uppercase text-[#35483A] mb-1">Monto a Devolver / Reintegrar (ARS) *</label>
                 <input
                   type="number"
-                  min="1"
+                  step="any"
+                  min="0"
                   max={reimburseModalUser.balanceDue}
                   required
                   value={reimburseAmount || ''}
-                  onChange={(e) => setReimburseAmount(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const valStr = e.target.value.replace(',', '.');
+                    setReimburseAmount(parseFloat(valStr) || 0);
+                  }}
                   className="w-full p-2.5 bg-white border border-[#DCD4C0] font-mono font-bold text-sm text-[#163323] focus:outline-none"
                 />
               </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem } from '../types';
+import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem, CustomCategory } from '../types';
 import { storageService } from '../services/storageService';
 import { d1Service, D1Config } from '../services/d1Service';
 import { r2Service, R2Config } from '../services/r2Service';
@@ -7,6 +7,7 @@ import { BrandLogo } from './BrandLogo';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { TransferAdminModal } from './TransferAdminModal';
 import { UserFormModal } from './UserFormModal';
+import { CustomDialogModal } from './CustomDialogModal';
 import { APP_VERSION, APP_BUILD_DATE, APP_STAGE } from '../version';
 import { UserRoleBadge } from './UserRoleBadge';
 import {
@@ -65,6 +66,7 @@ export type SettingsTabId =
   | 'contacts'
   | 'documents'
   | 'identity'
+  | 'categories'
   | 'database';
 
 interface UnifiedSettingsPanelProps {
@@ -244,6 +246,124 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   // -------------------------------------------------------------
+  // CATEGORIES MANAGEMENT STATE
+  // -------------------------------------------------------------
+  const [expenseCategoriesList, setExpenseCategoriesList] = useState<CustomCategory[]>(storageService.getExpenseCategories());
+  const [cashFlowCategoriesList, setCashFlowCategoriesList] = useState<CustomCategory[]>(storageService.getCashFlowCategories());
+  const [feeCategoriesList, setFeeCategoriesList] = useState<CustomCategory[]>(storageService.getFeeCategories());
+  const [inventoryCategoriesList, setInventoryCategoriesList] = useState<CustomCategory[]>(storageService.getInventoryCategories());
+
+  const [categoryModal, setCategoryModal] = useState<{
+    isOpen: boolean;
+    type: 'expense' | 'cashflow' | 'fee' | 'inventory';
+    itemToEdit?: CustomCategory | null;
+  }>({
+    isOpen: false,
+    type: 'expense',
+    itemToEdit: null,
+  });
+  const [categoryNameInput, setCategoryNameInput] = useState('');
+
+  const handleSaveCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryNameInput.trim()) return;
+    const type = categoryModal.type;
+    const editing = categoryModal.itemToEdit;
+
+    if (type === 'expense') {
+      let list = [...expenseCategoriesList];
+      if (editing) {
+        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+      } else {
+        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        list.push({ id: newId, name: categoryNameInput.trim() });
+      }
+      storageService.saveExpenseCategories(list);
+      setExpenseCategoriesList(list);
+    } else if (type === 'cashflow') {
+      let list = [...cashFlowCategoriesList];
+      if (editing) {
+        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+      } else {
+        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        list.push({ id: newId, name: categoryNameInput.trim() });
+      }
+      storageService.saveCashFlowCategories(list);
+      setCashFlowCategoriesList(list);
+    } else if (type === 'fee') {
+      let list = [...feeCategoriesList];
+      if (editing) {
+        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+      } else {
+        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        list.push({ id: newId, name: categoryNameInput.trim() });
+      }
+      storageService.saveFeeCategories(list);
+      setFeeCategoriesList(list);
+    } else if (type === 'inventory') {
+      let list = [...inventoryCategoriesList];
+      if (editing) {
+        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+      } else {
+        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        list.push({ id: newId, name: categoryNameInput.trim() });
+      }
+      storageService.saveInventoryCategories(list);
+      setInventoryCategoriesList(list);
+    }
+
+    setCategoryModal({ isOpen: false, type: 'expense', itemToEdit: null });
+    setCategoryNameInput('');
+    showSuccess('✓ Categoría guardada exitosamente.');
+  };
+
+  const [dialogState, setDialogState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'confirm' | 'alert' | 'success' | 'warning';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const handleDeleteCategory = (type: 'expense' | 'cashflow' | 'fee' | 'inventory', id: string, name: string) => {
+    setDialogState({
+      isOpen: true,
+      title: 'Eliminar Categoría',
+      message: `¿Desea eliminar la categoría "${name}"?`,
+      type: 'warning',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        if (type === 'expense') {
+          const list = expenseCategoriesList.filter(c => c.id !== id);
+          storageService.saveExpenseCategories(list);
+          setExpenseCategoriesList(list);
+        } else if (type === 'cashflow') {
+          const list = cashFlowCategoriesList.filter(c => c.id !== id);
+          storageService.saveCashFlowCategories(list);
+          setCashFlowCategoriesList(list);
+        } else if (type === 'fee') {
+          const list = feeCategoriesList.filter(c => c.id !== id);
+          storageService.saveFeeCategories(list);
+          setFeeCategoriesList(list);
+        } else if (type === 'inventory') {
+          const list = inventoryCategoriesList.filter(c => c.id !== id);
+          storageService.saveInventoryCategories(list);
+          setInventoryCategoriesList(list);
+        }
+        showSuccess('Categoría eliminada.');
+      },
+    });
+  };
+
+  // -------------------------------------------------------------
   // 3. HOUSE RULES STATE
   // -------------------------------------------------------------
   const [rulesList, setRulesList] = useState<HouseRule[]>(storageService.getRules());
@@ -278,11 +398,19 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   const handleDeleteRule = (ruleId: string) => {
-    if (confirm('¿Eliminar esta regla de la casa?')) {
-      storageService.deleteRule(ruleId);
-      setRulesList(storageService.getRules());
-      showSuccess('Regla eliminada.');
-    }
+    setDialogState({
+      isOpen: true,
+      title: 'Eliminar Regla',
+      message: '¿Desea eliminar esta regla de la casa?',
+      type: 'warning',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        storageService.deleteRule(ruleId);
+        setRulesList(storageService.getRules());
+        showSuccess('Regla eliminada.');
+      },
+    });
   };
 
   // -------------------------------------------------------------
@@ -323,11 +451,19 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   const handleDeleteContact = (contactId: string) => {
-    if (confirm('¿Eliminar este contacto del directorio?')) {
-      storageService.deleteContact(contactId);
-      setContactsList(storageService.getContacts());
-      showSuccess('Contacto eliminado.');
-    }
+    setDialogState({
+      isOpen: true,
+      title: 'Eliminar Contacto',
+      message: '¿Desea eliminar este contacto del directorio?',
+      type: 'warning',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        storageService.deleteContact(contactId);
+        setContactsList(storageService.getContacts());
+        showSuccess('Contacto eliminado.');
+      },
+    });
   };
 
   // -------------------------------------------------------------
@@ -368,11 +504,19 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   const handleDeleteDoc = (docId: string) => {
-    if (confirm('¿Eliminar este documento del repositorio?')) {
-      storageService.deleteDocument(docId);
-      setDocumentsList(storageService.getDocuments());
-      showSuccess('Documento eliminado.');
-    }
+    setDialogState({
+      isOpen: true,
+      title: 'Eliminar Documento',
+      message: '¿Desea eliminar este documento del repositorio?',
+      type: 'warning',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        storageService.deleteDocument(docId);
+        setDocumentsList(storageService.getDocuments());
+        showSuccess('Documento eliminado.');
+      },
+    });
   };
 
   // -------------------------------------------------------------
@@ -500,39 +644,68 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   const handleInitD1Schema = async () => {
-    if (!confirm('¿Crear o verificar las tablas en Cloudflare D1 (users, bookings, date_blocks, trust_settings)?')) {
-      return;
-    }
-    setD1Loading(true);
-    const res = await d1Service.initializeSchema();
-    setD1Loading(false);
-    showSuccess(res.message);
+    setDialogState({
+      isOpen: true,
+      title: 'Inicializar Tablas D1',
+      message: '¿Crear o verificar las tablas en Cloudflare D1 (users, bookings, date_blocks, trust_settings)?',
+      type: 'confirm',
+      confirmText: 'Inicializar',
+      cancelText: 'Cancelar',
+      onConfirm: async () => {
+        setD1Loading(true);
+        const res = await d1Service.initializeSchema();
+        setD1Loading(false);
+        showSuccess(res.message);
+      },
+    });
   };
 
   const handlePushDataToD1 = async () => {
-    if (!confirm('¿Desea migrar todos los socios, turnos y parámetros actuales hacia Cloudflare D1?')) {
-      return;
-    }
-    setD1Loading(true);
-    const payload = storageService.getAllDataPackage();
-    const res = await d1Service.pushLocalDataToD1(payload as any);
-    setD1Loading(false);
-    showSuccess(res.message);
+    setDialogState({
+      isOpen: true,
+      title: 'Migrar Datos a D1',
+      message: '¿Desea migrar todos los socios, turnos y parámetros actuales hacia Cloudflare D1?',
+      type: 'confirm',
+      confirmText: 'Migrar',
+      cancelText: 'Cancelar',
+      onConfirm: async () => {
+        setD1Loading(true);
+        const payload = storageService.getAllDataPackage();
+        const res = await d1Service.pushLocalDataToD1(payload as any);
+        setD1Loading(false);
+        showSuccess(res.message);
+      },
+    });
   };
 
   const handlePullDataFromD1 = async () => {
-    if (!confirm('¿Descargar y sincronizar datos desde Cloudflare D1 hacia la aplicación?')) {
-      return;
-    }
-    setD1Loading(true);
-    const res = await d1Service.pullDataFromD1();
-    setD1Loading(false);
-    if (res.success && res.data) {
-      storageService.applyRemoteD1Data(res.data);
-      showSuccess('Datos sincronizados exitosamente desde Cloudflare D1.');
-    } else {
-      alert(res.error || 'Error al obtener datos desde Cloudflare D1.');
-    }
+    setDialogState({
+      isOpen: true,
+      title: 'Sincronizar desde D1',
+      message: '¿Descargar y sincronizar datos desde Cloudflare D1 hacia la aplicación?',
+      type: 'confirm',
+      confirmText: 'Sincronizar',
+      cancelText: 'Cancelar',
+      onConfirm: async () => {
+        setD1Loading(true);
+        const res = await d1Service.pullDataFromD1();
+        setD1Loading(false);
+        if (res.success && res.data) {
+          storageService.applyRemoteD1Data(res.data);
+          showSuccess('Datos sincronizados exitosamente desde Cloudflare D1.');
+        } else {
+          setDialogState({
+            isOpen: true,
+            title: 'Error de Sincronización',
+            message: res.error || 'Error al obtener datos desde Cloudflare D1.',
+            type: 'warning',
+            confirmText: 'Aceptar',
+            cancelText: '',
+            onConfirm: () => {},
+          });
+        }
+      },
+    });
   };
 
   const handleExecuteSQL = async () => {
@@ -713,6 +886,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       label: 'Identidad, Marca & Logo',
       description: 'Personalización de logo, lema y vista previa',
       icon: ImageIcon,
+    },
+    {
+      id: 'categories',
+      label: 'Categorías Operativas',
+      description: 'Configurar categorías de gastos, cajas, cobranzas e inventario',
+      icon: PieChart,
     },
     {
       id: 'database',
@@ -2009,10 +2188,10 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     </h4>
                     <form onSubmit={handleSaveLogoUrl} className="mt-2 flex gap-2">
                       <input
-                        type="url"
+                        type="text"
                         value={logoInputUrl}
                         onChange={(e) => setLogoInputUrl(e.target.value)}
-                        placeholder="https://..."
+                        placeholder="https://... o ruta de imagen"
                         className="flex-1 p-2 bg-[#FAF8F5] border border-[#DCD4C0] font-mono text-xs"
                       />
                       <button
@@ -2038,6 +2217,252 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* CATEGORÍAS OPERATIVAS                                      */}
+          {/* ========================================================= */}
+          {activeTab === 'categories' && (
+            <div className="space-y-6">
+              <div className="pb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
+                    <PieChart className="w-5 h-5 text-[#1B3B2B]" />
+                    <span>Configuración de Categorías Operativas</span>
+                  </h3>
+                  <p className="text-xs text-[#7A8E7E] mt-0.5">
+                    Personalice y administre las categorías utilizadas en Gastos, Cajas, Cobranzas e Inventario.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 1. Expenses Categories */}
+                <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Categorías de Gastos</span>
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setCategoryModal({ isOpen: true, type: 'expense', itemToEdit: null });
+                        setCategoryNameInput('');
+                      }}
+                      className="px-2.5 py-1 bg-[#1B3B2B] text-white text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Añadir
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {expenseCategoriesList.map((cat) => (
+                      <div key={cat.id} className="p-2.5 bg-white border border-[#E3DFC8] flex items-center justify-between text-xs">
+                        <span className="font-semibold text-[#163323]">{cat.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setCategoryModal({ isOpen: true, type: 'expense', itemToEdit: cat });
+                              setCategoryNameInput(cat.name);
+                            }}
+                            className="p-1 hover:bg-[#F2EDE1] text-[#163323]"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory('expense', cat.id, cat.name)}
+                            className="p-1 hover:bg-red-50 text-red-700"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Cash Flow Categories */}
+                <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Categorías de Cajas & Cuentas</span>
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setCategoryModal({ isOpen: true, type: 'cashflow', itemToEdit: null });
+                        setCategoryNameInput('');
+                      }}
+                      className="px-2.5 py-1 bg-[#1B3B2B] text-white text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Añadir
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {cashFlowCategoriesList.map((cat) => (
+                      <div key={cat.id} className="p-2.5 bg-white border border-[#E3DFC8] flex items-center justify-between text-xs">
+                        <span className="font-semibold text-[#163323]">{cat.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setCategoryModal({ isOpen: true, type: 'cashflow', itemToEdit: cat });
+                              setCategoryNameInput(cat.name);
+                            }}
+                            className="p-1 hover:bg-[#F2EDE1] text-[#163323]"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory('cashflow', cat.id, cat.name)}
+                            className="p-1 hover:bg-red-50 text-red-700"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Fee Collection Categories */}
+                <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Categorías de Cobranzas</span>
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setCategoryModal({ isOpen: true, type: 'fee', itemToEdit: null });
+                        setCategoryNameInput('');
+                      }}
+                      className="px-2.5 py-1 bg-[#1B3B2B] text-white text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Añadir
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {feeCategoriesList.map((cat) => (
+                      <div key={cat.id} className="p-2.5 bg-white border border-[#E3DFC8] flex items-center justify-between text-xs">
+                        <span className="font-semibold text-[#163323]">{cat.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setCategoryModal({ isOpen: true, type: 'fee', itemToEdit: cat });
+                              setCategoryNameInput(cat.name);
+                            }}
+                            className="p-1 hover:bg-[#F2EDE1] text-[#163323]"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory('fee', cat.id, cat.name)}
+                            className="p-1 hover:bg-red-50 text-red-700"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Inventory Categories */}
+                <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Categorías de Inventario</span>
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setCategoryModal({ isOpen: true, type: 'inventory', itemToEdit: null });
+                        setCategoryNameInput('');
+                      }}
+                      className="px-2.5 py-1 bg-[#1B3B2B] text-white text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Añadir
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {inventoryCategoriesList.map((cat) => (
+                      <div key={cat.id} className="p-2.5 bg-white border border-[#E3DFC8] flex items-center justify-between text-xs">
+                        <span className="font-semibold text-[#163323]">{cat.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setCategoryModal({ isOpen: true, type: 'inventory', itemToEdit: cat });
+                              setCategoryNameInput(cat.name);
+                            }}
+                            className="p-1 hover:bg-[#F2EDE1] text-[#163323]"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory('inventory', cat.id, cat.name)}
+                            className="p-1 hover:bg-red-50 text-red-700"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal for Category Add/Edit */}
+              {categoryModal.isOpen && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
+                  <div className="bg-white border border-[#DCD4C0] w-full max-w-md shadow-2xl p-6 space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-[#EFEAE0]">
+                      <h4 className="font-bold text-sm text-[#163323] uppercase tracking-wider">
+                        {categoryModal.itemToEdit ? 'Editar Categoría' : 'Nueva Categoría'}
+                      </h4>
+                      <button
+                        onClick={() => setCategoryModal({ isOpen: false, type: 'expense', itemToEdit: null })}
+                        className="p-1 text-[#4F6254] hover:text-[#163323]"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSaveCategory} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase text-[#35483A] mb-1">Nombre de la Categoría *</label>
+                        <input
+                          type="text"
+                          required
+                          value={categoryNameInput}
+                          onChange={(e) => setCategoryNameInput(e.target.value)}
+                          placeholder="ej. Mantenimiento especial"
+                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] text-xs font-medium text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#E8E2D2]">
+                        <button
+                          type="button"
+                          onClick={() => setCategoryModal({ isOpen: false, type: 'expense', itemToEdit: null })}
+                          className="px-4 py-2 bg-white border border-[#DCD4C0] text-[#163323] text-xs font-semibold uppercase tracking-wider hover:bg-[#FAF8F5]"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider"
+                        >
+                          Guardar Categoría
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2846,7 +3271,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                       <div className="flex items-center">
                                         <input
                                           type="number"
-                                          step="0.0001"
+                                          step="any"
                                           min="0"
                                           max="100"
                                           value={currentVal}
@@ -2898,6 +3323,16 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           </div>
         </div>
       )}
+      <CustomDialogModal
+        isOpen={dialogState.isOpen}
+        title={dialogState.title}
+        message={dialogState.message}
+        type={dialogState.type || 'warning'}
+        confirmText={dialogState.confirmText || 'Aceptar'}
+        cancelText={dialogState.cancelText || 'Cancelar'}
+        onConfirm={dialogState.onConfirm}
+        onClose={() => setDialogState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

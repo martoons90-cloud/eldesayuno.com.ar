@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
+import { CustomDialogModal } from './CustomDialogModal';
 import {
   DollarSign,
   Plus,
@@ -28,6 +29,32 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
+// Automatic color palette generator for dynamic expenses and categories
+export const EXPENSE_COLOR_PALETTES = [
+  { name: 'emerald', bg: 'bg-emerald-50/90', text: 'text-emerald-900', border: 'border-emerald-200', badgeBg: 'bg-emerald-100', badgeText: 'text-emerald-900', badgeBorder: 'border-emerald-300', dot: 'bg-emerald-500', bar: 'border-l-emerald-500' },
+  { name: 'blue', bg: 'bg-blue-50/90', text: 'text-blue-900', border: 'border-blue-200', badgeBg: 'bg-blue-100', badgeText: 'text-blue-900', badgeBorder: 'border-blue-300', dot: 'bg-blue-500', bar: 'border-l-blue-500' },
+  { name: 'purple', bg: 'bg-purple-50/90', text: 'text-purple-900', border: 'border-purple-200', badgeBg: 'bg-purple-100', badgeText: 'text-purple-900', badgeBorder: 'border-purple-300', dot: 'bg-purple-500', bar: 'border-l-purple-500' },
+  { name: 'amber', bg: 'bg-amber-50/90', text: 'text-amber-900', border: 'border-amber-200', badgeBg: 'bg-amber-100', badgeText: 'text-amber-900', badgeBorder: 'border-amber-300', dot: 'bg-amber-500', bar: 'border-l-amber-500' },
+  { name: 'rose', bg: 'bg-rose-50/90', text: 'text-rose-900', border: 'border-rose-200', badgeBg: 'bg-rose-100', badgeText: 'text-rose-900', badgeBorder: 'border-rose-300', dot: 'bg-rose-500', bar: 'border-l-rose-500' },
+  { name: 'teal', bg: 'bg-teal-50/90', text: 'text-teal-900', border: 'border-teal-200', badgeBg: 'bg-teal-100', badgeText: 'text-teal-900', badgeBorder: 'border-teal-300', dot: 'bg-teal-500', bar: 'border-l-teal-500' },
+  { name: 'indigo', bg: 'bg-indigo-50/90', text: 'text-indigo-900', border: 'border-indigo-200', badgeBg: 'bg-indigo-100', badgeText: 'text-indigo-900', badgeBorder: 'border-indigo-300', dot: 'bg-indigo-500', bar: 'border-l-indigo-500' },
+  { name: 'orange', bg: 'bg-orange-50/90', text: 'text-orange-900', border: 'border-orange-200', badgeBg: 'bg-orange-100', badgeText: 'text-orange-900', badgeBorder: 'border-orange-300', dot: 'bg-orange-500', bar: 'border-l-orange-500' },
+  { name: 'cyan', bg: 'bg-cyan-50/90', text: 'text-cyan-900', border: 'border-cyan-200', badgeBg: 'bg-cyan-100', badgeText: 'text-cyan-900', badgeBorder: 'border-cyan-300', dot: 'bg-cyan-500', bar: 'border-l-cyan-500' },
+  { name: 'violet', bg: 'bg-violet-50/90', text: 'text-violet-900', border: 'border-violet-200', badgeBg: 'bg-violet-100', badgeText: 'text-violet-900', badgeBorder: 'border-violet-300', dot: 'bg-violet-500', bar: 'border-l-violet-500' },
+  { name: 'sky', bg: 'bg-sky-50/90', text: 'text-sky-900', border: 'border-sky-200', badgeBg: 'bg-sky-100', badgeText: 'text-sky-900', badgeBorder: 'border-sky-300', dot: 'bg-sky-500', bar: 'border-l-sky-500' },
+  { name: 'fuchsia', bg: 'bg-fuchsia-50/90', text: 'text-fuchsia-900', border: 'border-fuchsia-200', badgeBg: 'bg-fuchsia-100', badgeText: 'text-fuchsia-900', badgeBorder: 'border-fuchsia-300', dot: 'bg-fuchsia-500', bar: 'border-l-fuchsia-500' },
+];
+
+export function getAutoExpenseColor(strKey: string) {
+  let hash = 0;
+  const s = strKey || 'default';
+  for (let i = 0; i < s.length; i++) {
+    hash = s.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % EXPENSE_COLOR_PALETTES.length;
+  return EXPENSE_COLOR_PALETTES[index];
+}
+
 interface ExpensesViewProps {
   currentUser: User;
   settings: TrustSettings;
@@ -51,6 +78,20 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [isNewExpenseModalOpen, setIsNewExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'confirm' | 'alert' | 'success' | 'warning';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Form State
   const [expenseForm, setExpenseForm] = useState<{
@@ -61,6 +102,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     periodMonth: string;
     date: string;
     provider: string;
+    invoiceNumber: string;
+    userId: string;
+    userName: string;
+    partName: string;
     status: 'paid' | 'pending';
     paymentMethod: string;
     receiptUrl: string;
@@ -73,6 +118,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     periodMonth: '2026-10',
     date: new Date().toISOString().split('T')[0],
     provider: '',
+    invoiceNumber: '',
+    userId: '',
+    userName: '',
+    partName: '',
     status: 'paid',
     paymentMethod: 'transfer',
     receiptUrl: '',
@@ -82,6 +131,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [isUploadingBill, setIsUploadingBill] = useState(false);
 
   // Transfer Modal State
+  const [transferTarget, setTransferTarget] = useState<'selected_expense' | 'all_period'>('all_period');
+  const [selectedExpenseForTransfer, setSelectedExpenseForTransfer] = useState<ExpenseItem | null>(null);
+  const [transferPercentage, setTransferPercentage] = useState<number>(100); // 100%, 75%, 50%, 25%, 10%, or custom
+  const [installmentsCount, setInstallmentsCount] = useState<number>(1); // 1, 2, 3, 6, 12, 24
   const [transferDueDate, setTransferDueDate] = useState(
     new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
@@ -118,6 +171,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       const match =
         exp.concept.toLowerCase().includes(q) ||
         (exp.provider && exp.provider.toLowerCase().includes(q)) ||
+        (exp.invoiceNumber && exp.invoiceNumber.toLowerCase().includes(q)) ||
+        (exp.userName && exp.userName.toLowerCase().includes(q)) ||
         (exp.notes && exp.notes.toLowerCase().includes(q));
       if (!match) return false;
     }
@@ -131,21 +186,20 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     .reduce((sum, e) => sum + e.amount, 0);
   const periodPendingAmount = periodTotalAmount - periodPaidAmount;
 
+  // Dynamic Expense Categories from Settings
+  const expenseCategories = storageService.getExpenseCategories();
+
   // Breakdown per Category
-  const categoryTotals: Record<ExpenseCategory, number> = {
-    servicios: 0,
-    personal_casero: 0,
-    mantenimiento: 0,
-    impuestos: 0,
-    insumos: 0,
-    otro: 0,
-  };
+  const categoryTotals: Record<string, number> = {};
+  expenseCategories.forEach((cat) => {
+    categoryTotals[cat.id] = 0;
+  });
 
   filteredExpenses.forEach((e) => {
     if (categoryTotals[e.category] !== undefined) {
       categoryTotals[e.category] += e.amount;
     } else {
-      categoryTotals.otro += e.amount;
+      categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount;
     }
   });
 
@@ -157,22 +211,19 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const mySharePct = currentUser?.sharePercentage ?? 6.25;
   const myEstimatedCost = Math.round((periodTotalAmount * (mySharePct / 100)) * 100) / 100;
 
-  // Category Category Badges
-  const getCategoryBadge = (cat: ExpenseCategory) => {
-    switch (cat) {
-      case 'servicios':
-        return <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold uppercase rounded">Servicios (Luz/Agua/WiFi)</span>;
-      case 'personal_casero':
-        return <span className="px-2 py-0.5 bg-purple-100 text-purple-800 text-[10px] font-bold uppercase rounded">Personal / Casero</span>;
-      case 'mantenimiento':
-        return <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold uppercase rounded">Mantenimiento & Parque</span>;
-      case 'impuestos':
-        return <span className="px-2 py-0.5 bg-red-100 text-red-800 text-[10px] font-bold uppercase rounded">Impuestos & Tasas</span>;
-      case 'insumos':
-        return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded">Insumos & Consumibles</span>;
-      default:
-        return <span className="px-2 py-0.5 bg-neutral-100 text-neutral-800 text-[10px] font-bold uppercase rounded">Otro Gasto</span>;
-    }
+
+
+  // Dynamic Category Badges
+  const getCategoryBadge = (catId: string) => {
+    const matched = expenseCategories.find((c) => c.id === catId);
+    const label = matched ? matched.name : catId;
+    const palette = getAutoExpenseColor(catId);
+    return (
+      <span className={`px-2 py-0.5 ${palette.badgeBg} ${palette.badgeText} ${palette.badgeBorder} border text-[10px] font-bold uppercase rounded inline-flex items-center gap-1.5 shadow-2xs`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${palette.dot}`} />
+        {label}
+      </span>
+    );
   };
 
   // Upload Bill / Factura Voucher
@@ -211,6 +262,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       periodMonth: exp.periodMonth || '2026-10',
       date: exp.date || new Date().toISOString().split('T')[0],
       provider: exp.provider || '',
+      invoiceNumber: exp.invoiceNumber || '',
+      userId: exp.userId || '',
+      userName: exp.userName || '',
+      partName: exp.partName || '',
       status: exp.status,
       paymentMethod: exp.paymentMethod || 'transfer',
       receiptUrl: exp.receiptUrl || '',
@@ -223,12 +278,26 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const handleSaveExpense = (e: React.FormEvent) => {
     e.preventDefault();
     if (!expenseForm.concept.trim()) {
-      alert('Por favor, ingrese un concepto para el gasto.');
+      setDialog({
+        isOpen: true,
+        title: 'Campo Requerido',
+        message: 'Por favor, ingrese un concepto para el gasto.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
       return;
     }
 
     if (expenseForm.amount <= 0) {
-      alert('El monto del gasto debe ser mayor a cero.');
+      setDialog({
+        isOpen: true,
+        title: 'Monto Inválido',
+        message: 'El monto del gasto debe ser mayor a cero.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
       return;
     }
 
@@ -241,6 +310,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       periodMonth: expenseForm.periodMonth,
       date: expenseForm.date,
       provider: expenseForm.provider.trim(),
+      invoiceNumber: expenseForm.invoiceNumber.trim() || undefined,
+      userId: expenseForm.userId || undefined,
+      userName: expenseForm.userName || undefined,
+      partName: expenseForm.partName || undefined,
       status: expenseForm.status,
       paymentMethod: expenseForm.paymentMethod,
       receiptUrl: expenseForm.receiptUrl,
@@ -256,13 +329,29 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   // Delete Expense
   const handleDeleteExpense = (id: string) => {
-    if (confirm('¿Está seguro de eliminar este registro de gasto?')) {
-      storageService.deleteExpense(id);
-    }
+    setDialog({
+      isOpen: true,
+      title: 'Eliminar Gasto',
+      message: '¿Está seguro de eliminar este registro de gasto?',
+      type: 'warning',
+      confirmText: 'Eliminar',
+      onConfirm: () => {
+        storageService.deleteExpense(id);
+      },
+    });
   };
 
+  // Calculate base amount and total to collect
+  const currentBaseAmount =
+    transferTarget === 'selected_expense' && selectedExpenseForTransfer
+      ? selectedExpenseForTransfer.amount
+      : periodTotalAmount;
+
+  const currentTotalToCollect = Math.round((currentBaseAmount * (transferPercentage / 100)) * 100) / 100;
+  const currentAmountPerInstallment = Math.round((currentTotalToCollect / Math.max(1, installmentsCount)) * 100) / 100;
+
   // Calculate allocations for transfer modal
-  const calculateTransferAllocations = (): OwnerFeeAllocation[] => {
+  const calculateTransferAllocations = (amountToDistribute: number): OwnerFeeAllocation[] => {
     const activeUsers = storageService.getUsers().filter((u) => u.active !== false);
     if (activeUsers.length === 0) return [];
 
@@ -271,7 +360,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         const pct = typeof m.sharePercentage === 'number' && m.sharePercentage > 0
           ? m.sharePercentage
           : (100 / activeUsers.length);
-        const assigned = Math.round((periodTotalAmount * (pct / 100)) * 100) / 100;
+        const assigned = Math.round((amountToDistribute * (pct / 100)) * 100) / 100;
         return {
           userId: m.id,
           userName: m.name,
@@ -292,7 +381,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       });
 
       const allocations: OwnerFeeAllocation[] = [];
-      const amountPerCabeza = periodTotalAmount / 4;
+      const amountPerCabeza = amountToDistribute / 4;
       const pctPerCabeza = 100 / 4;
 
       for (let cNum = 1; cNum <= 4; cNum++) {
@@ -317,7 +406,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return allocations;
     } else if (transferDistributionMode === 'equal_owners') {
       const N = activeUsers.length;
-      const amtPerOwner = Math.round((periodTotalAmount / N) * 100) / 100;
+      const amtPerOwner = Math.round((amountToDistribute / N) * 100) / 100;
       const pctPerOwner = Math.round((100 / N) * 10000) / 10000;
       return activeUsers.map((m) => ({
         userId: m.id,
@@ -332,7 +421,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     } else if (transferDistributionMode === 'percentage') {
       return activeUsers.map((m) => {
         const pct = transferCustomPercentages[m.id] ?? Math.round((100 / activeUsers.length) * 10000) / 10000;
-        const assigned = Math.round((periodTotalAmount * (pct / 100)) * 100) / 100;
+        const assigned = Math.round((amountToDistribute * (pct / 100)) * 100) / 100;
         return {
           userId: m.id,
           userName: m.name,
@@ -347,8 +436,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     } else {
       // custom_amount
       return activeUsers.map((m) => {
-        const assigned = transferCustomAmounts[m.id] ?? Math.round(periodTotalAmount / activeUsers.length);
-        const pct = periodTotalAmount > 0 ? Math.round((assigned / periodTotalAmount) * 10000) / 100 : 0;
+        const assigned = transferCustomAmounts[m.id] ?? Math.round(amountToDistribute / activeUsers.length);
+        const pct = amountToDistribute > 0 ? Math.round((assigned / amountToDistribute) * 10000) / 100 : 0;
         return {
           userId: m.id,
           userName: m.name,
@@ -363,51 +452,96 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }
   };
 
-  const liveTransferAllocations = calculateTransferAllocations();
+  const liveTransferAllocations = calculateTransferAllocations(currentAmountPerInstallment);
   const liveTransferTotalPct = liveTransferAllocations.reduce((s, a) => s + a.percentage, 0);
   const liveTransferTotalAmt = liveTransferAllocations.reduce((s, a) => s + a.assignedAmount, 0);
 
-  // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES)
+  // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES OR INDIVIDUAL INVOICE)
   const handleTransferToCobranza = () => {
-    if (periodTotalAmount <= 0) {
-      alert('No hay gastos acumulados en el período seleccionado para trasladar a cobranza.');
+    if (currentTotalToCollect <= 0) {
+      setDialog({
+        isOpen: true,
+        title: 'Sin Monto a Cobrar',
+        message: 'El monto total a cobrar debe ser mayor a cero.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
       return;
     }
 
-    // Build itemized bullet list of expenses
-    const itemizedList = filteredExpenses
-      .map((e) => `• ${e.concept}: $${e.amount.toLocaleString()} ARS (${e.provider || 'S/D'})`)
-      .join('\n');
-
     const formattedPeriodLabel = selectedPeriod === '2026-10' ? 'Octubre 2026' : selectedPeriod;
-    const allocations = calculateTransferAllocations();
+    const createdCount = Math.max(1, installmentsCount);
+    const baseDueDateObj = new Date(transferDueDate || Date.now());
 
-    const newFeeCollection: FeeCollection = {
-      id: 'fee-expenses-' + Date.now(),
-      concept: `Expensas Mensuales Ordinarias - Rendición Gastos ${formattedPeriodLabel}`,
-      category: 'expensas_ordinarias',
-      totalAmount: periodTotalAmount,
-      currency: 'ARS',
-      recurrence: 'monthly',
-      issueDate: new Date().toISOString().split('T')[0],
-      dueDate: transferDueDate,
-      distributionMode: transferDistributionMode,
-      allocations,
-      status: 'active',
-      createdBy: `${currentUser.name} (Administración)`,
-      createdAt: new Date().toISOString(),
-      notes: `Gastos consolidados del mes:\n${itemizedList}`,
-    };
+    for (let i = 1; i <= createdCount; i++) {
+      const issueDateObj = new Date();
+      issueDateObj.setMonth(issueDateObj.getMonth() + (i - 1));
+      const issueDateStr = issueDateObj.toISOString().split('T')[0];
 
-    storageService.saveFeeCollection(newFeeCollection);
+      const dueDateObj = new Date(baseDueDateObj);
+      dueDateObj.setMonth(dueDateObj.getMonth() + (i - 1));
+      const dueDateStr = dueDateObj.toISOString().split('T')[0];
 
-    // Mark current expenses as transferred
-    filteredExpenses.forEach((e) => {
+      const instSuffix = createdCount > 1 ? ` - Cuota ${i} de ${createdCount}` : '';
+      const pctSuffix = transferPercentage < 100 ? ` (${transferPercentage}% de $${currentBaseAmount.toLocaleString()})` : '';
+
+      let conceptTitle = '';
+      let notesDetail = '';
+
+      if (transferTarget === 'selected_expense' && selectedExpenseForTransfer) {
+        conceptTitle = `${selectedExpenseForTransfer.concept}${instSuffix}${pctSuffix}`;
+        notesDetail = `Factura individual trasladada a cobranza (${transferPercentage}% en ${createdCount} cuotas).\nProveedor: ${selectedExpenseForTransfer.provider || 'S/D'}`;
+      } else {
+        conceptTitle = `Expensas Ordinarias ${formattedPeriodLabel}${instSuffix}${pctSuffix}`;
+        notesDetail = `Gastos consolidados del mes (${transferPercentage}% en ${createdCount} cuotas):\n` +
+          filteredExpenses.map((e) => `• ${e.concept}: $${e.amount.toLocaleString()} ARS`).join('\n');
+      }
+
+      const allocations = calculateTransferAllocations(currentAmountPerInstallment);
+
+      const newFeeCollection: FeeCollection = {
+        id: `fee-exp-${Date.now()}-${i}`,
+        concept: conceptTitle,
+        category: 'expensas_ordinarias',
+        totalAmount: currentAmountPerInstallment,
+        currency: 'ARS',
+        recurrence: createdCount > 1 ? 'monthly' : 'one_time',
+        issueDate: issueDateStr,
+        dueDate: dueDateStr,
+        distributionMode: transferDistributionMode,
+        allocations,
+        status: 'active',
+        createdBy: `${currentUser.name} (Administración)`,
+        createdAt: new Date().toISOString(),
+        notes: notesDetail,
+        installmentsCount: createdCount,
+        installmentNumber: i,
+        transferredPercentage: transferPercentage,
+        originalExpenseId: selectedExpenseForTransfer?.id,
+      };
+
+      storageService.saveFeeCollection(newFeeCollection);
+    }
+
+    // Mark expenses transferred
+    if (transferTarget === 'selected_expense' && selectedExpenseForTransfer) {
       storageService.saveExpense({
-        ...e,
-        transferredToFeeCollectionId: newFeeCollection.id,
+        ...selectedExpenseForTransfer,
+        transferredToFeeCollectionId: 'transferred-multi-' + Date.now(),
+        transferredPercentage: transferPercentage,
+        transferredInstallments: createdCount,
       });
-    });
+    } else {
+      filteredExpenses.forEach((e) => {
+        storageService.saveExpense({
+          ...e,
+          transferredToFeeCollectionId: 'transferred-multi-' + Date.now(),
+          transferredPercentage: transferPercentage,
+          transferredInstallments: createdCount,
+        });
+      });
+    }
 
     setTransferSuccessMsg(true);
     setTimeout(() => {
@@ -442,27 +576,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              onClick={() => setIsSharesBreakdownModalOpen(true)}
-              className="px-3.5 py-2 bg-[#FAF8F5] hover:bg-[#F4EFE6] border border-[#DDD5BF] text-[#163323] text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-2xs cursor-pointer"
-              title="Ver cómo se dividen los gastos totales del mes según el porcentaje de acciones de cada socio"
-            >
-              <PieChart className="w-4 h-4 text-[#BFA270]" />
-              <span>Reparto por % de Acciones</span>
-            </button>
-
             {isAdmin && (
-              <>
-                <button
-                  onClick={() => setIsTransferModalOpen(true)}
-                  className="px-4 py-2 bg-[#BFA270] hover:bg-[#a38758] text-[#163323] text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm cursor-pointer"
-                >
-                  <Send className="w-4 h-4 text-[#163323]" />
-                  <span>Trasladar Mes a Cobranza</span>
-                </button>
-
-                <button
-                  onClick={() => {
+              <button
+                onClick={() => {
                     setEditingExpense(null);
                     setExpenseForm({
                       concept: '',
@@ -472,6 +588,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       periodMonth: selectedPeriod === 'all' ? '2026-10' : selectedPeriod,
                       date: new Date().toISOString().split('T')[0],
                       provider: '',
+                      invoiceNumber: '',
+                      userId: '',
+                      userName: '',
+                      partName: '',
                       status: 'paid',
                       paymentMethod: 'transfer',
                       receiptUrl: '',
@@ -484,7 +604,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <Plus className="w-4 h-4 text-[#BFA270]" />
                   <span>+ Registrar Gasto / Factura</span>
                 </button>
-              </>
             )}
           </div>
         </div>
@@ -531,57 +650,31 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </span>
         </div>
 
-        {/* Card 3: Gastos por Categoría (Compacto) */}
+        {/* Card 3: Gastos por Categoría (Dinámico) */}
         <div className="md:col-span-6 bg-white border border-[#E3DFC8] p-3.5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-[#637568] font-bold uppercase tracking-wider mb-2">
-            <span>Gastos por Categoría</span>
+            <span>Gastos por Categoría ({expenseCategories.length})</span>
             <Tag className="w-3.5 h-3.5 text-[#BFA270]" />
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-blue-900 truncate">Servicios (Luz/Agua/WiFi)</span>
-              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
-                ${categoryTotals.servicios.toLocaleString()}
-              </span>
-            </div>
-
-            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-purple-900 truncate">Personal / Casero</span>
-              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
-                ${categoryTotals.personal_casero.toLocaleString()}
-              </span>
-            </div>
-
-            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-amber-900 truncate">Mantenimiento</span>
-              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
-                ${categoryTotals.mantenimiento.toLocaleString()}
-              </span>
-            </div>
-
-            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-red-900 truncate">Impuestos & Tasas</span>
-              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
-                ${categoryTotals.impuestos.toLocaleString()}
-              </span>
-            </div>
-
-            <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-emerald-900 truncate">Insumos & Limpieza</span>
-              <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
-                ${categoryTotals.insumos.toLocaleString()}
-              </span>
-            </div>
-
-            {categoryTotals.otro > 0 && (
-              <div className="p-1.5 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col justify-center">
-                <span className="text-[10px] font-bold text-neutral-800 truncate">Otros Gastos</span>
-                <span className="font-mono text-xs font-bold text-[#163323] mt-0.5">
-                  ${categoryTotals.otro.toLocaleString()}
-                </span>
-              </div>
-            )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-xs max-h-40 overflow-y-auto">
+            {expenseCategories.map((cat) => {
+              const total = categoryTotals[cat.id] || 0;
+              const palette = getAutoExpenseColor(cat.id);
+              return (
+                <div key={cat.id} className={`p-2 ${palette.bg} ${palette.border} border border-l-4 ${palette.bar} flex flex-col justify-center transition-all hover:shadow-xs rounded-r`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`w-2 h-2 rounded-full ${palette.dot} shrink-0`} />
+                    <span className={`text-[10px] font-bold ${palette.text} truncate`} title={cat.name}>
+                      {cat.name}
+                    </span>
+                  </div>
+                  <span className={`font-mono text-xs font-bold ${palette.text} mt-1`}>
+                    ${total.toLocaleString()} ARS
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -637,12 +730,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             className="px-2.5 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-medium text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
           >
             <option value="all">Todas las Categorías</option>
-            <option value="servicios">Servicios (Luz/Agua/WiFi)</option>
-            <option value="personal_casero">Personal / Casero</option>
-            <option value="mantenimiento">Mantenimiento & Parque</option>
-            <option value="impuestos">Impuestos & Tasas</option>
-            <option value="insumos">Insumos & Limpieza</option>
-            <option value="otro">Otros Gastos</option>
+            {expenseCategories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -682,22 +774,49 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredExpenses.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-[#FAF8F5] transition-colors">
-                    <td className="py-3 px-3 whitespace-nowrap font-mono text-[#56685B]">
-                      {exp.date}
-                      <span className="block text-[10px] text-[#7A8E7E]">Mes: {exp.periodMonth}</span>
-                    </td>
-                    <td className="py-3 px-3 font-semibold text-[#163323]">
-                      {exp.concept}
-                      {exp.notes && <span className="block text-[10px] text-[#637568] font-normal italic">"{exp.notes}"</span>}
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      {getCategoryBadge(exp.category)}
-                    </td>
-                    <td className="py-3 px-3 text-[#46574B]">
-                      {exp.provider || '-'}
-                    </td>
+                filteredExpenses.map((exp) => {
+                  const expPalette = getAutoExpenseColor(exp.id || exp.concept);
+                  return (
+                    <tr key={exp.id} className={`hover:${expPalette.bg} transition-colors border-l-4 ${expPalette.bar}`}>
+                      <td className="py-3 px-3 whitespace-nowrap font-mono text-[#56685B]">
+                        {exp.date}
+                        <span className="block text-[10px] text-[#7A8E7E]">Mes: {exp.periodMonth}</span>
+                      </td>
+                      <td className="py-3 px-3 font-semibold text-[#163323]">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`w-2.5 h-2.5 rounded-full ${expPalette.dot} shrink-0 shadow-2xs`} title="Color automático del gasto" />
+                          <span className="text-[#163323]">{exp.concept}</span>
+                          {exp.invoiceNumber && (
+                            <span className="px-1.5 py-0.5 bg-[#FAF8F5] text-[#163323] border border-[#DDD5BF] font-mono text-[10px] font-bold rounded shrink-0">
+                              Factura N° {exp.invoiceNumber}
+                            </span>
+                          )}
+                          {exp.transferredPercentage && (
+                            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-bold font-mono rounded">
+                              ✓ {exp.transferredPercentage}% enviados ({exp.transferredInstallments || 1} {exp.transferredInstallments === 1 ? 'cuota' : 'cuotas'})
+                            </span>
+                          )}
+                        </div>
+                        {exp.userName && (
+                          <span className="block text-[10px] text-emerald-900 font-medium mt-0.5 pl-4">
+                            👤 Realizado por: <strong>{exp.userName}</strong> {exp.partName ? `(${exp.partName})` : ''}
+                          </span>
+                        )}
+                        {exp.notes && <span className="block text-[10px] text-[#637568] font-normal italic pl-4">"{exp.notes}"</span>}
+                      </td>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {getCategoryBadge(exp.category)}
+                      </td>
+                      <td className="py-3 px-3 text-[#46574B]">
+                        <div>
+                          <span className="font-semibold text-[#163323]">{exp.provider || '-'}</span>
+                          {exp.invoiceNumber && (
+                            <span className="block font-mono text-[10px] font-bold text-[#56685B] mt-0.5">
+                              N° {exp.invoiceNumber}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-[#163323]">
                       ${exp.amount.toLocaleString()}
                     </td>
@@ -729,7 +848,22 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     </td>
                     {isAdmin && (
                       <td className="py-3 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedExpenseForTransfer(exp);
+                              setTransferTarget('selected_expense');
+                              setTransferPercentage(100);
+                              setInstallmentsCount(1);
+                              setIsTransferModalOpen(true);
+                            }}
+                            className="px-2 py-1 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs cursor-pointer rounded"
+                            title="Enviar esta factura individual a Cobranza"
+                          >
+                            <Send className="w-3 h-3 text-[#BFA270]" />
+                            <span>Enviar a Cobranza</span>
+                          </button>
+
                           <button
                             onClick={() => handleEditExpense(exp)}
                             className="p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
@@ -748,7 +882,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       </td>
                     )}
                   </tr>
-                ))
+                );
+              })
               )}
             </tbody>
           </table>
@@ -799,12 +934,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value as ExpenseCategory })}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]"
                   >
-                    <option value="servicios">Servicios (Luz/Agua/WiFi)</option>
-                    <option value="personal_casero">Personal / Casero</option>
-                    <option value="mantenimiento">Mantenimiento & Parque</option>
-                    <option value="impuestos">Impuestos & Tasas</option>
-                    <option value="insumos">Insumos & Limpieza</option>
-                    <option value="otro">Otro Gasto</option>
+                    {expenseCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -812,11 +946,15 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <label className="block font-bold text-[#163323] mb-1">Monto ($ ARS) *</label>
                   <input
                     type="number"
+                    step="any"
                     required
-                    min="1"
-                    placeholder="150000"
+                    min="0"
+                    placeholder="150000.50"
                     value={expenseForm.amount || ''}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => {
+                      const valStr = e.target.value.replace(',', '.');
+                      setExpenseForm({ ...expenseForm, amount: parseFloat(valStr) || 0 });
+                    }}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-xs font-bold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   />
                 </div>
@@ -841,6 +979,49 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     value={expenseForm.date}
                     onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-xs focus:outline-none focus:border-[#1B3B2B]"
+                  />
+                </div>
+              </div>
+
+              {/* Selector de quién realizó el gasto y Número de Factura */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#FAF8F5] p-2.5 border border-[#DDD5BF]">
+                <div>
+                  <label className="block font-bold text-[#163323] mb-1">
+                    👤 ¿Quién realizó / pagó el gasto?
+                  </label>
+                  <select
+                    value={expenseForm.userId}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const foundUser = allCurrentUsers.find((u) => u.id === selectedId);
+                      setExpenseForm({
+                        ...expenseForm,
+                        userId: selectedId,
+                        userName: foundUser ? foundUser.name : '',
+                        partName: foundUser ? foundUser.partName : '',
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                  >
+                    <option value="">-- Fideicomiso / Fondo Común --</option>
+                    {allCurrentUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.partName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#163323] mb-1">
+                    🧾 Número de Factura / Comprobante
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 0001-0004812 o Factura B-84920"
+                    value={expenseForm.invoiceNumber}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, invoiceNumber: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-[#DDD5BF] font-mono text-xs font-bold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   />
                 </div>
               </div>
@@ -931,10 +1112,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         </div>
       )}
 
-      {/* Modal: Transfer Period Expenses to Fee Collection */}
+      {/* Modal: Transfer Expenses to Fee Collection */}
       {isTransferModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
-          <div className="bg-white border border-[#E3DFC8] max-w-lg w-full p-6 shadow-xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white border border-[#E3DFC8] max-w-xl w-full p-5 sm:p-6 shadow-xl relative my-8 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setIsTransferModalOpen(false)}
               className="absolute top-4 right-4 p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
@@ -947,64 +1128,225 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <Send className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-[#163323]">Trasladar Gastos a Cobranza de Expensas</h3>
-                <p className="text-xs text-[#637568]">Emita una orden de cobranza para todos los copropietarios en base a los gastos reales del mes.</p>
+                <h3 className="text-base font-bold text-[#163323]">Emisión de Cobranza / Plan de Pago</h3>
+                <p className="text-xs text-[#637568]">Configure la factura, el porcentaje a cobrar, cuotas mensuales y prorrateo entre socios.</p>
               </div>
             </div>
 
             {transferSuccessMsg ? (
               <div className="p-6 bg-emerald-50 border border-emerald-300 text-emerald-800 text-center space-y-2">
                 <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-                <p className="text-sm font-bold">¡Cobranza Generada Exitosamente!</p>
-                <p className="text-xs">Los gastos de {selectedPeriod} fueron liquidados y trasladados al padrón de cobranzas.</p>
+                <p className="text-sm font-bold">¡Cobranza(s) Generada(s) Exitosamente!</p>
+                <p className="text-xs">Se emitieron las cuotas requeridas y el plan de pago fue registrado en el módulo de Cobranzas.</p>
               </div>
             ) : (
               <div className="space-y-4 text-xs">
-                <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-bold text-[#163323] uppercase">Período A Liquidar:</span>
-                    <span className="font-mono font-bold text-[#1B3B2B] bg-[#F4EFE6] px-2 py-0.5">
-                      {selectedPeriod === '2026-10' ? 'Octubre 2026' : selectedPeriod}
-                    </span>
-                  </div>
+                {/* 1. Target Selector */}
+                <div>
+                  <label className="block font-bold text-[#163323] mb-1">1. Origen de los Gastos *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTransferTarget('all_period');
+                        setSelectedExpenseForTransfer(null);
+                      }}
+                      className={`p-2 border text-left cursor-pointer transition-all ${
+                        transferTarget === 'all_period'
+                          ? 'bg-[#1B3B2B] text-white border-[#1B3B2B] font-bold'
+                          : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">Todos los Gastos del Mes</div>
+                      <div className="text-[10px] opacity-80 mt-0.5 font-mono">${periodTotalAmount.toLocaleString()} ARS</div>
+                    </button>
 
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-[#637568]">Total Gastos Acumulados:</span>
-                    <span className="font-mono font-bold text-[#163323] text-sm">
-                      ${periodTotalAmount.toLocaleString()} ARS
-                    </span>
-                  </div>
-
-                  <div className="border-t border-[#E3DFC8] pt-2 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-[#163323]">
-                      <span>Modo Predeterminado:</span>
-                      <span className="text-[10px] bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded font-mono">
-                        % de Acciones del Perfil
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-[11px] bg-[#FAF8F5] p-1.5 border border-[#E3DFC8]">
-                      <span>Tu Cuota Estimada ({mySharePct.toFixed(4)}% de Acciones):</span>
-                      <strong className="font-mono text-emerald-800">${myEstimatedCost.toLocaleString()} ARS</strong>
-                    </div>
-                    <div className="flex justify-between text-[11px]">
-                      <span>División equitativa por Cabezas (4 partes):</span>
-                      <strong className="font-mono text-[#1B3B2B]">${costPerCabeza.toLocaleString()} / Cabeza</strong>
-                    </div>
-                    <div className="flex justify-between text-[11px]">
-                      <span>División equitativa 1/N ({activeOwnersCount} socios):</span>
-                      <strong className="font-mono text-[#1B3B2B]">${costPerOwner.toLocaleString()} / Socio</strong>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTransferTarget('selected_expense');
+                        if (!selectedExpenseForTransfer && filteredExpenses.length > 0) {
+                          setSelectedExpenseForTransfer(filteredExpenses[0]);
+                        }
+                      }}
+                      className={`p-2 border text-left cursor-pointer transition-all ${
+                        transferTarget === 'selected_expense'
+                          ? 'bg-[#1B3B2B] text-white border-[#1B3B2B] font-bold'
+                          : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">Factura Individual</div>
+                      <div className="text-[10px] opacity-80 mt-0.5 truncate font-mono">
+                        {selectedExpenseForTransfer ? `$${selectedExpenseForTransfer.amount.toLocaleString()} - ${selectedExpenseForTransfer.concept}` : 'Seleccionar factura...'}
+                      </div>
+                    </button>
                   </div>
                 </div>
 
+                {/* If selected_expense, show selector dropdown */}
+                {transferTarget === 'selected_expense' && (
+                  <div className="bg-[#FAF8F5] p-2.5 border border-[#DDD5BF] space-y-1">
+                    <label className="block font-bold text-[#163323] text-[11px]">Seleccionar Factura / Gasto:</label>
+                    <select
+                      value={selectedExpenseForTransfer?.id || ''}
+                      onChange={(e) => {
+                        const found = filteredExpenses.find((ex) => ex.id === e.target.value);
+                        setSelectedExpenseForTransfer(found || null);
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#DDD5BF] font-semibold text-xs text-[#163323] focus:outline-none"
+                    >
+                      {filteredExpenses.map((ex) => (
+                        <option key={ex.id} value={ex.id}>
+                          {ex.concept} — ${ex.amount.toLocaleString()} ARS ({ex.provider || 'S/D'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 2. Porcentaje o Monto Manual a Cobrar */}
+                <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2.5">
+                  <div className="flex justify-between items-center font-bold text-[#163323]">
+                    <span className="text-xs">2. Porcentaje o Monto Manual a Cobrar de la Factura:</span>
+                    <span className="font-mono text-emerald-800 font-bold bg-white px-2 py-0.5 border border-[#DDD5BF] text-xs">
+                      {transferPercentage.toFixed(2)}% ($ {currentTotalToCollect.toLocaleString()} ARS)
+                    </span>
+                  </div>
+
+                  {/* Dual Manual Input Boxes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-2 border border-[#DDD5BF]">
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#637568] mb-0.5">Monto Manual a Cobrar ($ ARS):</label>
+                      <div className="flex items-center gap-1 border border-[#DDD5BF] px-2 py-1 bg-[#FAF8F5]">
+                        <span className="font-mono font-bold text-[#163323] text-xs">$</span>
+                        <input
+                          type="number"
+                          step="any"
+                          min={0}
+                          max={currentBaseAmount || 99999999}
+                          value={Math.round(currentTotalToCollect * 100) / 100}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            if (currentBaseAmount > 0) {
+                              const calculatedPct = Math.min(100, Math.max(0, (val / currentBaseAmount) * 100));
+                              setTransferPercentage(calculatedPct);
+                            }
+                          }}
+                          className="w-full font-mono text-xs font-bold text-[#163323] bg-transparent focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#637568] mb-0.5">Porcentaje Manual (%):</label>
+                      <div className="flex items-center gap-1 border border-[#DDD5BF] px-2 py-1 bg-[#FAF8F5]">
+                        <input
+                          type="number"
+                          step="any"
+                          min={0}
+                          max={100}
+                          value={transferPercentage}
+                          onChange={(e) => {
+                            const pct = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                            setTransferPercentage(pct);
+                          }}
+                          className="w-full font-mono text-xs font-bold text-[#163323] bg-transparent focus:outline-none"
+                        />
+                        <span className="font-mono font-bold text-[#163323] text-xs">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Shortcut Presets */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-[#637568]">Atajos Rápidos:</span>
+                    {[100, 75, 50, 25, 10].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setTransferPercentage(pct)}
+                        className={`px-2.5 py-0.5 font-mono font-bold text-[11px] border transition-colors cursor-pointer ${
+                          Math.abs(transferPercentage - pct) < 0.1
+                            ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
+                            : 'bg-white text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
+                        }`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="text-[11px] text-[#637568] flex justify-between pt-1.5 border-t border-[#E3DFC8]">
+                    <span>Valor Total Factura Original: <strong className="font-mono text-[#163323]">${currentBaseAmount.toLocaleString()} ARS</strong></span>
+                    <span>Total a Emitir en Cobranza: <strong className="font-mono text-emerald-800 font-bold">${currentTotalToCollect.toLocaleString()} ARS</strong></span>
+                  </div>
+                </div>
+
+                {/* 3. Installments / Plan de Pago Manual */}
+                <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2.5">
+                  <div className="flex justify-between items-center font-bold text-[#163323]">
+                    <span className="text-xs">3. Plan de Pago en Cuotas Mensuales (Manual):</span>
+                    <span className="font-mono text-[#1B3B2B] font-bold bg-white px-2 py-0.5 border border-[#DDD5BF] text-xs">
+                      {installmentsCount} {installmentsCount === 1 ? 'Cuota (Pago Único)' : 'Cuotas Mensuales'}
+                    </span>
+                  </div>
+
+                  {/* Manual Cuotas Number Input Box */}
+                  <div className="flex items-center gap-3 bg-white p-2 border border-[#DDD5BF]">
+                    <label className="text-[11px] font-bold text-[#163323]">Ingresar Cantidad de Cuotas:</label>
+                    <div className="flex items-center gap-1 border border-[#DDD5BF] px-2 py-1 bg-[#FAF8F5]">
+                      <input
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={installmentsCount}
+                        onChange={(e) => setInstallmentsCount(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-16 font-mono text-xs font-bold text-center text-[#163323] bg-transparent focus:outline-none"
+                      />
+                      <span className="text-[10px] font-bold text-[#637568]">cuota(s)</span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1 ml-auto">
+                      {[1, 2, 3, 6, 12, 24].map((count) => (
+                        <button
+                          key={count}
+                          type="button"
+                          onClick={() => setInstallmentsCount(count)}
+                          className={`px-2 py-0.5 font-mono font-bold text-[10px] border transition-colors cursor-pointer ${
+                            installmentsCount === count
+                              ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
+                              : 'bg-white text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
+                          }`}
+                        >
+                          {count === 1 ? '1 Pago' : `${count} C.`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {installmentsCount > 1 && (
+                    <div className="bg-white p-2.5 border border-[#DDD5BF] space-y-1 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-[#637568]">Valor de Cada Cuota Mensual General:</span>
+                        <strong className="font-mono text-[#163323]">${currentAmountPerInstallment.toLocaleString()} ARS / mes</strong>
+                      </div>
+                      <div className="flex justify-between text-emerald-800">
+                        <span>Prorrateo Estimado por Socio (1/15 Parte):</span>
+                        <strong className="font-mono">${Math.round(currentAmountPerInstallment / 15).toLocaleString()} ARS / mes</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Modo de División */}
                 <div>
-                  <label className="block font-bold text-[#163323] mb-1">Modo de División de Expensas *</label>
+                  <label className="block font-bold text-[#163323] mb-1">4. Modo de División entre Copropietarios *</label>
                   <select
                     value={transferDistributionMode}
                     onChange={(e) => setTransferDistributionMode(e.target.value as DistributionMode)}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   >
-                    <option value="share_percentage">Según % de Acciones del Perfil (Recomendado - Cuota Social)</option>
+                    <option value="share_percentage">Según % de Acciones del Perfil (Recomendado)</option>
                     <option value="equal_cabezas">Por Cabezas (4 partes iguales de 25%)</option>
                     <option value="equal_owners">Por Copropietario (Partes iguales 1/N)</option>
                     <option value="percentage">Porcentaje Personalizado Manual (% para cada socio)</option>
@@ -1012,78 +1354,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   </select>
                 </div>
 
-                {/* Custom Percentage Editor */}
-                {transferDistributionMode === 'percentage' && (
-                  <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2 max-h-48 overflow-y-auto">
-                    <div className="flex justify-between items-center font-bold text-[#163323]">
-                      <span>Ingresar Porcentajes por Socio (%):</span>
-                      <span className={`font-mono text-xs ${Math.abs(liveTransferTotalPct - 100) < 0.005 ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}`}>
-                        Total: {liveTransferTotalPct.toFixed(4)}% / 100%
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {storageService.getUsers().filter((u) => u.active !== false).map((u) => (
-                        <div key={u.id} className="flex items-center gap-1.5 bg-white p-1.5 border border-[#DDD5BF]">
-                          <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
-                          <input
-                            type="number"
-                            step={0.0001}
-                            min={0}
-                            max={100}
-                            value={transferCustomPercentages[u.id] ?? (100 / 15).toFixed(4)}
-                            onChange={(e) =>
-                              setTransferCustomPercentages({
-                                ...transferCustomPercentages,
-                                [u.id]: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="w-16 px-1 py-0.5 font-mono text-right text-xs border border-[#DDD5BF] focus:outline-none focus:border-[#1B3B2B]"
-                          />
-                          <span className="text-[10px] text-[#7A8E7E]">%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Custom Amount Editor */}
-                {transferDistributionMode === 'custom_amount' && (
-                  <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2 max-h-48 overflow-y-auto">
-                    <div className="flex justify-between items-center font-bold text-[#163323]">
-                      <span>Ingresar Montos Fijos por Socio ($):</span>
-                      <span className={`font-mono text-xs ${liveTransferTotalAmt === periodTotalAmount ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}`}>
-                        Suma: ${liveTransferTotalAmt.toLocaleString()} / ${periodTotalAmount.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {storageService.getUsers().filter((u) => u.active !== false).map((u) => (
-                        <div key={u.id} className="flex items-center gap-1.5 bg-white p-1.5 border border-[#DDD5BF]">
-                          <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
-                          <input
-                            type="number"
-                            step={1000}
-                            min={0}
-                            value={transferCustomAmounts[u.id] ?? Math.round(periodTotalAmount / 15)}
-                            onChange={(e) =>
-                              setTransferCustomAmounts({
-                                ...transferCustomAmounts,
-                                [u.id]: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="w-20 px-1 py-0.5 font-mono text-right text-xs border border-[#DDD5BF] focus:outline-none focus:border-[#1B3B2B]"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Live Preview Table */}
+                {/* Tabla Interactiva de Previsualización y Edición Manual por Socio */}
                 <div>
                   <label className="block font-bold text-[#163323] mb-1">
-                    Previsualización de Cuotas por Copropietario ({liveTransferAllocations.length} Socios)
+                    Previsualización / Asignación por Socio ({installmentsCount > 1 ? `Cuota Mensual (${installmentsCount} cuotas)` : 'Pago Único'})
                   </label>
-                  <div className="border border-[#E3DFC8] max-h-36 overflow-y-auto bg-white">
+                  <div className="border border-[#E3DFC8] max-h-48 overflow-y-auto bg-white">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-[#1B3B2B] text-white font-mono text-[10px] sticky top-0">
                         <tr>
@@ -1097,10 +1373,41 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                         {liveTransferAllocations.map((alloc) => (
                           <tr key={alloc.userId} className="hover:bg-[#FAF8F5]">
                             <td className="p-1.5 font-semibold text-[#163323]">{alloc.userName}</td>
-                            <td className="p-1.5 text-[#56685B]">{alloc.partName}</td>
-                            <td className="p-1.5 text-right font-mono text-[#56685B]">{alloc.percentage.toFixed(4)}%</td>
+                            <td className="p-1.5 text-[#56685B] text-[11px]">{alloc.partName}</td>
+                            <td className="p-1.5 text-right font-mono text-[#56685B]">
+                              {transferDistributionMode === 'percentage' ? (
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min={0}
+                                  max={100}
+                                  value={transferCustomPercentages[alloc.userId] ?? alloc.percentage}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setTransferCustomPercentages((prev) => ({ ...prev, [alloc.userId]: val }));
+                                  }}
+                                  className="w-16 px-1 py-0.5 border border-[#DDD5BF] font-mono text-xs text-right font-bold text-[#163323] focus:outline-none"
+                                />
+                              ) : (
+                                `${alloc.percentage.toFixed(4)}%`
+                              )}
+                            </td>
                             <td className="p-1.5 text-right font-mono font-bold text-[#163323]">
-                              ${alloc.assignedAmount.toLocaleString()}
+                              {transferDistributionMode === 'custom_amount' ? (
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min={0}
+                                  value={transferCustomAmounts[alloc.userId] ?? alloc.assignedAmount}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setTransferCustomAmounts((prev) => ({ ...prev, [alloc.userId]: val }));
+                                  }}
+                                  className="w-24 px-1 py-0.5 border border-[#DDD5BF] font-mono text-xs text-right font-bold text-[#163323] focus:outline-none"
+                                />
+                              ) : (
+                                `$${alloc.assignedAmount.toLocaleString()}`
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -1110,24 +1417,13 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[#163323] mb-1">Fecha de Vencimiento de la Cobranza</label>
+                  <label className="block font-bold text-[#163323] mb-1">Fecha de Vencimiento de la Primera Cuota</label>
                   <input
                     type="date"
                     value={transferDueDate}
                     onChange={(e) => setTransferDueDate(e.target.value)}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-xs focus:outline-none focus:border-[#1B3B2B]"
                   />
-                </div>
-
-                <div className="bg-[#FFFDF7] p-2.5 border border-[#E8E2D2] text-[11px] text-[#56685B]">
-                  <strong>Resumen de Gastos Incluidos:</strong>
-                  <ul className="list-disc list-inside mt-1 space-y-0.5 max-h-24 overflow-y-auto font-mono text-[10px]">
-                    {filteredExpenses.map((e) => (
-                      <li key={e.id}>
-                        {e.concept}: ${e.amount.toLocaleString()}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E3DFC8]">
@@ -1141,10 +1437,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <button
                     type="button"
                     onClick={handleTransferToCobranza}
-                    className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                    className="px-5 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
                   >
                     <Send className="w-3.5 h-3.5 text-[#BFA270]" />
-                    <span>Emitir Cobranza Ahora</span>
+                    <span>{installmentsCount > 1 ? `Emitir ${installmentsCount} Cuotas` : 'Emitir Cobranza Ahora'}</span>
                   </button>
                 </div>
               </div>
@@ -1248,6 +1544,16 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
         </div>
       )}
+      <CustomDialogModal
+        isOpen={dialog.isOpen}
+        title={dialog.title}
+        message={dialog.message}
+        type={dialog.type || 'confirm'}
+        confirmText={dialog.confirmText || 'Aceptar'}
+        cancelText={dialog.cancelText || 'Cancelar'}
+        onConfirm={dialog.onConfirm}
+        onClose={() => setDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

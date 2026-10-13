@@ -1799,6 +1799,18 @@ app.post('/api/fees', (req, res) => {
   }
 });
 
+app.delete('/api/fees/:id', (req, res) => {
+  try {
+    const feeId = req.params.id;
+    const state = loadServerState();
+    state.fees = (state.fees || []).filter((f: any) => f.id !== feeId);
+    saveServerState(state);
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando cobranza' });
+  }
+});
+
 // 15. Expenses
 app.get('/api/expenses', (_req, res) => {
   try {

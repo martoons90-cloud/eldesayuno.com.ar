@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport, hasFinancialAccess } from './types';
+import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport, hasFinancialAccess, isUserIntendente, isUserAdmin } from './types';
 import { storageService } from './services/storageService';
 import { LoginScreen } from './components/LoginScreen';
 import { TopBar } from './components/TopBar';
@@ -166,8 +166,9 @@ export default function App() {
     );
   }
 
-  const isUserAdmin = currentUser.role === 'admin';
-  const effectiveIsAdmin = isUserAdmin && adminViewMode === 'admin';
+  const isIntendente = isUserIntendente(currentUser);
+  const isUserAdminUser = currentUser.role === 'admin';
+  const effectiveIsAdmin = isIntendente || (isUserAdminUser && adminViewMode === 'admin');
 
   // Metrics for Admin Dashboard
   const activeBookingsCount = bookings.filter((b) => b.status === 'confirmed').length;
@@ -209,7 +210,7 @@ export default function App() {
       {/* Main Viewport Container (1440px target, zero collapse) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Banner indicating Copropietario Mode for Administrators */}
-        {isUserAdmin && adminViewMode === 'owner' && (
+        {isUserAdmin(currentUser) && adminViewMode === 'owner' && (
           <div className="mb-6 p-3 bg-blue-50 border border-blue-200 text-blue-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
             <div className="flex items-center gap-2">
               <span className="p-1 bg-blue-600 text-white font-bold text-[10px] uppercase tracking-wider">

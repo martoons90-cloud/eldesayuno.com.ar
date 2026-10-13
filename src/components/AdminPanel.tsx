@@ -738,7 +738,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <form onSubmit={handleSaveLogoUrl} className="mt-4 space-y-3">
                   <div className="flex gap-2">
                     <input
-                      type="url"
+                      type="text"
                       value={logoInputUrl}
                       onChange={(e) => setLogoInputUrl(e.target.value)}
                       placeholder="https://ejemplo.com/logo-el-desayuno.png"

@@ -346,8 +346,117 @@
     "bancoNombre": "Banco Macro S.A.",
     "titularCuenta": "EL DESAYUNO FIDEICOMISO",
     "wifiCoverageNotes": "La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.",
-    "updatedAt": "2026-10-10T00:52:03.933Z",
-    "slogan": "Cuatro Partes, Un Mismo Objetivo"
+    "updatedAt": "2026-10-13T22:12:25.608Z",
+    "slogan": "Cuatro Partes, Un Mismo Objetivo",
+    "logoUrl": "/api/r2/file?key=marca%2F1791929544682_Emblema_forestal_de_alianza_y_ganado.png.png",
+    "expenseCategories": [
+      {
+        "id": "servicios",
+        "name": "Servicios (Luz, Agua, Gas, WiFi)"
+      },
+      {
+        "id": "personal_casero",
+        "name": "Personal / Casero / Limpieza"
+      },
+      {
+        "id": "mantenimiento",
+        "name": "Mantenimiento & Reparaciones"
+      },
+      {
+        "id": "impuestos",
+        "name": "Impuestos & Tasas"
+      },
+      {
+        "id": "insumos",
+        "name": "Insumos & Varios"
+      },
+      {
+        "id": "otro",
+        "name": "Otro"
+      }
+    ],
+    "cashFlowCategories": [
+      {
+        "id": "aporte_socio",
+        "name": "Aporte de Socio"
+      },
+      {
+        "id": "pago_expensas",
+        "name": "Pago de Expensas / Tasas"
+      },
+      {
+        "id": "pago_proveedor",
+        "name": "Pago a Proveedor"
+      },
+      {
+        "id": "reintegro_gasto",
+        "name": "Reintegro de Gasto a Socio"
+      },
+      {
+        "id": "fondo_reserva",
+        "name": "Fondo de Reserva"
+      },
+      {
+        "id": "otro_ingreso",
+        "name": "Otro Ingreso"
+      },
+      {
+        "id": "otro_egreso",
+        "name": "Otro Egreso"
+      }
+    ],
+    "feeCategories": [
+      {
+        "id": "expensas_ordinarias",
+        "name": "Expensas Ordinarias"
+      },
+      {
+        "id": "obras_extraordinarias",
+        "name": "Obras & Mejoras Extraordinarias"
+      },
+      {
+        "id": "servicios",
+        "name": "Servicios"
+      },
+      {
+        "id": "mantenimiento",
+        "name": "Mantenimiento"
+      },
+      {
+        "id": "impuestos",
+        "name": "Impuestos"
+      },
+      {
+        "id": "otro",
+        "name": "Otro"
+      }
+    ],
+    "inventoryCategories": [
+      {
+        "id": "living_galeria",
+        "name": "Living & Galería"
+      },
+      {
+        "id": "cocina_vajilla",
+        "name": "Cocina & Vajilla"
+      },
+      {
+        "id": "suites_dormitorios",
+        "name": "Suites & Dormitorios"
+      },
+      {
+        "id": "quincho_asador",
+        "name": "Quincho & Asador"
+      },
+      {
+        "id": "blanqueria_ropa",
+        "name": "Blanquería & Ropa"
+      },
+      {
+        "id": "equipamiento_tecnico",
+        "name": "Equipamiento Técnico"
+      }
+    ]
   },
   "bookings": [
     {
@@ -460,28 +569,7 @@
       "isEmergency": false
     }
   ],
-  "documents": [
-    {
-      "id": "doc-1",
-      "title": "Contrato Fiduciario Constitutivo - Estancia El Desayuno",
-      "category": "contrato",
-      "version": "v2.1 Notarial Registrado",
-      "date": "01/01/2026",
-      "fileSize": "2.4 MB",
-      "description": "Instrumento público con las 4 Cabezas indivisas, asignación proporcional y poderes de administración.",
-      "downloadUrl": ""
-    },
-    {
-      "id": "doc-2",
-      "title": "Reglamento Interno de Uso, Turnos y Convivencia",
-      "category": "reglamento",
-      "version": "v3.0 Actualizada",
-      "date": "15/01/2026",
-      "fileSize": "1.2 MB",
-      "description": "Protocolo de asignación de días, sistema de reservas, buffer de limpieza y régimen de gastos comunes.",
-      "downloadUrl": ""
-    }
-  ],
+  "documents": [],
   "inventory": [
     {
       "id": "inv-1",
@@ -573,304 +661,25 @@
       "read": false
     }
   ],
-  "fees": [
-    {
-      "id": "fee-101",
-      "concept": "Expensas Mensuales Ordinarias - Mantenimiento & Servicios Octubre 2026",
-      "category": "expensas_ordinarias",
-      "totalAmount": 1600000,
-      "currency": "ARS",
-      "recurrence": "monthly",
-      "issueDate": "2026-10-01",
-      "dueDate": "2026-10-20",
-      "distributionMode": "share_percentage",
-      "status": "active",
-      "createdBy": "Efraín Rodríguez",
-      "createdAt": "2026-10-01T09:00:00.000Z",
-      "notes": "Incluye servicios generales, parquización, insumos de limpieza y honorarios de mantenimiento.",
-      "allocations": [
-        {
-          "userId": "user-c1-jose",
-          "userName": "José Casares",
-          "partName": "Cabeza 1",
-          "cabezaNumber": 1,
-          "percentage": 6.25,
-          "assignedAmount": 100000,
-          "paidAmount": 100000,
-          "status": "paid",
-          "paidAt": "2026-10-05",
-          "paymentMethod": "transfer",
-          "notes": "Transferencia Banco Galicia"
-        },
-        {
-          "userId": "user-c1-arturo",
-          "userName": "Arturo Casares",
-          "partName": "Cabeza 1",
-          "cabezaNumber": 1,
-          "percentage": 6.25,
-          "assignedAmount": 100000,
-          "paidAmount": 100000,
-          "status": "paid",
-          "paidAt": "2026-10-06",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c1-marcos",
-          "userName": "Marcos Montaldi",
-          "partName": "Cabeza 1",
-          "cabezaNumber": 1,
-          "percentage": 6.25,
-          "assignedAmount": 100000,
-          "paidAmount": 0,
-          "status": "pending"
-        },
-        {
-          "userId": "user-c1-hugo",
-          "userName": "Hugo Tobchi",
-          "partName": "Cabeza 1",
-          "cabezaNumber": 1,
-          "percentage": 6.25,
-          "assignedAmount": 100000,
-          "paidAmount": 100000,
-          "status": "paid",
-          "paidAt": "2026-10-08",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c2-alejandro",
-          "userName": "Alejandro Guerrero",
-          "partName": "Cabeza 2",
-          "cabezaNumber": 2,
-          "percentage": 12.5,
-          "assignedAmount": 200000,
-          "paidAmount": 200000,
-          "status": "paid",
-          "paidAt": "2026-10-03",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c2-natalia",
-          "userName": "Natalia Guerrero",
-          "partName": "Cabeza 2",
-          "cabezaNumber": 2,
-          "percentage": 12.5,
-          "assignedAmount": 200000,
-          "paidAmount": 0,
-          "status": "pending"
-        },
-        {
-          "userId": "user-c3-roberto",
-          "userName": "Roberto Condori",
-          "partName": "Cabeza 3",
-          "cabezaNumber": 3,
-          "percentage": 25,
-          "assignedAmount": 400000,
-          "paidAmount": 400000,
-          "status": "paid",
-          "paidAt": "2026-10-02",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c4-efrain",
-          "userName": "Efraín Rodríguez",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.8,
-          "assignedAmount": 44800,
-          "paidAmount": 44800,
-          "status": "paid",
-          "paidAt": "2026-10-01",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c4-rafael",
-          "userName": "Rafael Huespe",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.78,
-          "assignedAmount": 44480,
-          "paidAmount": 44480,
-          "status": "paid",
-          "paidAt": "2026-10-04",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c4-fairuz",
-          "userName": "Fairuz Kuncar",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.78,
-          "assignedAmount": 44480,
-          "paidAmount": 0,
-          "status": "pending"
-        },
-        {
-          "userId": "user-c4-daniel",
-          "userName": "Daniel Pederiva",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.78,
-          "assignedAmount": 44480,
-          "paidAmount": 44480,
-          "status": "paid",
-          "paidAt": "2026-10-07",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c4-gonzalo",
-          "userName": "Gonzalo Lamas",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.78,
-          "assignedAmount": 44480,
-          "paidAmount": 0,
-          "status": "pending"
-        },
-        {
-          "userId": "user-c4-german",
-          "userName": "Germán Jiménez",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.78,
-          "assignedAmount": 44480,
-          "paidAmount": 44480,
-          "status": "paid",
-          "paidAt": "2026-10-05",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c4-gabriela",
-          "userName": "Gabriela Zadir",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.77,
-          "assignedAmount": 44320,
-          "paidAmount": 0,
-          "status": "pending"
-        },
-        {
-          "userId": "user-c4-arturo",
-          "userName": "Arturo Tezanos Pinto",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.77,
-          "assignedAmount": 44320,
-          "paidAmount": 44320,
-          "status": "paid",
-          "paidAt": "2026-10-06",
-          "paymentMethod": "transfer"
-        },
-        {
-          "userId": "user-c4-franco",
-          "userName": "Franco D'Michel",
-          "partName": "Cabeza 4",
-          "cabezaNumber": 4,
-          "percentage": 2.76,
-          "assignedAmount": 44160,
-          "paidAmount": 44160,
-          "status": "paid",
-          "paidAt": "2026-10-08",
-          "paymentMethod": "transfer"
-        }
-      ]
-    }
-  ],
+  "fees": [],
   "expenses": [
     {
-      "id": "exp-101",
-      "concept": "Factura Energía Eléctrica EPEC (Consumo Septiembre / Octubre)",
+      "id": "exp-1791930859462",
+      "concept": "AASDASDASD",
       "category": "servicios",
-      "amount": 285000,
-      "currency": "ARS",
-      "periodMonth": "2026-10",
-      "date": "2026-10-05",
-      "provider": "EPEC Empresa Provincial de Energía",
-      "status": "paid",
-      "paidAt": "2026-10-06",
-      "paymentMethod": "transfer",
-      "notes": "Factura N° 82910-A. Incluye medidor principal y caserío.",
-      "createdBy": "Efraín Rodríguez",
-      "createdAt": "2026-10-05T10:00:00.000Z"
-    },
-    {
-      "id": "exp-102",
-      "concept": "Honorarios & Sueldo Encargado / Casero del Campo (Octubre)",
-      "category": "personal_casero",
-      "amount": 680000,
-      "currency": "ARS",
-      "periodMonth": "2026-10",
-      "date": "2026-10-02",
-      "provider": "Ramón Casero (Personal Permanente)",
-      "status": "paid",
-      "paidAt": "2026-10-02",
-      "paymentMethod": "transfer",
-      "notes": "Sueldo mensual casero + cargas sociales.",
-      "createdBy": "Efraín Rodríguez",
-      "createdAt": "2026-10-02T12:00:00.000Z"
-    },
-    {
-      "id": "exp-103",
-      "concept": "Mantenimiento de Parque, Parquización y Productos Piscina",
-      "category": "mantenimiento",
-      "amount": 320000,
-      "currency": "ARS",
-      "periodMonth": "2026-10",
-      "date": "2026-10-08",
-      "provider": "Parquización Areco SRL & Cloro Norte",
-      "status": "paid",
-      "paidAt": "2026-10-08",
-      "paymentMethod": "transfer",
-      "notes": "Corte de césped 12 hectáreas + 50kg Cloro + Clarificador.",
-      "createdBy": "Efraín Rodríguez",
-      "createdAt": "2026-10-08T15:30:00.000Z"
-    },
-    {
-      "id": "exp-104",
-      "concept": "Servicio de Internet Satelital Starlink y Conectividad Wi-Fi",
-      "category": "servicios",
-      "amount": 68000,
-      "currency": "ARS",
-      "periodMonth": "2026-10",
-      "date": "2026-10-01",
-      "provider": "Starlink Argentina",
-      "status": "paid",
-      "paidAt": "2026-10-01",
-      "paymentMethod": "mercadopago",
-      "notes": "Abono residencial de alta velocidad.",
-      "createdBy": "Efraín Rodríguez",
-      "createdAt": "2026-10-01T08:00:00.000Z"
-    },
-    {
-      "id": "exp-105",
-      "concept": "Insumos de Limpieza, Blanquería y Artículos del Quincho",
-      "category": "insumos",
-      "amount": 97000,
-      "currency": "ARS",
-      "periodMonth": "2026-10",
-      "date": "2026-10-09",
-      "provider": "Distribuidora Mayorista San Antonio",
-      "status": "paid",
-      "paidAt": "2026-10-09",
-      "paymentMethod": "cash",
-      "notes": "Repuesto de papel, detergentes, bolsas y carbón para quincho.",
-      "createdBy": "Efraín Rodríguez",
-      "createdAt": "2026-10-09T11:20:00.000Z"
-    },
-    {
-      "id": "exp-106",
-      "concept": "Impuesto Inmobiliario Rural / Tasas Municipales (Cuota 5/2026)",
-      "category": "impuestos",
       "amount": 150000,
       "currency": "ARS",
       "periodMonth": "2026-10",
-      "date": "2026-10-10",
-      "provider": "ARBA / Municipalidad San Antonio de Areco",
-      "status": "pending",
-      "notes": "Vence el 25/10/2026.",
+      "date": "2026-10-13",
+      "provider": "TELECOM",
+      "status": "paid",
+      "paymentMethod": "cash",
+      "receiptUrl": "",
+      "notes": "",
       "createdBy": "Efraín Rodríguez",
-      "createdAt": "2026-10-10T09:00:00.000Z"
+      "createdAt": "2026-10-13T22:34:19.462Z"
     }
   ],
   "version": "2.0-eldesayuno",
-  "updatedAt": "2026-10-10T00:52:03.933Z"
+  "updatedAt": "2026-10-13T22:34:26.448Z"
 }

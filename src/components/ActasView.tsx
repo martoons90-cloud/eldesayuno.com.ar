@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { User, DocumentItem, TrustSettings, hasPrivilegedAccess, isUserAdmin, isUserFiduciante, isUserCabezaDeEquipo } from '../types';
 import { storageService } from '../services/storageService';
+import { r2Service } from '../services/r2Service';
 import { UserRoleBadge } from './UserRoleBadge';
 import { BrandLogo } from './BrandLogo';
+import { CustomDialogModal } from './CustomDialogModal';
 import {
   FileText,
   Search,
@@ -18,10 +20,13 @@ import {
   Lock,
   X,
   FileCheck,
-  Sparkles,
   Check,
-  ExternalLink,
   BookOpen,
+  Trash2,
+  Upload,
+  Image as ImageIcon,
+  Camera,
+  ExternalLink,
 } from 'lucide-react';
 
 interface ActasViewProps {
@@ -44,19 +49,33 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
   // New Acta Modal State
   const [isNewActaModalOpen, setIsNewActaModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
-  const [newVersion, setNewVersion] = useState('Acta Ordinaria Libro II');
+  const [newDate, setNewDate] = useState(new Date().toLocaleDateString('es-AR'));
+  const [newVersion, setNewVersion] = useState('Acta Oficial Notariada');
   const [newDescription, setNewDescription] = useState('');
-  const [newFileSize, setNewFileSize] = useState('2.4 MB');
+  const [newFileSize, setNewFileSize] = useState('1.5 MB');
+  const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  // Custom Dialog Modal State
+  const [dialogState, setDialogState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'confirm' | 'alert' | 'success' | 'warning';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     const loadDocs = () => {
       const allDocs = storageService.getDocuments();
-      // Filter category 'acta' or official contracts
-      const actasOnly = allDocs.filter(
-        (d) => d.category === 'acta' || d.category === 'contrato' || d.title.toLowerCase().includes('acta')
-      );
-      setDocuments(actasOnly);
+      setDocuments(allDocs);
     };
     loadDocs();
     const unsub = storageService.subscribe(loadDocs);
@@ -79,6 +98,44 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
     return matchesSearch && matchesYear;
   });
 
+  const handleFileUploadPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      setDialogState({
+        isOpen: true,
+        title: 'Archivo Muy Grande',
+        message: 'Por favor seleccione una imagen o documento menor a 15MB.',
+        type: 'warning',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        let finalUrl = base64;
+        try {
+          const r2Res = await r2Service.uploadPhoto(base64, file.name || 'acta-oficial', 'actas');
+          if (r2Res.success && r2Res.url) {
+            finalUrl = r2Res.url;
+          }
+        } catch {
+          // Fallback to base64
+        }
+        setNewPhotoUrl(finalUrl);
+        setNewFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
+      }
+      setIsUploadingPhoto(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCreateNewActa = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
@@ -88,15 +145,50 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
       title: newTitle.trim(),
       category: 'acta',
       version: newVersion.trim() || 'Acta Oficial Notariada',
-      date: newDate,
+      date: newDate.trim() || new Date().toLocaleDateString('es-AR'),
       fileSize: newFileSize.trim() || '1.8 MB',
       description: newDescription.trim() || 'Acta de Asamblea y decisiones fiduciarias de los copropietarios.',
+      photoUrl: newPhotoUrl || undefined,
     };
 
     storageService.saveDocument(newDoc);
     setIsNewActaModalOpen(false);
     setNewTitle('');
     setNewDescription('');
+    setNewPhotoUrl('');
+    setNewVersion('Acta Oficial Notariada');
+    setNewDate(new Date().toLocaleDateString('es-AR'));
+  };
+
+  const handleDeleteSingleActa = (id: string, title: string) => {
+    setDialogState({
+      isOpen: true,
+      title: 'Eliminar Acta',
+      message: `¿Desea eliminar el acta "${title}"?`,
+      type: 'warning',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        storageService.deleteDocument(id);
+        const updated = storageService.getDocuments();
+        setDocuments(updated);
+      },
+    });
+  };
+
+  const handleDeleteAllActas = () => {
+    setDialogState({
+      isOpen: true,
+      title: 'Vaciar Todas las Actas',
+      message: '¿Está seguro de eliminar TODAS las actas registradas en el sistema? La sección quedará totalmente vacía para que usted cargue las suyas.',
+      type: 'warning',
+      confirmText: 'Borrar Todas',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        storageService.clearAllDocuments();
+        setDocuments([]);
+      },
+    });
   };
 
   const handleDownloadActa = (acta: DocumentItem) => {
@@ -110,23 +202,17 @@ FECHA PROTOCOLAR: ${acta.date}
 ESTABLECIMIENTO: Estancia El Desayuno (Ruta Provincial 41, San Antonio de Areco)
 ========================================================================
 
-RESUMEN EJECUTIVO:
+RESUMEN EJECUTIVO & RESOLUCIONES:
 ${acta.description}
 
+FOTO / DOCUMENTO ADJUNTO:
+${acta.photoUrl ? 'Imagen/Foto adjunta en el registro digital.' : 'Documento registrado digitalmente.'}
+
 ORDEN DEL DÍA Y CONSTANCIAS LEGALES:
-1. Quórum y Representación: Asistencia del 100% de las Partes Indivisas (Cabezas 1, 2, 3 y 4).
-   - Presencia del Fiduciante Constitutivo y del Administrador General del Fideicomiso.
+1. Quórum y Representación: Asistencia del 100% de las Partes Indivisas.
 2. Tratamiento de los Puntos del Orden del Día conforme estatuto fiduciario y reglamentos de uso.
 3. Resoluciones Aprobadas por Mayoría Calificada / Unanimidad según correspondiese.
 4. Validez Notarial: El presente instrumento conforma constancia fehaciente en el Libro de Actas.
-
-SUSCRIBEN:
-- Administrador General: Efraín Rodríguez
-- Fiduciante del Fideicomiso: Órgano de Control Fiduciario
-- Cabeza 1 (25% Indiviso): Representante de Grupo
-- Cabeza 2 (25% Indiviso): Representante de Grupo
-- Cabeza 3 (25% Indiviso): Representante de Grupo
-- Cabeza 4 (25% Indiviso): Representante de Grupo
 
 Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
 ========================================================================`;
@@ -212,14 +298,27 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
             <UserRoleBadge user={currentUser} size="sm" />
           </div>
 
-          {(isAdmin || isFid) && (
-            <button
-              onClick={() => setIsNewActaModalOpen(true)}
-              className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-            >
-              <Plus className="w-4 h-4 text-[#BFA270]" />
-              <span>+ Cargar Nueva Acta</span>
-            </button>
+          {(isAdmin || isFid || isLeader) && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsNewActaModalOpen(true)}
+                className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+              >
+                <Plus className="w-4 h-4 text-[#BFA270]" />
+                <span>+ Cargar Nueva Acta</span>
+              </button>
+
+              {documents.length > 0 && (
+                <button
+                  onClick={handleDeleteAllActas}
+                  className="px-3 py-2 bg-white hover:bg-red-50 border border-red-300 text-red-700 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                  title="Borrar todas las actas registradas"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Vaciar Todo</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -240,16 +339,16 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           <span className="text-xs text-[#637568] font-semibold flex items-center gap-1">
             <Filter className="w-3.5 h-3.5 text-[#BFA270]" />
-            <span>Ejercicio:</span>
+            <span>Filtrar:</span>
           </span>
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(e.target.value)}
             className="px-3 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none cursor-pointer"
           >
-            <option value="all">Todos los Períodos ({documents.length})</option>
-            <option value="2026">Temporada 2026</option>
-            <option value="2025">Temporada 2025</option>
+            <option value="all">Todas las Actas ({documents.length})</option>
+            <option value="2026">Año 2026</option>
+            <option value="2025">Año 2025</option>
           </select>
         </div>
       </div>
@@ -268,11 +367,30 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                   <FileCheck className="w-3 h-3 text-[#A68853]" />
                   <span>{acta.version}</span>
                 </span>
-                <span className="text-[11px] font-mono text-[#7A8E7E] flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-[#A68853]" />
+                <span className="text-[11px] font-mono font-bold text-[#163323] flex items-center gap-1 bg-[#FAF8F5] px-2 py-0.5 border border-[#E3DFC8]">
+                  <Calendar className="w-3.5 h-3.5 text-[#A68853]" />
                   <span>{acta.date}</span>
                 </span>
               </div>
+
+              {/* Optional Photo Preview Thumbnail */}
+              {acta.photoUrl && (
+                <div
+                  onClick={() => setSelectedDoc(acta)}
+                  className="w-full h-36 bg-[#F4EFE6] border border-[#DCD4C0] overflow-hidden rounded-2xs cursor-pointer group-hover:border-[#BFA270] relative"
+                >
+                  <img
+                    src={acta.photoUrl}
+                    alt={acta.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="px-3 py-1 bg-[#1B3B2B] text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <Eye className="w-3 h-3" /> Ver Foto Completa
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Title */}
               <h3
@@ -291,29 +409,40 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
             {/* Footer and Actions */}
             <div className="pt-4 mt-4 border-t border-[#EFEAE0] flex items-center justify-between text-xs">
               <span className="text-[10px] text-[#7A8E7E] font-mono">
-                Tamaño: {acta.fileSize}
+                {acta.fileSize}
               </span>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setSelectedDoc(acta)}
-                  className="px-3 py-1.5 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#DDD5BF] text-[#163323] font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                  title="Leer acta completa con firmas y sellos"
+                  className="px-2.5 py-1.5 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#DDD5BF] text-[#163323] font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="Ver detalles y foto de la acta"
                 >
                   <Eye className="w-3.5 h-3.5 text-[#BFA270]" />
-                  <span>Lectura Digital</span>
+                  <span>Ver Acta</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleDownloadActa(acta)}
-                  className="px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  className="px-2.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                   title="Descargar copia del acta"
                 >
                   <Download className="w-3.5 h-3.5 text-[#BFA270]" />
                   <span>Descargar</span>
                 </button>
+
+                {(isAdmin || isFid || isLeader) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSingleActa(acta.id, acta.title)}
+                    className="p-1.5 bg-white hover:bg-red-50 border border-red-200 text-red-700 transition-colors cursor-pointer"
+                    title="Eliminar esta acta"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -321,10 +450,21 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
       </div>
 
       {filteredActas.length === 0 && (
-        <div className="p-12 text-center bg-white border border-[#E3DFC8] text-[#7A8E7E] text-xs space-y-2">
-          <BookOpen className="w-8 h-8 mx-auto text-[#DDD5BF]" />
-          <p className="font-semibold text-sm text-[#163323]">No se encontraron actas registradas</p>
-          <p>Pruebe con otros términos de búsqueda o modifique el filtro de ejercicio.</p>
+        <div className="p-12 text-center bg-white border border-[#E3DFC8] text-[#7A8E7E] text-xs space-y-3">
+          <BookOpen className="w-10 h-10 mx-auto text-[#DDD5BF]" />
+          <p className="font-semibold text-base text-[#163323]">No hay actas registradas</p>
+          <p className="max-w-md mx-auto text-[#526657]">
+            Haga clic en el botón <strong>"+ Cargar Nueva Acta"</strong> para subir una foto de su acta, agregarle título, descripción y fecha manual.
+          </p>
+          {(isAdmin || isFid || isLeader) && (
+            <button
+              onClick={() => setIsNewActaModalOpen(true)}
+              className="mt-2 px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer inline-flex items-center gap-2 shadow-xs"
+            >
+              <Plus className="w-4 h-4 text-[#BFA270]" />
+              <span>Cargar Mi Primera Acta</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -359,7 +499,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
 
             {/* Modal Body: Legal Content Styled */}
             <div className="p-6 overflow-y-auto space-y-4 bg-[#FBF9F5] text-xs leading-relaxed text-[#2C3B30]">
-              <div className="p-4 bg-white border border-[#E5DEC9] shadow-2xs space-y-3">
+              <div className="p-4 bg-white border border-[#E5DEC9] shadow-2xs space-y-4">
                 <div className="text-center pb-3 border-b border-[#EFEAE0]">
                   <span className="text-[10px] tracking-widest uppercase font-bold text-[#A68853] block">
                     FIDEICOMISO "EL DESAYUNO SOCIEDAD"
@@ -371,23 +511,44 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                     {selectedDoc.title}
                   </h4>
                   <span className="text-[10px] text-[#7A8E7E] font-mono mt-0.5 block">
-                    Protocolo Notarial · {selectedDoc.date} · Estancia El Desayuno, San Antonio de Areco
+                    Fecha Protocolar: {selectedDoc.date} · Estancia El Desayuno, San Antonio de Areco
                   </span>
                 </div>
 
+                {/* Display Photo of the Acta if uploaded */}
+                {selectedDoc.photoUrl && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block">
+                      Foto / Documento Digitalizado Adjunto:
+                    </span>
+                    <div className="p-2 bg-[#FAF8F5] border border-[#DDD5BF] rounded-2xs flex flex-col items-center justify-center">
+                      <img
+                        src={selectedDoc.photoUrl}
+                        alt={selectedDoc.title}
+                        className="max-h-96 w-auto object-contain border border-[#E5DEC9] shadow-sm rounded-2xs"
+                      />
+                      <a
+                        href={selectedDoc.photoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 text-[11px] font-semibold text-[#1B3B2B] hover:underline inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> Abrir Imagen en Tamaño Completo
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2 text-justify">
                   <p>
-                    <strong>VISTO Y CONSIDERANDO:</strong> Las facultades conferidas por el Contrato Fiduciario Constitutivo celebrado entre los copropietarios de las cuatro partes indivisas (25% cada una) de la Estancia El Desayuno.
+                    <strong>DESCRIPCIÓN & RESUMEN DE RESOLUCIONES:</strong>
                   </p>
-                  <p>
-                    <strong>SUMARIO DE RESOLUCIONES:</strong> {selectedDoc.description}
-                  </p>
-                  <p>
-                    <strong>RÉGIMEN Y CUMPLIMIENTO:</strong> Se deja constancia de la plena conformidad del Administrador General, del Órgano Fiduciario y de los representantes (Cabezas de Equipo) de los grupos indivisos, disponiéndose su incorporación al Libro de Actas formal del Fideicomiso y notificación general a través del portal de gestión.
+                  <p className="p-3 bg-[#FAF8F5] border border-[#E3DFC8] text-xs leading-relaxed text-[#163323] whitespace-pre-line font-serif">
+                    {selectedDoc.description}
                   </p>
                 </div>
 
-                <div className="pt-4 border-t border-[#EFEAE0]">
+                <div className="pt-3 border-t border-[#EFEAE0]">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block mb-2">
                     Atestación & Órganos Firmantes:
                   </span>
@@ -437,14 +598,15 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
 
       {/* New Acta Modal */}
       {isNewActaModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-[#FFFFFF] w-full max-w-lg border border-[#D5CDBC] shadow-2xl overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
+          <div className="bg-[#FFFFFF] w-full max-w-lg border border-[#D5CDBC] shadow-2xl overflow-hidden flex flex-col my-8">
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
               <h3
-                className="text-base font-bold tracking-wide"
+                className="text-base font-bold tracking-wide flex items-center gap-2"
                 style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}
               >
-                Registrar Nueva Acta de Asamblea
+                <Camera className="w-5 h-5 text-[#BFA270]" />
+                <span>Registrar Nueva Acta de Asamblea</span>
               </h3>
               <button
                 onClick={() => setIsNewActaModalOpen(false)}
@@ -455,58 +617,107 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
             </div>
 
             <form onSubmit={handleCreateNewActa} className="p-6 space-y-4 text-xs">
+              {/* 1. Título */}
               <div>
                 <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  Título del Acta *
+                  1. Título del Acta *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="ej. Acta N° 14 - Asamblea Extraordinaria: Aprobación de Presupuesto"
+                  placeholder="ej. Acta N° 1 - Asamblea Ordinaria de Socios"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-sm focus:outline-none focus:border-[#163323]"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Fecha de Celebración *
+              {/* 2. Fecha Manual */}
+              <div>
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                  2. Fecha del Acta (Manual) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ej. 14/10/2026 ó 15 de Octubre de 2026"
+                  value={newDate}
+                  onChange={(e) => setNewDate(e.target.value)}
+                  className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs focus:outline-none focus:border-[#163323]"
+                />
+                <span className="text-[10px] text-[#7A8E7E] mt-0.5 block">
+                  Escriba la fecha exacta manualmente como desea que figure en el registro.
+                </span>
+              </div>
+
+              {/* 3. Foto / Archivo del Acta */}
+              <div>
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                  3. Adjuntar Foto / Imagen de la Acta *
+                </label>
+                <div className="p-3 bg-[#FAF8F5] border border-[#DCD4C0] space-y-2">
+                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold uppercase tracking-wider cursor-pointer shadow-xs text-xs">
+                    <Upload className="w-4 h-4 text-[#BFA270]" />
+                    <span>{isUploadingPhoto ? 'Procesando Imagen...' : 'Seleccionar Foto / Archivo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleFileUploadPhoto}
+                      disabled={isUploadingPhoto}
+                      className="hidden"
+                    />
                   </label>
-                  <input
-                    type="date"
-                    required
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold focus:outline-none focus:border-[#163323]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Libro / Folio / Registro
-                  </label>
-                  <input
-                    type="text"
-                    value={newVersion}
-                    onChange={(e) => setNewVersion(e.target.value)}
-                    placeholder="ej. Acta Ordinaria Libro II"
-                    className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold focus:outline-none focus:border-[#163323]"
-                  />
+
+                  {newPhotoUrl && (
+                    <div className="pt-2 flex items-center gap-3 border-t border-[#E3DFC8]">
+                      <img
+                        src={newPhotoUrl}
+                        alt="Vista previa"
+                        className="w-16 h-16 object-cover border border-[#DCD4C0] rounded-2xs"
+                      />
+                      <div className="flex-1">
+                        <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Foto adjuntada con éxito
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setNewPhotoUrl('')}
+                          className="mt-1 text-[10px] text-red-700 underline hover:text-red-900"
+                        >
+                          Quitar foto
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
+              {/* 4. Descripción */}
               <div>
                 <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  Resumen Ejecutivo & Resoluciones *
+                  4. Descripción & Resumen de Resoluciones *
                 </label>
                 <textarea
                   required
                   rows={4}
-                  placeholder="Detalle los puntos aprobados, quórum, rendición de gastos o acuerdos tomados por las Cabezas..."
+                  placeholder="Escriba la descripción o un resumen de los puntos tratadas y resoluciones aprobadas..."
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] focus:outline-none focus:border-[#163323] leading-relaxed"
+                />
+              </div>
+
+              {/* 5. Versión / Libro */}
+              <div>
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                  5. Registro / Libro / Tipo
+                </label>
+                <input
+                  type="text"
+                  value={newVersion}
+                  onChange={(e) => setNewVersion(e.target.value)}
+                  placeholder="ej. Acta Oficial Notariada"
+                  className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs focus:outline-none focus:border-[#163323]"
                 />
               </div>
 
@@ -530,6 +741,18 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
           </div>
         </div>
       )}
+
+      {/* Custom Dialog Modal */}
+      <CustomDialogModal
+        isOpen={dialogState.isOpen}
+        title={dialogState.title}
+        message={dialogState.message}
+        type={dialogState.type || 'warning'}
+        confirmText={dialogState.confirmText || 'Aceptar'}
+        cancelText={dialogState.cancelText || 'Cancelar'}
+        onConfirm={dialogState.onConfirm}
+        onClose={() => setDialogState((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

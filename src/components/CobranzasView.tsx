@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, RecurrenceType, PaymentStatus } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
+import { CustomDialogModal } from './CustomDialogModal';
 import {
   DollarSign,
   CreditCard,
@@ -56,6 +57,20 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<FeeCollection | null>(null);
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'confirm' | 'alert' | 'success' | 'warning';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Bank Details Editing Modal (Admin)
   const [isEditBankModalOpen, setIsEditBankModalOpen] = useState(false);
@@ -590,11 +605,11 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
             className="px-2 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-medium text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
           >
             <option value="all">Todas las Categorías</option>
-            <option value="expensas_ordinarias">Expensas Ordinarias</option>
-            <option value="obras_extraordinarias">Obras Extraordinarias</option>
-            <option value="servicios">Servicios y Mantenimiento</option>
-            <option value="impuestos">Impuestos y Tasas</option>
-            <option value="otro">Otros Gastos</option>
+            {storageService.getFeeCategories().map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -663,7 +678,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                   <div className="space-y-1.5 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="px-2 py-0.5 bg-[#1B3B2B] text-[#FAF8F5] font-mono text-[10px] font-bold uppercase tracking-wider">
-                        {collection.category.replace('_', ' ')}
+                        {storageService.getFeeCategories().find((c) => c.id === collection.category)?.name || collection.category.replace('_', ' ')}
                       </span>
 
                       <span className="px-2 py-0.5 bg-[#F4EFE6] border border-[#DDD5BF] text-[10px] font-bold text-[#163323] flex items-center gap-1">
@@ -674,6 +689,12 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                       <span className="px-2 py-0.5 bg-[#F4EFE6] border border-[#DDD5BF] text-[10px] font-medium text-[#56685B]">
                         {getDistributionLabel(collection.distributionMode)}
                       </span>
+
+                      {collection.installmentsCount && collection.installmentsCount > 1 && (
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-300 font-mono text-[10px] font-bold rounded">
+                          Cuota {collection.installmentNumber || 1} de {collection.installmentsCount}
+                        </span>
+                      )}
 
                       {collection.status === 'completed' ? (
                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
@@ -742,9 +763,17 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                       {isAdmin && (
                         <button
                           onClick={() => {
-                            if (confirm('¿Desea eliminar esta orden de cobranza?')) {
-                              storageService.deleteFeeCollection(collection.id);
-                            }
+                            setDialog({
+                              isOpen: true,
+                              title: 'Eliminar Orden de Cobranza',
+                              message: '¿Está seguro de eliminar esta orden de cobranza y su registro de asignaciones?',
+                              type: 'warning',
+                              confirmText: 'Eliminar',
+                              onConfirm: () => {
+                                storageService.deleteFeeCollection(collection.id);
+                                loadCollections();
+                              },
+                            });
                           }}
                           className="p-1.5 text-neutral-400 hover:text-red-700 hover:bg-red-50 rounded transition-colors cursor-pointer"
                           title="Eliminar Cobranza"
@@ -1020,8 +1049,13 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                 <label className="block font-bold text-[#163323] mb-1">Monto Pagado ($ ARS)</label>
                 <input
                   type="number"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                  step="any"
+                  min={0}
+                  value={paymentAmount || ''}
+                  onChange={(e) => {
+                    const valStr = e.target.value.replace(',', '.');
+                    setPaymentAmount(parseFloat(valStr) || 0);
+                  }}
                   className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-sm font-bold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                 />
               </div>
@@ -1213,6 +1247,16 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           </div>
         </div>
       )}
+      <CustomDialogModal
+        isOpen={dialog.isOpen}
+        title={dialog.title}
+        message={dialog.message}
+        type={dialog.type || 'confirm'}
+        confirmText={dialog.confirmText || 'Aceptar'}
+        cancelText={dialog.cancelText || 'Cancelar'}
+        onConfirm={dialog.onConfirm}
+        onClose={() => setDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
@@ -1251,18 +1295,35 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
     new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
   const [distributionMode, setDistributionMode] = useState<DistributionMode>('share_percentage');
+  const [installmentsCount, setInstallmentsCount] = useState<number>(1); // 1, 2, 3, 6, 12, 24
   const [notes, setNotes] = useState('');
 
   // Custom percentages & amounts mapping
   const [customPercentages, setCustomPercentages] = useState<Record<string, number>>({});
   const [customAmounts, setCustomAmounts] = useState<Record<string, number>>({});
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'confirm' | 'alert' | 'success' | 'warning';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const activeUsers = users.filter((u) => u.active !== false);
+
+  const currentAmountPerInstallment = Math.round((totalAmount / Math.max(1, installmentsCount)) * 100) / 100;
 
   // Computed allocations for live preview
   const liveAllocations = calculateAllocationsForMode(
     distributionMode,
-    totalAmount,
+    currentAmountPerInstallment,
     activeUsers,
     customPercentages,
     customAmounts
@@ -1274,34 +1335,73 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!concept.trim()) {
-      alert('Por favor, ingrese un concepto claro para la cobranza.');
+      setDialog({
+        isOpen: true,
+        title: 'Campo Requerido',
+        message: 'Por favor, ingrese un concepto claro para la cobranza.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
       return;
     }
 
     if (totalAmount <= 0) {
-      alert('El monto total debe ser mayor a cero.');
+      setDialog({
+        isOpen: true,
+        title: 'Monto Inválido',
+        message: 'El monto total debe ser mayor a cero.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
       return;
     }
 
-    const newCollection: FeeCollection = {
-      id: 'fee-' + Date.now(),
-      concept: concept.trim(),
-      category,
-      totalAmount,
-      currency,
-      recurrence,
-      customRecurrenceDays: recurrence === 'custom_days' ? customRecurrenceDays : undefined,
-      issueDate,
-      dueDate,
-      distributionMode,
-      allocations: liveAllocations,
-      status: 'active',
-      createdBy: currentUser.name,
-      createdAt: new Date().toISOString(),
-      notes: notes.trim(),
-    };
+    const createdCount = Math.max(1, installmentsCount);
+    const baseDueDateObj = new Date(dueDate || Date.now());
 
-    onSave(newCollection);
+    for (let i = 1; i <= createdCount; i++) {
+      const issueDateObj = new Date(issueDate || Date.now());
+      issueDateObj.setMonth(issueDateObj.getMonth() + (i - 1));
+      const issueDateStr = issueDateObj.toISOString().split('T')[0];
+
+      const dueDateObj = new Date(baseDueDateObj);
+      dueDateObj.setMonth(dueDateObj.getMonth() + (i - 1));
+      const dueDateStr = dueDateObj.toISOString().split('T')[0];
+
+      const instSuffix = createdCount > 1 ? ` - Cuota ${i} de ${createdCount}` : '';
+
+      const allocations = calculateAllocationsForMode(
+        distributionMode,
+        currentAmountPerInstallment,
+        activeUsers,
+        customPercentages,
+        customAmounts
+      );
+
+      const newCollection: FeeCollection = {
+        id: `fee-${Date.now()}-${i}`,
+        concept: `${concept.trim()}${instSuffix}`,
+        category,
+        totalAmount: currentAmountPerInstallment,
+        currency,
+        recurrence: createdCount > 1 ? 'monthly' : recurrence,
+        customRecurrenceDays: recurrence === 'custom_days' ? customRecurrenceDays : undefined,
+        issueDate: issueDateStr,
+        dueDate: dueDateStr,
+        distributionMode,
+        allocations,
+        status: 'active',
+        createdBy: currentUser.name,
+        createdAt: new Date().toISOString(),
+        notes: notes.trim(),
+        installmentsCount: createdCount,
+        installmentNumber: i,
+      };
+
+      onSave(newCollection);
+    }
   };
 
   return (
@@ -1343,16 +1443,16 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                 onChange={(e) => setCategory(e.target.value as any)}
                 className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
               >
-                <option value="expensas_ordinarias">Expensas Ordinarias</option>
-                <option value="obras_extraordinarias">Obras Extraordinarias</option>
-                <option value="servicios">Servicios y Mantenimiento</option>
-                <option value="impuestos">Impuestos y Tasas</option>
-                <option value="otro">Otro Concepto</option>
+                {storageService.getFeeCategories().map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
 
-          {/* Amount, Currency and Recurrence */}
+          {/* Amount, Currency, Installments and Recurrence */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="sm:col-span-2">
               <label className="block font-bold text-[#163323] mb-1">Monto Total a Cobrar *</label>
@@ -1363,10 +1463,13 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                 <input
                   type="number"
                   required
-                  min={1}
-                  step={100}
-                  value={totalAmount}
-                  onChange={(e) => setTotalAmount(parseFloat(e.target.value) || 0)}
+                  min={0}
+                  step="any"
+                  value={totalAmount || ''}
+                  onChange={(e) => {
+                    const valStr = e.target.value.replace(',', '.');
+                    setTotalAmount(parseFloat(valStr) || 0);
+                  }}
                   className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-sm font-bold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                 />
               </div>
@@ -1385,7 +1488,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-[#163323] mb-1">Periodicidad / Recurrencia</label>
+              <label className="block font-bold text-[#163323] mb-1">Periodicidad</label>
               <select
                 value={recurrence}
                 onChange={(e) => setRecurrence(e.target.value as any)}
@@ -1398,6 +1501,46 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                 <option value="one_time">Pago Único / Extraordinario</option>
               </select>
             </div>
+          </div>
+
+          {/* Plan de Pago en Cuotas */}
+          <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-3 space-y-2">
+            <div className="flex justify-between items-center font-bold text-[#163323]">
+              <span>Plan de Pago en Cuotas Mensuales:</span>
+              <span className="font-mono text-[#1B3B2B] font-bold bg-white px-2 py-0.5 border border-[#DDD5BF] text-xs">
+                {installmentsCount} {installmentsCount === 1 ? 'Cuota (Única)' : 'Cuotas Mensuales'}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 6, 12, 24].map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => setInstallmentsCount(count)}
+                  className={`px-3 py-1 font-mono font-bold text-xs border transition-colors cursor-pointer ${
+                    installmentsCount === count
+                      ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
+                      : 'bg-white text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
+                  }`}
+                >
+                  {count === 1 ? '1 Pago' : `${count} Cuotas`}
+                </button>
+              ))}
+            </div>
+
+            {installmentsCount > 1 && (
+              <div className="bg-white p-2.5 border border-[#DDD5BF] space-y-1 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-[#637568]">Monto por Cuota Mensual Total:</span>
+                  <strong className="font-mono text-[#163323]">${currentAmountPerInstallment.toLocaleString()} ARS / mes</strong>
+                </div>
+                <div className="flex justify-between text-emerald-800">
+                  <span>Prorrateo Estimado por Socio (1/15):</span>
+                  <strong className="font-mono">${Math.round(currentAmountPerInstallment / 15).toLocaleString()} ARS / mes</strong>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Custom Days Input if custom_days selected */}
@@ -1533,11 +1676,14 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
                     <input
                       type="number"
-                      step={0.0001}
+                      step="any"
                       min={0}
                       max={100}
                       value={customPercentages[u.id] ?? 0}
-                      onChange={(e) => setCustomPercentages({ ...customPercentages, [u.id]: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => {
+                        const valStr = e.target.value.replace(',', '.');
+                        setCustomPercentages({ ...customPercentages, [u.id]: parseFloat(valStr) || 0 });
+                      }}
                       className="w-16 px-1 py-0.5 font-mono text-right border border-[#DDD5BF]"
                     />
                     <span className="text-[10px] text-[#7A8E7E]">%</span>
@@ -1561,10 +1707,13 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
                     <span className="text-[11px] font-semibold text-[#163323] truncate flex-1">{u.name}</span>
                     <input
                       type="number"
-                      step={1000}
+                      step="any"
                       min={0}
                       value={customAmounts[u.id] ?? 0}
-                      onChange={(e) => setCustomAmounts({ ...customAmounts, [u.id]: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => {
+                        const valStr = e.target.value.replace(',', '.');
+                        setCustomAmounts({ ...customAmounts, [u.id]: parseFloat(valStr) || 0 });
+                      }}
                       className="w-20 px-1 py-0.5 font-mono text-right border border-[#DDD5BF]"
                     />
                   </div>
@@ -1632,6 +1781,16 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
           </div>
         </form>
       </div>
+      <CustomDialogModal
+        isOpen={dialog.isOpen}
+        title={dialog.title}
+        message={dialog.message}
+        type={dialog.type || 'confirm'}
+        confirmText={dialog.confirmText || 'Aceptar'}
+        cancelText={dialog.cancelText || 'Cancelar'}
+        onConfirm={dialog.onConfirm}
+        onClose={() => setDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

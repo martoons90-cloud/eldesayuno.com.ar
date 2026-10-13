@@ -54,12 +54,12 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const isIntendente = isUserIntendente(currentUser);
   const isFinancialOnlyAdmin = isUserAdmin(currentUser);
-  const effectiveIsAdmin = isIntendente && adminViewMode === 'admin';
+  const effectiveIsAdmin = isIntendente || (isFinancialOnlyAdmin && adminViewMode === 'admin');
   const isD1Active = d1Service.isConnected();
 
   // Navigation tabs based on active mode (shortened for crisp fitting)
   const privileged = hasPrivilegedAccess(currentUser);
-  const baseNav = isIntendente && adminViewMode === 'admin'
+  const baseNav = isIntendente || (isFinancialOnlyAdmin && adminViewMode === 'admin')
     ? [
         { id: 'dashboard', label: 'Resumen' },
         { id: 'calendar', label: 'Calendario' },
