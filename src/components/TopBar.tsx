@@ -128,30 +128,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             </button>
           </div>
 
-          {/* Zone 2: Inline Navigation Links (visible on xl screens >= 1150px) */}
-          <nav className="hidden xl:flex items-center gap-1 shrink-0">
-            {navItems.map((item) => {
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => onSelectTab(item.id)}
-                  className={`px-2 py-1.5 text-[11px] xl:text-xs font-semibold tracking-wide whitespace-nowrap transition-colors relative cursor-pointer ${
-                    isActive
-                      ? 'text-[#163323] font-bold'
-                      : 'text-[#56685B] hover:text-[#163323]'
-                  }`}
-                >
-                  {item.label}
-                  {isActive && (
-                    <span className="absolute bottom-0 left-1.5 right-1.5 h-0.5 bg-[#163323]" />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Zone 3: Primary Actions & User Status */}
+          {/* Zone 2: Primary Actions & User Status */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Quick Booking CTA */}
             <button
@@ -272,6 +249,28 @@ export const TopBar: React.FC<TopBarProps> = ({
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Secondary Navigation Sub-Bar (Below Top Ribbon) */}
+      <div className="bg-[#FAF8F5] border-t border-[#E3DFC8] px-2 sm:px-4 lg:px-5">
+        <div className="max-w-[1440px] mx-auto flex items-center justify-center overflow-x-auto py-1.5 scrollbar-none gap-1">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onSelectTab(item.id)}
+                className={`px-3 py-1 text-xs font-semibold tracking-wide whitespace-nowrap transition-all rounded-xs cursor-pointer ${
+                  isActive
+                    ? 'bg-[#1B3B2B] text-white shadow-2xs font-bold'
+                    : 'text-[#4A5D50] hover:text-[#163323] hover:bg-[#EFE9DB]'
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
