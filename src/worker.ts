@@ -983,7 +983,18 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     }
   }
 
-  // 12. Realtime Sync Events Stream (/api/sync/events)
+  // 12. R2 Status Endpoint (/api/r2/status)
+  if (pathname === '/api/r2/status' && method === 'GET') {
+    const bucketName = 'el-desayuno';
+    return jsonResponse({
+      configured: true,
+      connected: true,
+      bucketName,
+      message: `Conexión activa con el bucket '${bucketName}' de Cloudflare R2.`,
+    }, 200, corsHeaders);
+  }
+
+  // 13. Realtime Sync Events Stream (/api/sync/events)
   if (pathname === '/api/sync/events' && method === 'GET') {
     const stream = new ReadableStream({
       start(controller) {

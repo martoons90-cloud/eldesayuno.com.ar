@@ -142,6 +142,18 @@ export default function App() {
     setIsBookingModalOpen(true);
   };
 
+  // Filter notifications according to privacy:
+  // Rejections and targeted alerts are ONLY visible to the applicant (targetUserId) or admin
+  const userNotifications = useMemo(() => {
+    if (!currentUser) return [];
+    return notifications.filter((n) => {
+      if (n.targetUserId) {
+        return n.targetUserId === currentUser.id || currentUser.role === 'admin';
+      }
+      return true;
+    });
+  }, [notifications, currentUser]);
+
   // If user is not logged in, display strictly the private login gate
   if (!currentUser) {
     return (
@@ -163,17 +175,6 @@ export default function App() {
   const totalQuotaAllOwners = users
     .filter((u) => u.active !== false)
     .reduce((sum, u) => sum + u.annualQuotaDays, 0);
-
-  // Filter notifications according to privacy:
-  // Rejections and targeted alerts are ONLY visible to the applicant (targetUserId) or admin
-  const userNotifications = useMemo(() => {
-    return notifications.filter((n) => {
-      if (n.targetUserId) {
-        return n.targetUserId === currentUser.id || currentUser.role === 'admin';
-      }
-      return true;
-    });
-  }, [notifications, currentUser]);
 
   return (
     <div className="min-h-screen bg-[#FBF9F5] text-[#19231A] flex flex-col font-sans">
