@@ -1494,6 +1494,28 @@ app.post('/api/users/bulk-shares', (req, res) => {
   }
 });
 
+// Assign Cabeza Leader
+app.post('/api/users/assign-cabeza-leader', (req, res) => {
+  try {
+    const { cabezaNumber, newLeaderUserId } = req.body;
+    if (!cabezaNumber || !newLeaderUserId) {
+      return res.status(400).json({ success: false, error: 'Faltan parámetros' });
+    }
+    const state = loadServerState();
+    if (Array.isArray(state.users)) {
+      state.users.forEach((u: any) => {
+        if (u.cabezaNumber === Number(cabezaNumber)) {
+          u.isCabezaDeEquipo = u.id === newLeaderUserId;
+        }
+      });
+    }
+    saveServerState(state);
+    return res.json({ success: true, users: state.users });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error asignando líder de cabeza' });
+  }
+});
+
 // 8. Date Blocks
 app.get('/api/blocks', (_req, res) => {
   try {

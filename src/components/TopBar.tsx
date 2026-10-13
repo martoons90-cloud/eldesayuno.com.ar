@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { BrandLogo } from './BrandLogo';
-import { User, NotificationPush } from '../types';
+import { User, NotificationPush, hasPrivilegedAccess, isUserAdmin, isUserFiduciante, isUserCabezaDeEquipo } from '../types';
 import { d1Service } from '../services/d1Service';
 import { PasswordManagementModal } from './PasswordManagementModal';
+import { UserProfileModal } from './UserProfileModal';
+import { AvatarRolePin } from './UserRoleBadge';
 import { APP_VERSION } from '../version';
 import {
   Bell,
   LogOut,
   UserCheck,
   Shield,
+  ShieldCheck,
+  Landmark,
+  Award,
   PlusCircle,
   Menu,
   X,
@@ -44,6 +49,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const isUserAdmin = currentUser.role === 'admin';
@@ -52,12 +58,15 @@ export const TopBar: React.FC<TopBarProps> = ({
   const isD1Active = d1Service.isConnected();
 
   // Navigation tabs based on active mode (shortened for crisp fitting)
-  const navItems = effectiveIsAdmin
+  const privileged = hasPrivilegedAccess(currentUser);
+  const baseNav = effectiveIsAdmin
     ? [
         { id: 'dashboard', label: 'Resumen' },
         { id: 'calendar', label: 'Calendario' },
         { id: 'reservations', label: 'Reservas' },
         { id: 'gastos', label: 'Gastos' },
+        { id: 'cashflow', label: 'Caja & Cuentas' },
+        ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'cobranzas', label: 'Cobranzas' },
         { id: 'inventory', label: 'Inventario' },
         { id: 'incidents', label: 'Novedades' },
@@ -69,11 +78,14 @@ export const TopBar: React.FC<TopBarProps> = ({
         { id: 'calendar', label: 'Calendario' },
         { id: 'my-bookings', label: 'Mis Estadías' },
         { id: 'gastos', label: 'Gastos' },
+        { id: 'cashflow', label: 'Caja & Cuentas' },
+        ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'cobranzas', label: 'Pagos & Cuotas' },
         { id: 'inventory', label: 'Inventario' },
         { id: 'incidents', label: 'Novedades' },
         { id: 'guide', label: 'Reglamento' },
       ];
+  const navItems = baseNav;
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#FFFFFF] border-b border-[#E3DFC8] shadow-[0_2px_10px_rgba(20,38,24,0.04)]">
@@ -205,28 +217,43 @@ export const TopBar: React.FC<TopBarProps> = ({
             </button>
 
             {/* User Pill / Identity */}
-            <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-[#E6E0CF] shrink-0">
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-xs shrink-0"
-                style={{ backgroundColor: currentUser.color }}
-              >
-                {currentUser.avatarInitials}
+            <button
+              onClick={() => setIsProfileModalOpen(true)}
+              className="hidden xl:flex items-center gap-2 pl-2 border-l border-[#E6E0CF] shrink-0 text-left hover:opacity-80 transition-opacity cursor-pointer group"
+              title="Ver mi perfil y privilegios fiduciarios"
+            >
+              <div className="relative">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-xs shrink-0"
+                  style={{ backgroundColor: currentUser.color }}
+                >
+                  {currentUser.avatarInitials}
+                </div>
+                <AvatarRolePin user={currentUser} size="sm" />
               </div>
               <div className="flex flex-col text-left">
-                <span className="text-[11px] font-semibold text-[#163323] leading-tight truncate max-w-[110px]">
+                <span className="text-[11px] font-semibold text-[#163323] leading-tight truncate max-w-[110px] group-hover:underline">
                   {currentUser.name}
                 </span>
-                <span className="text-[9px] text-[#7A8E7E] leading-none flex items-center gap-0.5 mt-0.5">
-                  {effectiveIsAdmin ? (
+                <span className="text-[9px] text-[#7A8E7E] leading-none flex items-center gap-1 mt-0.5">
+                  {isUserAdmin(currentUser) ? (
                     <span className="text-[#A68853] font-semibold flex items-center gap-0.5">
-                      <Shield className="w-2.5 h-2.5" /> Admin
+                      <ShieldCheck className="w-2.5 h-2.5" /> Admin
+                    </span>
+                  ) : isUserFiduciante(currentUser) ? (
+                    <span className="text-indigo-700 font-semibold flex items-center gap-0.5">
+                      <Landmark className="w-2.5 h-2.5" /> Fiduciante
+                    </span>
+                  ) : isUserCabezaDeEquipo(currentUser) ? (
+                    <span className="text-amber-700 font-semibold flex items-center gap-0.5">
+                      <Award className="w-2.5 h-2.5" /> Líder
                     </span>
                   ) : (
                     <span className="truncate max-w-[100px]">{currentUser.partName}</span>
                   )}
                 </span>
               </div>
-            </div>
+            </button>
 
             {/* Subtle Logout icon button */}
             <button
@@ -359,6 +386,17 @@ export const TopBar: React.FC<TopBarProps> = ({
           onClose={() => setIsPasswordModalOpen(false)}
           targetUser={currentUser}
           isSelfChange={true}
+        />
+      )}
+
+      {/* User Profile Modal */}
+      {isProfileModalOpen && (
+        <UserProfileModal
+          user={currentUser}
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          onOpenPasswordModal={() => setIsPasswordModalOpen(true)}
+          onNavigateTab={(tab) => onSelectTab(tab)}
         />
       )}
     </header>

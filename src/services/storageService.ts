@@ -13,6 +13,7 @@ import {
   FeeCollection,
   OwnerFeeAllocation,
   ExpenseItem,
+  CashFlowTransaction,
 } from '../types';
 import { pushService } from './notificationService';
 
@@ -28,6 +29,7 @@ const INCIDENTS_KEY = 'el_desayuno_incidents_v3';
 const NOTIFICATIONS_KEY = 'el_desayuno_notifications_v3';
 const FEES_KEY = 'el_desayuno_fees_v3';
 const EXPENSES_KEY = 'el_desayuno_expenses_v1';
+const CASH_FLOW_KEY = 'el_desayuno_cashflow_v1';
 const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
 
 import {
@@ -43,6 +45,7 @@ import {
   SEED_NOTIFICATIONS,
   SEED_FEE_COLLECTIONS,
   SEED_EXPENSES,
+  SEED_CASH_FLOW,
 } from './defaultSeedData';
 import { d1Service } from './d1Service';
 
@@ -162,6 +165,9 @@ class StorageService {
     }
     if (!localStorage.getItem(EXPENSES_KEY)) {
       localStorage.setItem(EXPENSES_KEY, JSON.stringify(DEFAULT_EXPENSES));
+    }
+    if (!localStorage.getItem(CASH_FLOW_KEY)) {
+      localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(SEED_CASH_FLOW));
     }
     // Ensure Efraín Rodríguez has admin role
     let users = this.getUsers();
@@ -579,6 +585,8 @@ class StorageService {
           sharePercentage: effectiveShare,
           active: found.active !== undefined ? found.active : true,
           role: defUser.id === 'user-c4-efrain' ? ('admin' as const) : (found.role || defUser.role),
+          isFiduciante: found.isFiduciante !== undefined ? found.isFiduciante : defUser.isFiduciante,
+          isCabezaDeEquipo: found.isCabezaDeEquipo !== undefined ? found.isCabezaDeEquipo : defUser.isCabezaDeEquipo,
         };
       });
 
@@ -621,6 +629,51 @@ class StorageService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(user),
     }).catch((err) => console.error('Error guardando usuario en servidor:', err));
+  }
+
+  public assignCabezaLeader(cabezaNumber: number, newLeaderUserId: string) {
+    const users = this.getUsers();
+    const updated = users.map((u) => {
+      if (u.cabezaNumber === cabezaNumber) {
+        return {
+          ...u,
+          isCabezaDeEquipo: u.id === newLeaderUserId,
+        };
+      }
+      return u;
+    });
+    localStorage.setItem(USERS_KEY, JSON.stringify(updated));
+    this.notify(false);
+
+    // Sync updated members to server
+    fetch('/api/users/assign-cabeza-leader', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cabezaNumber, newLeaderUserId }),
+    }).catch(() => {
+      updated
+        .filter((u) => u.cabezaNumber === cabezaNumber)
+        .forEach((u) => this.saveUser(u));
+    });
+  }
+
+  public toggleUserCabezaDeEquipo(userId: string) {
+    const users = this.getUsers();
+    const target = users.find((u) => u.id === userId);
+    if (!target) return;
+    const newStatus = !target.isCabezaDeEquipo;
+    const updatedUser = { ...target, isCabezaDeEquipo: newStatus };
+    this.saveUser(updatedUser);
+  }
+
+  public toggleUserFiduciante(userId: string) {
+    const users = this.getUsers();
+    const target = users.find((u) => u.id === userId);
+    if (!target) return;
+    const newStatus = !target.isFiduciante;
+    const updatedRole = newStatus ? ('fiduciante' as const) : (target.id === 'user-c4-efrain' ? ('admin' as const) : ('owner' as const));
+    const updatedUser = { ...target, isFiduciante: newStatus, role: updatedRole };
+    this.saveUser(updatedUser);
   }
 
   public updateBulkSharePercentages(sharesMap: Record<string, number>) {
@@ -1222,7 +1275,20 @@ class StorageService {
   public getDocuments(): DocumentItem[] {
     if (typeof window === 'undefined') return DEFAULT_DOCUMENTS;
     const raw = localStorage.getItem(DOCUMENTS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_DOCUMENTS;
+    if (!raw) return DEFAULT_DOCUMENTS;
+    try {
+      const parsed: DocumentItem[] = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return DEFAULT_DOCUMENTS;
+      const merged = [...parsed];
+      DEFAULT_DOCUMENTS.forEach((defDoc) => {
+        if (!merged.some((d) => d.id === defDoc.id)) {
+          merged.push(defDoc);
+        }
+      });
+      return merged;
+    } catch {
+      return DEFAULT_DOCUMENTS;
+    }
   }
 
   public saveDocument(doc: DocumentItem) {
@@ -1526,6 +1592,37 @@ class StorageService {
     fetch(`/api/expenses/${expenseId}`, {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando gasto en servidor:', err));
+  }
+
+  // Cash Flow & Account Ledger
+  public getCashFlows(): CashFlowTransaction[] {
+    if (typeof window === 'undefined') return SEED_CASH_FLOW;
+    const raw = localStorage.getItem(CASH_FLOW_KEY);
+    return raw ? JSON.parse(raw) : SEED_CASH_FLOW;
+  }
+
+  public saveCashFlowTransaction(tx: CashFlowTransaction) {
+    const list = this.getCashFlows();
+    const exists = list.some((t) => t.id === tx.id);
+    const updated = exists ? list.map((t) => (t.id === tx.id ? tx : t)) : [tx, ...list];
+    localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(updated));
+    this.notify(false);
+
+    fetch('/api/cash-flow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tx),
+    }).catch((err) => console.error('Error guardando transacción de caja:', err));
+  }
+
+  public deleteCashFlowTransaction(txId: string) {
+    const list = this.getCashFlows().filter((t) => t.id !== txId);
+    localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(list));
+    this.notify(false);
+
+    fetch(`/api/cash-flow/${txId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando transacción de caja:', err));
   }
 
   // Get complete package of local data for D1 push & backup

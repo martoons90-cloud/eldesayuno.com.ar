@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User } from '../types';
+import { User, UserRole } from '../types';
 import {
   Users,
   Plus,
@@ -7,6 +7,9 @@ import {
   X,
   Palette,
   Shield,
+  ShieldCheck,
+  Award,
+  Landmark,
   KeyRound,
   Info,
   Layers,
@@ -30,7 +33,9 @@ interface UserFormModalProps {
     sharePercentage?: number;
     color: string;
     password?: string;
-    role?: 'owner' | 'admin';
+    role?: UserRole;
+    isCabezaDeEquipo?: boolean;
+    isFiduciante?: boolean;
   }) => void;
 }
 
@@ -97,7 +102,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [password, setPassword] = useState('');
   const [annualQuotaDays, setAnnualQuotaDays] = useState<number>(30);
   const [sharePercentage, setSharePercentage] = useState<number>(6.25);
-  const [role, setRole] = useState<'owner' | 'admin'>('owner');
+  const [role, setRole] = useState<UserRole>('owner');
+  const [isCabezaDeEquipo, setIsCabezaDeEquipo] = useState<boolean>(false);
+  const [isFiduciante, setIsFiduciante] = useState<boolean>(false);
 
   // New Cabeza Form State
   const [newPartName, setNewPartName] = useState('');
@@ -127,6 +134,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           : 6.25
       );
       setRole(editingUser.role || 'owner');
+      setIsCabezaDeEquipo(Boolean(editingUser.isCabezaDeEquipo));
+      setIsFiduciante(Boolean(editingUser.isFiduciante || editingUser.role === 'fiduciante'));
 
       // Check if editingUser's partName matches an existing Cabeza
       const matched = existingCabezasList.find(
@@ -148,6 +157,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPassword(generateRandomPassword());
       setAnnualQuotaDays(30);
       setRole('owner');
+      setIsCabezaDeEquipo(false);
+      setIsFiduciante(false);
 
       if (existingCabezasList.length > 0) {
         setCabezaSelectionMode('existing');
@@ -205,6 +216,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       color: effectiveColor,
       password: password.trim().toUpperCase() || generateRandomPassword(),
       role,
+      isCabezaDeEquipo,
+      isFiduciante,
     });
 
     onClose();
@@ -593,6 +606,79 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                     2.7778% (9 socios / 25%)
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: Rol Societario & Privilegios Especiales */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#163323] pb-1.5 border-b border-[#EFEAE0] flex items-center justify-between">
+              <span>5. Rol Societario, Liderazgo & Privilegios Especiales</span>
+              <span className="text-[10px] font-normal text-[#8C7A53]">Acceso a Actas & Gastos</span>
+            </h4>
+
+            <div className="space-y-3 bg-[#FAF8F5] p-3.5 border border-[#DCD4C0]">
+              {/* Role Select */}
+              <div>
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                  Rol Principal en la Plataforma
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => {
+                    const newRole = e.target.value as UserRole;
+                    setRole(newRole);
+                    if (newRole === 'fiduciante') setIsFiduciante(true);
+                  }}
+                  className="w-full p-2.5 bg-white border border-[#DCD4C0] font-semibold text-xs text-[#163323] focus:outline-none focus:border-[#163323] cursor-pointer"
+                >
+                  <option value="owner">Copropietario Socio Ordinario</option>
+                  <option value="admin">Administrador General (Poder Pleno y Operativo)</option>
+                  <option value="fiduciante">Fiduciante del Fideicomiso (Órgano de Control)</option>
+                </select>
+              </div>
+
+              {/* Designation Checkboxes */}
+              <div className="space-y-2 pt-1 border-t border-[#EFEAE0]">
+                <label className="flex items-start gap-2.5 p-2 bg-white border border-[#DDD5BF] hover:border-[#F59E0B] cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={isCabezaDeEquipo}
+                    onChange={(e) => setIsCabezaDeEquipo(e.target.checked)}
+                    className="mt-0.5 accent-[#F59E0B] w-4 h-4 cursor-pointer"
+                  />
+                  <div className="leading-snug">
+                    <strong className="text-xs text-[#163323] flex items-center gap-1.5">
+                      <Award className="w-3.5 h-3.5 text-[#D97706]" />
+                      <span>Designar como Cabeza de Equipo (Líder del Grupo)</span>
+                    </strong>
+                    <span className="text-[11px] text-[#637568] block mt-0.5">
+                      Otorga distintivo dorado especial en su perfil y habilita acceso directo al Libro de Gastos y las Actas de Asamblea.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-2.5 p-2 bg-white border border-[#DDD5BF] hover:border-[#6366F1] cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={isFiduciante}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsFiduciante(checked);
+                      if (checked && role === 'owner') setRole('fiduciante');
+                    }}
+                    className="mt-0.5 accent-[#4F46E5] w-4 h-4 cursor-pointer"
+                  />
+                  <div className="leading-snug">
+                    <strong className="text-xs text-[#163323] flex items-center gap-1.5">
+                      <Landmark className="w-3.5 h-3.5 text-indigo-700" />
+                      <span>Designar como Fiduciante (Órgano Fiduciario Constitutivo)</span>
+                    </strong>
+                    <span className="text-[11px] text-[#637568] block mt-0.5">
+                      Otorga insignia fiduciaria con ícono especial y habilita acceso a Actas societarias y Libro de Gastos.
+                    </span>
+                  </div>
+                </label>
               </div>
             </div>
           </div>

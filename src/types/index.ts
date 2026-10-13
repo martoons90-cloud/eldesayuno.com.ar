@@ -1,4 +1,4 @@
-export type UserRole = 'owner' | 'admin';
+export type UserRole = 'owner' | 'admin' | 'fiduciante' | 'intendente';
 
 export interface User {
   id: string;
@@ -6,6 +6,8 @@ export interface User {
   username?: string; // e.g. "efrain.rodriguez"
   email: string;
   role: UserRole;
+  isFiduciante?: boolean;
+  isCabezaDeEquipo?: boolean;
   partName: string; // e.g. "Cabeza 1 - Parte I (25%)"
   cabezaNumber?: number; // 1, 2, 3, 4
   sharePercentage?: number; // % de participación / aporte / acciones en gastos y expensas (ej: 6.25, 12.5, 25)
@@ -19,6 +21,25 @@ export interface User {
   active: boolean;
   createdAt: string;
 }
+
+export const isUserAdmin = (user?: User | null): boolean => user?.role === 'admin';
+export const isUserIntendente = (user?: User | null): boolean => user?.role === 'intendente';
+export const isUserFiduciante = (user?: User | null): boolean =>
+  user?.role === 'fiduciante' || Boolean(user?.isFiduciante);
+export const isUserCabezaDeEquipo = (user?: User | null): boolean =>
+  Boolean(user?.isCabezaDeEquipo);
+
+// Intendente & Admin have full 100% operational rights
+export const hasFullOperationalAccess = (user?: User | null): boolean =>
+  Boolean(isUserAdmin(user) || isUserIntendente(user));
+
+// Only Cabezas de Equipo, Admin, Intendente can submit/upload expenses
+export const canUploadExpenses = (user?: User | null): boolean =>
+  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserCabezaDeEquipo(user));
+
+export const hasPrivilegedAccess = (user?: User | null): boolean =>
+  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserFiduciante(user) || isUserCabezaDeEquipo(user));
+
 
 export type BookingStatus = 'confirmed' | 'pending' | 'cancelled' | 'completed';
 
@@ -263,6 +284,56 @@ export interface ExpenseItem {
   notes?: string;
   transferredToFeeCollectionId?: string; // ID of fee collection created from this expense/month
   createdBy: string;
+  userId?: string; // User who paid/submitted the expense
+  userName?: string;
+  partName?: string;
+  approvalStatus?: 'pending' | 'approved' | 'rejected'; // Subject to admin approval
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectionReason?: string;
+  reimbursementStatus?: 'unpaid' | 'partial' | 'fully_repaid';
+  reimbursedAmount?: number; // Amount returned so far
   createdAt: string;
 }
+
+// -------------------------------------------------------------
+// CAJA, INGRESOS, EGRESOS Y CUENTA CORRIENTE DE COPROPIETARIOS
+// -------------------------------------------------------------
+export type CashFlowType = 'ingreso' | 'egreso';
+export type CashFlowCategory =
+  | 'aporte_socio'
+  | 'pago_expensas'
+  | 'pago_proveedor'
+  | 'reintegro_gasto'
+  | 'fondo_reserva'
+  | 'otro_ingreso'
+  | 'otro_egreso';
+
+export interface CashFlowTransaction {
+  id: string;
+  type: CashFlowType;
+  category: CashFlowCategory;
+  concept: string;
+  amount: number;
+  currency: 'ARS' | 'USD';
+  date: string; // YYYY-MM-DD
+  userId?: string; // Linked user account if applicable
+  userName?: string;
+  partName?: string;
+  expenseId?: string; // Linked expense if reimbursement
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface UserAccountBalance {
+  userId: string;
+  userName: string;
+  partName: string;
+  totalAdvanced: number; // Total spent out of pocket for the trust
+  totalReimbursed: number; // Total refunded back to the user from cash flow
+  balanceDue: number; // Remaining balance the trust owes the user
+  pendingExpensesCount: number;
+}
+
 

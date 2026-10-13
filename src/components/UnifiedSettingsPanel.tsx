@@ -8,6 +8,7 @@ import { PasswordManagementModal } from './PasswordManagementModal';
 import { TransferAdminModal } from './TransferAdminModal';
 import { UserFormModal } from './UserFormModal';
 import { APP_VERSION, APP_BUILD_DATE, APP_STAGE } from '../version';
+import { UserRoleBadge } from './UserRoleBadge';
 import {
   Users,
   Sliders,
@@ -15,6 +16,8 @@ import {
   Home,
   PhoneCall,
   FileText,
+  Award,
+  Landmark,
   Image as ImageIcon,
   Database,
   Save,
@@ -605,6 +608,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           color: userData.color,
           password: userData.password || existing.password,
           role: userData.role || existing.role,
+          isCabezaDeEquipo: userData.isCabezaDeEquipo !== undefined ? userData.isCabezaDeEquipo : existing.isCabezaDeEquipo,
+          isFiduciante: userData.isFiduciante !== undefined ? userData.isFiduciante : existing.isFiduciante,
         });
       }
     } else {
@@ -617,6 +622,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
         partName: userData.partName,
         cabezaNumber: userData.cabezaNumber,
         role: userData.role || 'owner',
+        isCabezaDeEquipo: Boolean(userData.isCabezaDeEquipo),
+        isFiduciante: Boolean(userData.isFiduciante),
         annualQuotaDays: userData.annualQuotaDays,
         sharePercentage: typeof userData.sharePercentage === 'number' ? userData.sharePercentage : 6.25,
         usedDays: 0,
@@ -967,6 +974,82 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 );
               })()}
 
+              {/* Asignación de Cabezas de Equipo & Roles Fiduciarios */}
+              <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4.5 space-y-3.5 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-[#E8E2D2]">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
+                      <Award className="w-4 h-4 text-[#D97706]" />
+                      <span>Asignación Oficial de Cabezas de Equipo (Líderes de Grupo)</span>
+                    </h4>
+                    <p className="text-[11px] text-[#637568] mt-0.5">
+                      Seleccione qué copropietario lidera cada Cabeza indivisa (25%). Los líderes tienen un distintivo especial en su perfil y acceso reservado a <strong>Actas de Asamblea</strong> y al <strong>Libro de Gastos</strong>.
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono text-[#8C7A53] bg-white px-2 py-1 border border-[#D5CDBC] shrink-0 self-start sm:self-auto font-bold">
+                    4 Cabezas Indivisas
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {[1, 2, 3, 4].map((cNum) => {
+                    const cabezaMembers = users.filter((u) => u.cabezaNumber === cNum || u.partName.includes(`Cabeza ${cNum}`));
+                    const currentLeader = cabezaMembers.find((u) => u.isCabezaDeEquipo);
+                    const cabezaColor = cNum === 1 ? '#DC2626' : cNum === 2 ? '#16A34A' : cNum === 3 ? '#2563EB' : '#D97706';
+
+                    return (
+                      <div key={cNum} className="bg-white p-3 border border-[#E3DFC8] space-y-2 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <span
+                            className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-2xs border text-[#163323]"
+                            style={{ backgroundColor: `${cabezaColor}15`, borderColor: cabezaColor }}
+                          >
+                            Cabeza {cNum} (25%)
+                          </span>
+                          <span className="text-[10px] text-[#7A8E7E]">{cabezaMembers.length} socios</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] uppercase font-bold text-[#637568] mb-1">
+                            Líder / Cabeza de Equipo:
+                          </label>
+                          <select
+                            value={currentLeader?.id || ''}
+                            onChange={(e) => {
+                              const targetId = e.target.value;
+                              if (!targetId) return;
+                              storageService.assignCabezaLeader(cNum, targetId);
+                              const assigned = users.find((u) => u.id === targetId);
+                              showSuccess(`¡${assigned?.name || 'Socio'} asignado como Líder de Cabeza ${cNum}!`);
+                            }}
+                            className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#163323] cursor-pointer"
+                          >
+                            <option value="" disabled>Seleccione líder...</option>
+                            {cabezaMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name} {m.isCabezaDeEquipo ? '★ (Líder actual)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="text-[10px] text-[#637568] pt-1 border-t border-[#F0EBE0] flex items-center justify-between">
+                          <span>Estado:</span>
+                          {currentLeader ? (
+                            <span className="font-bold text-[#92400E] flex items-center gap-1">
+                              <Award className="w-3 h-3 text-[#D97706]" />
+                              <span className="truncate max-w-[90px]">{currentLeader.name}</span>
+                            </span>
+                          ) : (
+                            <span className="text-neutral-400 italic">Sin designar</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Owners Table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
@@ -977,7 +1060,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                       <th className="py-3 px-3">% Acciones / Aporte</th>
                       <th className="py-3 px-3">Color Calendario</th>
                       <th className="py-3 px-3">Contraseña de Acceso</th>
-                      <th className="py-3 px-3">Administración</th>
+                      <th className="py-3 px-3">Rol & Distinción</th>
                       <th className="py-3 px-3 text-center">Estado</th>
                       <th className="py-3 px-3 text-right">Acciones</th>
                     </tr>
@@ -1084,16 +1167,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                             </div>
                           </td>
                           <td className="py-3 px-3">
-                            {isCurrentAdmin ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300">
-                                <Shield className="w-3 h-3 text-amber-700" />
-                                <span>Administrador</span>
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-medium text-[#637568]">
-                                Socio
-                              </span>
-                            )}
+                            <UserRoleBadge user={u} size="sm" showAll={true} />
                           </td>
                           <td className="py-3 px-3 text-center">
                             <span
@@ -1108,6 +1182,56 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                           </td>
                           <td className="py-3 px-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Toggle Cabeza de Equipo */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  storageService.toggleUserCabezaDeEquipo(u.id);
+                                  showSuccess(
+                                    u.isCabezaDeEquipo
+                                      ? `Se retiró el liderazgo de Cabeza de Equipo a ${u.name}`
+                                      : `¡${u.name} ha sido designado como Cabeza de Equipo!`
+                                  );
+                                }}
+                                className={`p-1 transition-colors cursor-pointer rounded-2xs ${
+                                  u.isCabezaDeEquipo
+                                    ? 'text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300'
+                                    : 'text-[#637568] hover:text-amber-700 hover:bg-amber-50'
+                                }`}
+                                title={
+                                  u.isCabezaDeEquipo
+                                    ? 'Quitar rol de Cabeza de Equipo'
+                                    : 'Designar como Cabeza de Equipo (Líder del Grupo con acceso a Actas y Gastos)'
+                                }
+                              >
+                                <Award className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Toggle Fiduciante */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  storageService.toggleUserFiduciante(u.id);
+                                  showSuccess(
+                                    u.isFiduciante
+                                      ? `Se retiró el rol de Fiduciante a ${u.name}`
+                                      : `¡${u.name} ha sido designado como Fiduciante del Fideicomiso!`
+                                  );
+                                }}
+                                className={`p-1 transition-colors cursor-pointer rounded-2xs ${
+                                  u.isFiduciante
+                                    ? 'text-indigo-800 bg-indigo-100 hover:bg-indigo-200 border border-indigo-300'
+                                    : 'text-[#637568] hover:text-indigo-700 hover:bg-indigo-50'
+                                }`}
+                                title={
+                                  u.isFiduciante
+                                    ? 'Quitar rol de Fiduciante'
+                                    : 'Designar como Fiduciante del Fideicomiso (Acceso a Actas y Gastos)'
+                                }
+                              >
+                                <Landmark className="w-3.5 h-3.5" />
+                              </button>
+
                               <button
                                 onClick={() => setPasswordModalUser(u)}
                                 className="p-1 hover:bg-[#EFEAE0] text-[#163323] transition-colors cursor-pointer"

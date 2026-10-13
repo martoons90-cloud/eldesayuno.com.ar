@@ -17,6 +17,8 @@ import { InventoryStockView } from './components/InventoryStockView';
 import { IncidentReportsView } from './components/IncidentReportsView';
 import { CobranzasView } from './components/CobranzasView';
 import { ExpensesView } from './components/ExpensesView';
+import { CashFlowView } from './components/CashFlowView';
+import { ActasView } from './components/ActasView';
 import { AdminPanel, AdminSectionType } from './components/AdminPanel';
 import { UnifiedSettingsPanel, SettingsTabId } from './components/UnifiedSettingsPanel';
 import { APP_VERSION } from './version';
@@ -575,6 +577,18 @@ export default function App() {
                 isAdmin={currentUser.role === 'admin'}
                 onNavigateToCobranzas={() => setActiveTab('cobranzas')}
               />
+            )}
+
+            {activeTab === 'cashflow' && (
+              <CashFlowView
+                currentUser={currentUser}
+                settings={settings}
+                onNavigateToCobranzas={() => setActiveTab('cobranzas')}
+              />
+            )}
+
+            {activeTab === 'actas' && (
+              <ActasView currentUser={currentUser} settings={settings} onGoBack={() => setActiveTab('dashboard')} />
             )}
 
             {/* Unified Configuration Panel */}
