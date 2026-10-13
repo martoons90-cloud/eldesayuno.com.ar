@@ -1165,7 +1165,7 @@ app.post('/api/bookings', (req, res) => {
       checkInDate,
       checkOutDate,
       totalDays: finalDays,
-      status: 'confirmed',
+      status: 'pending',
       guestsCount,
       arrivalTime,
       notes: notes ? notes.trim() : undefined,
@@ -1175,7 +1175,7 @@ app.post('/api/bookings', (req, res) => {
 
     state.bookings = [newBooking, ...bookings];
 
-    // Recalculate user quotas in server state
+    // Recalculate user quotas in server state (only confirmed/completed count)
     if (Array.isArray(state.users)) {
       state.users = state.users.map((u: any) => {
         if (u.role === 'admin') return u;
@@ -1191,8 +1191,8 @@ app.post('/api/bookings', (req, res) => {
     if (!Array.isArray(state.notifications)) state.notifications = [];
     state.notifications.unshift({
       id: 'notif-' + Date.now(),
-      title: 'Nueva Reserva Confirmada',
-      body: `${userName} reservó del ${checkInDate} al ${checkOutDate} (${finalDays} días).`,
+      title: 'Nueva Solicitud de Reserva',
+      body: `${userName} solicitó del ${checkInDate} al ${checkOutDate} (${finalDays} días). Pendiente de aprobación del administrador.`,
       type: 'booking_created',
       bookingId: newBooking.id,
       createdAt: new Date().toISOString(),
@@ -1204,13 +1204,69 @@ app.post('/api/bookings', (req, res) => {
     return res.status(201).json({
       success: true,
       booking: newBooking,
-      message: `Reserva guardada y bloqueada en la nube para ${userName}.`,
+      message: `Solicitud de reserva registrada para ${userName}. Pendiente de aprobación administrativa.`,
     });
   } catch (err: unknown) {
     return res.status(500).json({
       success: false,
       error: err instanceof Error ? err.message : 'Error procesando reserva en el servidor',
     });
+  }
+});
+
+// 4b. Approve Booking
+app.post('/api/bookings/:id/approve', (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { approvedByName = 'Administrador' } = req.body;
+    const state = loadServerState();
+    const bookings = Array.isArray(state.bookings) ? state.bookings : [];
+    const target = bookings.find((b: any) => b.id === bookingId);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Reserva no encontrada.' });
+    }
+
+    state.bookings = bookings.map((b: any) => {
+      if (b.id === bookingId) {
+        return {
+          ...b,
+          status: 'confirmed',
+          approvedAt: new Date().toISOString(),
+          approvedBy: approvedByName,
+        };
+      }
+      return b;
+    });
+
+    // Recalculate user quotas in server state
+    if (Array.isArray(state.users)) {
+      state.users = state.users.map((u: any) => {
+        if (u.role === 'admin') return u;
+        const uBookings = state.bookings.filter(
+          (b: any) => b.userId === u.id && (b.status === 'confirmed' || b.status === 'completed')
+        );
+        const used = uBookings.reduce((sum: number, b: any) => sum + (b.totalDays || 0), 0);
+        return { ...u, usedDays: used };
+      });
+    }
+
+    // Add push notification for approval
+    if (!Array.isArray(state.notifications)) state.notifications = [];
+    state.notifications.unshift({
+      id: 'notif-' + Date.now(),
+      title: '¡Reserva Aprobada!',
+      body: `La reserva de ${target.userName} (${target.checkInDate} a ${target.checkOutDate}) fue APROBADA por ${approvedByName}.`,
+      type: 'booking_created',
+      bookingId: target.id,
+      createdAt: new Date().toISOString(),
+      read: false,
+    });
+
+    saveServerState(state);
+    return res.json({ success: true, message: 'Reserva aprobada con éxito.' });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error aprobando reserva' });
   }
 });
 

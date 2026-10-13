@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   check_in_date TEXT NOT NULL,
   check_out_date TEXT NOT NULL,
   total_days INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'confirmed',
+  status TEXT NOT NULL DEFAULT 'pending',
   guests_count INTEGER NOT NULL DEFAULT 4,
   arrival_time TEXT NOT NULL DEFAULT '14:00',
   notes TEXT,
@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   cancellation_reason TEXT,
   cancelled_at TEXT,
   cancelled_by TEXT,
+  approved_at TEXT,
+  approved_by TEXT,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 

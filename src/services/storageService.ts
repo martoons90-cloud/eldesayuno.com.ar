@@ -744,17 +744,22 @@ class StorageService {
 
   // Primary Authoritative Cloud Booking Method (Validates against Cloud Server)
   public async createBookingAsync(booking: Omit<Booking, 'id' | 'createdAt'>): Promise<Booking> {
+    const bookingToCreate = {
+      ...booking,
+      status: booking.status || ('pending' as BookingStatus),
+    };
+
     const res = await fetch('/api/bookings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(booking),
+      body: JSON.stringify(bookingToCreate),
     });
 
     const data = await res.json();
     if (!res.ok || !data.success) {
       // Instantly refresh cache from cloud so user sees what is occupied
       await this.hydrateFromAppStateAsync();
-      throw new Error(data.error || 'Conflicto de fechas: no fue posible confirmar la reserva.');
+      throw new Error(data.error || 'Conflicto de fechas: no fue posible registrar la reserva.');
     }
 
     const newBooking: Booking = data.booking;
@@ -762,15 +767,15 @@ class StorageService {
     const updated = [newBooking, ...currentBookings];
     localStorage.setItem(BOOKINGS_KEY, JSON.stringify(updated));
 
-    // Update user quota
+    // Update user quota (only confirmed/completed count)
     const users = this.getUsers();
     const recalculated = recalculateUsersUsedDays(users, updated);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
     // Add push notification
     this.addNotification({
-      title: 'Nueva Reserva Confirmada',
-      body: `${newBooking.userName} reservó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} días).`,
+      title: 'Nueva Solicitud de Reserva',
+      body: `${newBooking.userName} solicitó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches). En espera de aprobación administrativa.`,
       type: 'booking_created',
       bookingId: newBooking.id,
     });
@@ -784,6 +789,7 @@ class StorageService {
     const bookings = this.getBookings();
     const newBooking: Booking = {
       ...booking,
+      status: booking.status || ('pending' as BookingStatus),
       id: 'book-' + Date.now(),
       createdAt: new Date().toISOString(),
     };
@@ -795,8 +801,8 @@ class StorageService {
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
     this.addNotification({
-      title: 'Nueva Reserva Confirmada',
-      body: `${newBooking.userName} reservó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} días).`,
+      title: 'Nueva Solicitud de Reserva',
+      body: `${newBooking.userName} solicitó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches). En espera de aprobación administrativa.`,
       type: 'booking_created',
       bookingId: newBooking.id,
     });
@@ -809,6 +815,53 @@ class StorageService {
     });
 
     return newBooking;
+  }
+
+  // Approve a pending booking (Admin action)
+  public async approveBookingAsync(bookingId: string, approvedByName: string = 'Administrador'): Promise<Booking | null> {
+    const bookings = this.getBookings();
+    const booking = bookings.find((b) => b.id === bookingId);
+    if (!booking) return null;
+
+    const updated = bookings.map((b) => {
+      if (b.id === bookingId) {
+        return {
+          ...b,
+          status: 'confirmed' as BookingStatus,
+        };
+      }
+      return b;
+    });
+
+    localStorage.setItem(BOOKINGS_KEY, JSON.stringify(updated));
+
+    const users = this.getUsers();
+    const recalculated = recalculateUsersUsedDays(users, updated);
+    localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
+
+    this.addNotification({
+      title: '¡Reserva Aprobada por Administración!',
+      body: `La reserva de ${booking.userName} (${booking.checkInDate} al ${booking.checkOutDate}) ha sido confirmada por ${approvedByName}.`,
+      type: 'booking_created',
+      bookingId: booking.id,
+    });
+
+    this.notify(false);
+
+    // Call cloud server
+    fetch(`/api/bookings/${bookingId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvedByName }),
+    }).catch((err) => console.error('Error aprobando en servidor:', err));
+
+    return updated.find((b) => b.id === bookingId) || null;
+  }
+
+  public approveBooking(bookingId: string, approvedByName: string = 'Administrador') {
+    this.approveBookingAsync(bookingId, approvedByName).catch((err) => {
+      console.warn('Error ejecutando approveBookingAsync:', err);
+    });
   }
 
   public cancelBooking(bookingId: string, reason: string, cancelledByName: string) {
@@ -836,7 +889,7 @@ class StorageService {
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
     this.addNotification({
-      title: 'Reserva Cancelada',
+      title: 'Reserva Cancelada o Rechazada',
       body: `La reserva de ${booking.userName} (${booking.checkInDate} a ${booking.checkOutDate}) fue cancelada por ${cancelledByName}.`,
       type: 'booking_cancelled',
       bookingId: booking.id,

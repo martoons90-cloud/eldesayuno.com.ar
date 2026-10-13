@@ -134,7 +134,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setLoading(true);
 
     try {
-      // Create and lock booking authoritatively on cloud server
+      // Create and lock booking authoritatively on cloud server with pending status
       const newBooking = await storageService.createBookingAsync({
         userId: currentUser.id,
         userName: currentUser.name,
@@ -143,7 +143,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         checkInDate,
         checkOutDate,
         totalDays: daysRequested,
-        status: 'confirmed',
+        status: 'pending',
         guestsCount,
         arrivalTime,
         notes: notes.trim() || undefined,
@@ -152,8 +152,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
       // Trigger native push notification
       pushService.triggerPush({
-        title: '¡Reserva Confirmada en El Desayuno!',
-        body: `Turno asegurado para ${currentUser.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días).`,
+        title: 'Solicitud de Reserva Registrada',
+        body: `Solicitud registrada para ${currentUser.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días). Pendiente de aprobación del administrador.`,
         type: 'booking_created',
         bookingId: newBooking.id,
       });
@@ -315,7 +315,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           <div className="flex items-center gap-2 text-[11px] text-[#637568] pt-2 border-t border-[#EFEAE0]">
             <ShieldCheck className="w-4 h-4 text-[#8C7A53] shrink-0" />
             <span>
-              Al confirmar, el turno impacta de inmediato en el calendario común y notifica al Fideicomiso.
+              La solicitud quedará registrada en estado <strong>Pendiente</strong> y bloqueará las fechas en el calendario hasta que sea aprobada por el administrador.
             </span>
           </div>
 
@@ -334,11 +334,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] active:bg-[#0E2017] text-[#FAF8F5] text-xs font-semibold uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-2"
             >
               {loading ? (
-                <span>Confirmando reserva...</span>
+                <span>Enviando solicitud...</span>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-[#BFA270]" />
-                  <span>Confirmar Estadía ({daysRequested} días)</span>
+                  <span>Enviar Solicitud ({daysRequested} {daysRequested === 1 ? 'noche' : 'noches'})</span>
                 </>
               )}
             </button>

@@ -88,10 +88,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       };
     }
 
-    // 2. Check Confirmed Bookings
+    // 2. Check Confirmed or Pending Bookings
     const booking = bookings.find(
       (b) =>
-        (b.status === 'confirmed' || b.status === 'completed') &&
+        (b.status === 'confirmed' || b.status === 'completed' || b.status === 'pending') &&
         dateStr >= b.checkInDate &&
         dateStr <= b.checkOutDate
     );
@@ -100,15 +100,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       const isCheckIn = dateStr === booking.checkInDate;
       const isCheckOut = dateStr === booking.checkOutDate;
       const isMine = booking.userId === currentUser.id;
+      const isPending = booking.status === 'pending';
       return {
         type: 'booking' as const,
         booking,
-        label: booking.userName,
+        label: isPending ? `${booking.userName} (Pendiente)` : booking.userName,
         isCheckIn,
         isCheckOut,
         isMine,
         color: booking.userColor,
         isOccupied: true,
+        isPending,
       };
     }
 
@@ -424,15 +426,19 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               let badge = null;
 
               if (info.type === 'booking') {
-                cellBg = 'bg-[#FFFFFF]';
-                cellBorder = 'border-[#DDD5C0]';
+                const isPending = (info as any).isPending;
+                cellBg = isPending ? 'bg-[#FFFDF7]' : 'bg-[#FFFFFF]';
+                cellBorder = isPending ? 'border-amber-400 border-dashed' : 'border-[#DDD5C0]';
                 badge = (
                   <div
-                    className="mt-1 px-1.5 py-0.5 text-[10px] font-semibold text-white truncate text-left shadow-2xs"
+                    className={`mt-1 px-1.5 py-0.5 text-[10px] font-semibold text-white truncate text-left shadow-2xs ${
+                      isPending ? 'ring-1 ring-amber-400 opacity-95' : ''
+                    }`}
                     style={{ backgroundColor: info.color }}
-                    title={`${info.booking.userName} (${info.booking.partName})`}
+                    title={`${info.booking.userName} (${info.booking.partName})${isPending ? ' · PENDIENTE DE APROBACIÓN' : ''}`}
                   >
                     {info.booking.userName.split(' ')[0]}
+                    {isPending ? ' (Pend.)' : ''}
                     {info.isCheckIn ? ' (In)' : info.isCheckOut ? ' (Out)' : ''}
                   </div>
                 );
@@ -591,7 +597,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
                       if (info.type === 'booking') {
                         bg = 'text-white font-bold';
-                        title = `${d} de ${mName}: ${info.booking.userName}`;
+                        const isPending = (info as any).isPending;
+                        title = `${d} de ${mName}: ${info.booking.userName}${isPending ? ' (Pendiente de Aprobación)' : ''}`;
                       } else if (info.type === 'block') {
                         bg = 'bg-amber-400 text-amber-950 font-bold';
                         title = `${d} de ${mName}: ${info.block.title}`;

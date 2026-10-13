@@ -41,6 +41,8 @@ export interface Booking {
   cancellationReason?: string;
   cancelledAt?: string;
   cancelledBy?: string;
+  approvedAt?: string;
+  approvedBy?: string;
 }
 
 export type BlockReason = 'maintenance' | 'repairs' | 'deep_cleaning' | 'seasonal_prep' | 'extraordinary';

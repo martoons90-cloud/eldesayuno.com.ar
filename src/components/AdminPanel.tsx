@@ -288,6 +288,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAdminCancelReason('');
   };
 
+  // Handle Admin Approve Booking
+  const handleAdminApproveBooking = (bookingId: string) => {
+    storageService.approveBooking(bookingId, `${currentUser.name} (Admin)`);
+  };
+
+  // Pending bookings count & list
+  const pendingBookings = bookings.filter((b) => b.status === 'pending');
+
   // Filtered Bookings for consolidated list
   const filteredBookings = bookings.filter((b) => {
     if (filterOwner !== 'all' && b.userId !== filterOwner) return false;
@@ -1264,6 +1272,80 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </p>
           </div>
 
+          {/* Pending Bookings Approval Banner */}
+          {pendingBookings.length > 0 && (
+            <div className="mb-6 p-4 bg-amber-50/80 border border-amber-300 shadow-xs">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-amber-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                  <h4 className="text-sm font-bold text-amber-950 uppercase tracking-wide">
+                    Solicitudes de Reserva Pendientes de Aprobación ({pendingBookings.length})
+                  </h4>
+                </div>
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 uppercase tracking-wider">
+                  Acción Requerida
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 mb-3">
+                Las siguientes estadías han sido solicitadas por los copropietarios y están pendientes de su autorización como Administrador:
+              </p>
+              <div className="space-y-2.5">
+                {pendingBookings.map((pb) => (
+                  <div
+                    key={pb.id}
+                    className="p-3.5 bg-white border border-amber-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: pb.userColor }}
+                        />
+                        <strong className="text-xs font-bold text-[#163323]">{pb.userName}</strong>
+                        <span className="text-[11px] text-[#7A8E7E]">({pb.partName})</span>
+                        <span className="text-xs font-mono font-bold text-amber-900 bg-amber-100 px-2 py-0.5 border border-amber-200">
+                          {pb.totalDays} noches
+                        </span>
+                        <span className="text-xs text-[#526657]">
+                          · {pb.guestsCount} personas · Arribo {pb.arrivalTime}
+                        </span>
+                      </div>
+                      <div className="text-xs font-semibold text-[#19231A] mt-1.5 flex items-center gap-2">
+                        <span>Check-in: {pb.checkInDate}</span>
+                        <span className="text-[#BFA270]">→</span>
+                        <span>Check-out: {pb.checkOutDate}</span>
+                      </div>
+                      {pb.notes && (
+                        <p className="text-[11px] text-[#55695B] italic mt-1.5 bg-[#FAF8F5] p-2 border border-[#ECE5D4]">
+                          “{pb.notes}”
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-amber-100">
+                      <button
+                        onClick={() => handleAdminApproveBooking(pb.id)}
+                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Aprobar Turno
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAdminCancelBookingId(pb.id);
+                          setAdminCancelReason('Desestimada por la administración fiduciaria');
+                        }}
+                        className="px-3 py-1.5 bg-white hover:bg-red-50 border border-red-300 text-red-700 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        Rechazar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Filter Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 p-3 bg-[#FAF8F5] border border-[#E6E0CF]">
             <div>
@@ -1294,6 +1376,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 className="w-full px-2.5 py-1.5 bg-white border border-[#DCD4C0] text-xs focus:outline-none"
               >
                 <option value="all">Todos los estados</option>
+                <option value="pending">Pendientes de Aprobación</option>
                 <option value="confirmed">Confirmadas</option>
                 <option value="completed">Completadas / Pasadas</option>
                 <option value="cancelled">Canceladas</option>
@@ -1377,6 +1460,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 ${
                             b.status === 'confirmed'
                               ? 'bg-emerald-50 text-emerald-800'
+                              : b.status === 'pending'
+                              ? 'bg-amber-50 text-amber-900 border border-amber-300'
                               : b.status === 'completed'
                               ? 'bg-blue-50 text-blue-800'
                               : 'bg-red-50 text-red-800 line-through'
@@ -1384,6 +1469,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         >
                           {b.status === 'confirmed'
                             ? 'Confirmada'
+                            : b.status === 'pending'
+                            ? 'Pendiente'
                             : b.status === 'completed'
                             ? 'Completada'
                             : 'Cancelada'}
@@ -1393,6 +1480,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {b.notes || '-'}
                       </td>
                       <td className="py-3 px-3 text-right">
+                        {b.status === 'pending' && (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleAdminApproveBooking(b.id)}
+                              className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] uppercase font-bold tracking-wider cursor-pointer shadow-2xs"
+                              title="Aprobar y Confirmar Reserva"
+                            >
+                              Aprobar
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAdminCancelBookingId(b.id);
+                                setAdminCancelReason('Rechazada por la administración fiduciaria');
+                              }}
+                              className="px-2 py-1 bg-white hover:bg-red-50 border border-red-200 text-red-700 text-[10px] uppercase font-bold tracking-wider cursor-pointer"
+                              title="Rechazar Reserva"
+                            >
+                              Rechazar
+                            </button>
+                          </div>
+                        )}
                         {b.status === 'confirmed' && (
                           <button
                             onClick={() => {

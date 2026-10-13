@@ -36,6 +36,10 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
 
   const todayStr = '2026-10-05'; // current app simulation date
 
+  const pendingBookings = myBookings
+    .filter((b) => b.status === 'pending')
+    .sort((a, b) => a.checkInDate.localeCompare(b.checkInDate));
+
   const upcomingBookings = myBookings
     .filter((b) => b.status === 'confirmed' && b.checkOutDate >= todayStr)
     .sort((a, b) => a.checkInDate.localeCompare(b.checkInDate));
@@ -120,6 +124,93 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
           anticipación permiten liberar inmediatamente las fechas en el calendario común para que otro copropietario pueda aprovecharlas.
         </div>
       </div>
+
+      {/* 0. Solicitudes Pendientes de Aprobación */}
+      {pendingBookings.length > 0 && (
+        <div className="bg-[#FFFFFF] border border-amber-300 p-6 shadow-xs">
+          <div className="pb-4 mb-4 border-b border-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+              <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
+                <span>Solicitudes Pendientes de Aprobación ({pendingBookings.length})</span>
+              </h3>
+            </div>
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 uppercase tracking-wider">
+              En Revisión
+            </span>
+          </div>
+
+          <p className="text-xs text-[#526657] mb-4">
+            Estas fechas ya se encuentran reservadas para usted en el calendario común y no pueden ser tomadas por otro copropietario. Están a la espera de confirmación formal por parte del administrador.
+          </p>
+
+          <div className="space-y-4">
+            {pendingBookings.map((b) => (
+              <div
+                key={b.id}
+                className="p-5 bg-amber-50/40 border border-amber-200 flex flex-col md:flex-row md:items-center justify-between gap-4"
+              >
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-mono tabular-nums text-xs px-2 py-0.5 bg-amber-100 text-amber-950 font-bold border border-amber-200">
+                      {b.totalDays} noches
+                    </span>
+                    <span className="text-[#7A8E7E]">·</span>
+                    <span className="text-[#637568]">
+                      Check-in: {b.checkInDate} (14:00 hs)
+                    </span>
+                    <span className="text-[#7A8E7E]">·</span>
+                    <span className="text-[#637568]">
+                      Check-out: {b.checkOutDate} (11:00 hs)
+                    </span>
+                    <span className="text-[#7A8E7E]">·</span>
+                    <span className="text-amber-800 font-semibold flex items-center gap-1 text-[11px]">
+                      ⏳ Esperando aprobación
+                    </span>
+                  </div>
+
+                  <div className="text-lg font-bold text-[#163323] flex items-center gap-2">
+                    <span>{b.checkInDate}</span>
+                    <span className="text-[#BFA270]">→</span>
+                    <span>{b.checkOutDate}</span>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs text-[#526657]">
+                    <span className="flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-[#7A8E7E]" />
+                      {b.guestsCount} personas previstas
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-[#7A8E7E]" />
+                      Arribo aprox: {b.arrivalTime}
+                    </span>
+                  </div>
+
+                  {b.notes && (
+                    <p className="text-xs text-[#4F6254] bg-white p-2.5 border border-[#ECE5D4] italic">
+                      “{b.notes}”
+                    </p>
+                  )}
+                </div>
+
+                <div className="shrink-0 flex items-center gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-amber-200">
+                  <button
+                    onClick={() => {
+                      setCancellingBookingId(b.id);
+                      setCancellationReason('');
+                      setCancellationError(null);
+                    }}
+                    className="px-3.5 py-2 bg-white hover:bg-red-50 border border-red-300 text-red-700 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Desistir Solicitud</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 1. Próximas Estadías Confirmadas */}
       <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 shadow-xs">

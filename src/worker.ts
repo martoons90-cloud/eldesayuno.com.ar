@@ -156,7 +156,7 @@ function mapRowToBooking(row: Record<string, any>): Record<string, any> {
     checkInDate: row.check_in_date ?? row.checkInDate,
     checkOutDate: row.check_out_date ?? row.checkOutDate,
     totalDays: Number(row.total_days ?? row.totalDays ?? 1),
-    status: row.status || 'confirmed',
+    status: row.status || 'pending',
     guestsCount: Number(row.guests_count ?? row.guestsCount ?? 4),
     arrivalTime: row.arrival_time ?? row.arrivalTime ?? '14:00',
     notes: row.notes ?? '',
@@ -166,6 +166,8 @@ function mapRowToBooking(row: Record<string, any>): Record<string, any> {
     cancellationReason: row.cancellation_reason ?? row.cancellationReason ?? '',
     cancelledAt: row.cancelled_at ?? row.cancelledAt ?? '',
     cancelledBy: row.cancelled_by ?? row.cancelledBy ?? '',
+    approvedAt: row.approved_at ?? row.approvedAt ?? '',
+    approvedBy: row.approved_by ?? row.approvedBy ?? '',
   };
 }
 
@@ -717,7 +719,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
           b.checkInDate,
           b.checkOutDate,
           b.totalDays || 1,
-          b.status || 'confirmed',
+          b.status || 'pending',
           b.guestsCount || 4,
           b.arrivalTime || '14:00',
           b.notes || '',
@@ -726,15 +728,39 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
           b.createdAt || new Date().toISOString()
         ).run();
 
-        // Update used days for user
-        if (b.userId && b.totalDays) {
+        // Update used days for user ONLY if confirmed
+        if (b.status === 'confirmed' && b.userId && b.totalDays) {
           await env.DB.prepare('UPDATE users SET used_days = used_days + ? WHERE id = ?;').bind(b.totalDays, b.userId).run().catch(() => {});
         }
 
-        return jsonResponse({ success: true, booking: b }, 201, corsHeaders);
+        return jsonResponse({ success: true, booking: { ...b, status: b.status || 'pending' } }, 201, corsHeaders);
       } catch (err: any) {
         return jsonResponse({ success: false, error: err?.message }, 500, corsHeaders);
       }
+    }
+  }
+
+  // Booking Approve: /api/bookings/:id/approve
+  if (pathname.startsWith('/api/bookings/') && pathname.endsWith('/approve') && method === 'POST') {
+    const parts = pathname.split('/');
+    const bookingId = parts[3];
+    try {
+      const existing = await env.DB.prepare('SELECT * FROM bookings WHERE id = ? LIMIT 1;').bind(bookingId).first<Record<string, any>>();
+      if (existing) {
+        await env.DB.prepare(`
+          UPDATE bookings
+          SET status = 'confirmed'
+          WHERE id = ?;
+        `).bind(bookingId).run();
+
+        // Increment user used days only if it was not already confirmed
+        if (existing.user_id && existing.total_days && existing.status !== 'confirmed') {
+          await env.DB.prepare('UPDATE users SET used_days = used_days + ? WHERE id = ?;').bind(existing.total_days, existing.user_id).run().catch(() => {});
+        }
+      }
+      return jsonResponse({ success: true, message: 'Reserva aprobada con éxito' }, 200, corsHeaders);
+    } catch (err: any) {
+      return jsonResponse({ success: false, error: err?.message }, 500, corsHeaders);
     }
   }
 
@@ -751,7 +777,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
           WHERE id = ?;
         `).bind(new Date().toISOString(), 'Cancelada por el usuario', bookingId).run();
 
-        if (existing.user_id && existing.total_days) {
+        if (existing.user_id && existing.total_days && existing.status === 'confirmed') {
           await env.DB.prepare('UPDATE users SET used_days = MAX(0, used_days - ?) WHERE id = ?;').bind(existing.total_days, existing.user_id).run().catch(() => {});
         }
       }
