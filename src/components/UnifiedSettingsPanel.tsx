@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem } from '../types';
+import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem } from '../types';
 import { storageService } from '../services/storageService';
 import { d1Service, D1Config } from '../services/d1Service';
 import { r2Service, R2Config } from '../services/r2Service';
@@ -591,7 +591,9 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     sharePercentage?: number;
     color: string;
     password?: string;
-    role?: 'owner' | 'admin';
+    role?: UserRole;
+    isCabezaDeEquipo?: boolean;
+    isFiduciante?: boolean;
   }) => {
     if (userData.id) {
       const existing = users.find((u) => u.id === userData.id);

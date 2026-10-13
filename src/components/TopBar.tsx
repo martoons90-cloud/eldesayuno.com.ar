@@ -52,9 +52,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const isUserAdmin = currentUser.role === 'admin';
-  const isAdmin = isUserAdmin;
-  const effectiveIsAdmin = isUserAdmin && adminViewMode === 'admin';
+  const userIsAdmin = currentUser.role === 'admin';
+  const isAdmin = userIsAdmin;
+  const effectiveIsAdmin = userIsAdmin && adminViewMode === 'admin';
   const isD1Active = d1Service.isConnected();
 
   // Navigation tabs based on active mode (shortened for crisp fitting)
@@ -164,7 +164,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             </button>
 
             {/* Mode Switcher for Administrators */}
-            {isUserAdmin && onToggleAdminViewMode && (
+            {userIsAdmin && onToggleAdminViewMode && (
               <div className="hidden lg:flex items-center bg-[#FAF8F5] border border-[#DDD5BF] p-0.5 shadow-2xs shrink-0">
                 <button
                   onClick={() => onToggleAdminViewMode('admin')}
@@ -307,7 +307,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
 
           {/* Mobile Mode Switcher for Admin */}
-          {isUserAdmin && onToggleAdminViewMode && (
+          {userIsAdmin && onToggleAdminViewMode && (
             <div className="flex items-center justify-between p-2 bg-[#EFE9DB] border border-[#DDD5BF] mb-2">
               <span className="text-xs font-bold text-[#163323] flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-[#BFA270]" /> Modo de Navegación:

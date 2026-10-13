@@ -1,5 +1,6 @@
 import {
   User,
+  UserRole,
   Booking,
   DateBlock,
   HouseRule,
@@ -11,6 +12,7 @@ import {
   IncidentReport,
   FeeCollection,
   ExpenseItem,
+  CashFlowTransaction,
 } from '../types';
 
 export const SEED_USERS: User[] = [

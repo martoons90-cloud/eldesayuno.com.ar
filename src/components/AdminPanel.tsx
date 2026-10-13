@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Booking, DateBlock, TrustSettings } from '../types';
+import { User, UserRole, Booking, DateBlock, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import { pushService } from '../services/notificationService';
@@ -177,9 +177,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     partName: string;
     cabezaNumber?: number;
     annualQuotaDays: number;
+    sharePercentage?: number;
     color: string;
     password?: string;
-    role?: 'owner' | 'admin';
+    role?: UserRole;
+    isCabezaDeEquipo?: boolean;
+    isFiduciante?: boolean;
   }) => {
     if (userData.id) {
       const existing = users.find((u) => u.id === userData.id);
@@ -192,9 +195,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           partName: userData.partName,
           cabezaNumber: userData.cabezaNumber,
           annualQuotaDays: userData.annualQuotaDays,
+          sharePercentage: typeof userData.sharePercentage === 'number' ? userData.sharePercentage : (existing.sharePercentage ?? 6.25),
           color: userData.color,
           password: userData.password || existing.password,
           role: userData.role || existing.role,
+          isCabezaDeEquipo: userData.isCabezaDeEquipo !== undefined ? userData.isCabezaDeEquipo : existing.isCabezaDeEquipo,
+          isFiduciante: userData.isFiduciante !== undefined ? userData.isFiduciante : existing.isFiduciante,
         });
       }
     } else {
@@ -207,7 +213,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         partName: userData.partName,
         cabezaNumber: userData.cabezaNumber,
         role: userData.role || 'owner',
+        isCabezaDeEquipo: Boolean(userData.isCabezaDeEquipo),
+        isFiduciante: Boolean(userData.isFiduciante),
         annualQuotaDays: userData.annualQuotaDays,
+        sharePercentage: typeof userData.sharePercentage === 'number' ? userData.sharePercentage : 6.25,
         usedDays: 0,
         pendingDays: 0,
         color: userData.color,
