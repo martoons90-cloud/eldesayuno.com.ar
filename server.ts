@@ -1494,19 +1494,6 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       }));
     }
 
-    if (!opCatsRes?.error && Array.isArray(opCatsRes?.data) && opCatsRes.data.length > 0) {
-      if (!state.settings) state.settings = {};
-      const expCats = opCatsRes.data.filter((c: any) => c.type === 'expense').map((c: any) => ({ id: c.id, name: c.name }));
-      const cfCats = opCatsRes.data.filter((c: any) => c.type === 'cashflow').map((c: any) => ({ id: c.id, name: c.name }));
-      const feeCats = opCatsRes.data.filter((c: any) => c.type === 'fee').map((c: any) => ({ id: c.id, name: c.name }));
-      const invCats = opCatsRes.data.filter((c: any) => c.type === 'inventory').map((c: any) => ({ id: c.id, name: c.name }));
-
-      if (expCats.length > 0) state.settings.expenseCategories = expCats;
-      if (cfCats.length > 0) state.settings.cashFlowCategories = cfCats;
-      if (feeCats.length > 0) state.settings.feeCategories = feeCats;
-      if (invCats.length > 0) state.settings.inventoryCategories = invCats;
-    }
-
     memoryServerState = state;
     try {
       fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
