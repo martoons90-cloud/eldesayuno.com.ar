@@ -97,10 +97,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <ShieldCheck className="w-4 h-4 text-emerald-800 shrink-0 mt-0.5" />
                 <div className="leading-snug">
                   <strong className="text-emerald-950 block text-[11px]">
-                    Administrador General del Fideicomiso
+                    Administrador (Gestión Financiera)
                   </strong>
                   <span className="text-emerald-800 text-[11px]">
-                    Facultades plenipotenciarias: Aprobación y cancelación de reservas, control operativo, liquidación de gastos y emisión de expensas.
+                    Poder exclusivo sobre <strong>Gastos</strong>, <strong>Cobranzas & Expensas</strong>, y <strong>Caja & Cuentas</strong>. Para el resto de funciones (turnos y reservas) opera como copropietario.
                   </span>
                 </div>
               </div>
@@ -111,10 +111,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <Wrench className="w-4 h-4 text-teal-800 shrink-0 mt-0.5" />
                 <div className="leading-snug">
                   <strong className="text-teal-950 block text-[11px]">
-                    Intendente General de la Estancia
+                    Intendente General (Acceso al 100% del Sistema)
                   </strong>
                   <span className="text-teal-800 text-[11px]">
-                    Operación 100% en el campo: Mantenimiento del predio, coordinación de caseros, inventarios, novedades, compras operativas y logística.
+                    Único rol con control integral: Consola General, Inventario, Novedades y Daños, Caseros, Mantenimiento, Padrón y Ajustes del Fideicomiso.
                   </span>
                 </div>
               </div>

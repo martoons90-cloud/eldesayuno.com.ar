@@ -54,33 +54,38 @@ export const TopBar: React.FC<TopBarProps> = ({
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const isIntendente = isUserIntendente(currentUser);
-  const isFinancialOnlyAdmin = isUserAdmin(currentUser);
-  const effectiveIsAdmin = isIntendente || (isFinancialOnlyAdmin && adminViewMode === 'admin');
-  const isD1Active = d1Service.isConnected();
-
-  // Navigation tabs based on active mode (shortened for crisp fitting)
+  const isFinancialAdmin = isUserAdmin(currentUser);
   const privileged = hasPrivilegedAccess(currentUser);
-  const baseNav = isIntendente || (isFinancialOnlyAdmin && adminViewMode === 'admin')
+
+  // Navigation tabs based on strict role authority:
+  // 1. INTENDENTE: Único con acceso al 100% del sistema (Consola, Reservas, Ajustes, Inventario, Novedades, Finanzas)
+  // 2. ADMINISTRADOR: Poder pleno en Gastos, Cobranzas, Caja & Cuentas; y todo lo demás de un copropietario
+  // 3. COPROPIETARIOS: Funciones de socio con consulta y reserva
+  const navItems = isIntendente && adminViewMode === 'admin'
     ? [
-        { id: 'dashboard', label: 'Resumen' },
+        { id: 'dashboard', label: 'Consola 100%' },
         { id: 'calendar', label: 'Calendario' },
         { id: 'reservations', label: 'Reservas' },
         { id: 'gastos', label: 'Gastos' },
         { id: 'cashflow', label: 'Caja & Cuentas' },
-        ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'cobranzas', label: 'Cobranzas' },
         { id: 'inventory', label: 'Inventario' },
         { id: 'incidents', label: 'Novedades' },
         { id: 'settings', label: 'Ajustes' },
+        ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'guide', label: 'Reglamento' },
       ]
-    : isFinancialOnlyAdmin
+    : isFinancialAdmin
     ? [
-        { id: 'dashboard', label: 'Finanzas' },
+        { id: 'dashboard', label: 'Inicio' },
         { id: 'calendar', label: 'Calendario' },
-        { id: 'gastos', label: 'Aprobar Gastos' },
-        { id: 'cashflow', label: 'Caja & Cuentas' },
+        { id: 'my-bookings', label: 'Mis Estadías' },
+        { id: 'gastos', label: 'Gastos' },
         { id: 'cobranzas', label: 'Cobranzas' },
+        { id: 'cashflow', label: 'Caja & Cuentas' },
+        { id: 'inventory', label: 'Inventario' },
+        { id: 'incidents', label: 'Novedades' },
+        ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'guide', label: 'Reglamento' },
       ]
     : [
@@ -89,13 +94,12 @@ export const TopBar: React.FC<TopBarProps> = ({
         { id: 'my-bookings', label: 'Mis Estadías' },
         { id: 'gastos', label: 'Gastos' },
         { id: 'cashflow', label: 'Caja & Cuentas' },
-        ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'cobranzas', label: 'Pagos & Cuotas' },
         { id: 'inventory', label: 'Inventario' },
         { id: 'incidents', label: 'Novedades' },
+        ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'guide', label: 'Reglamento' },
       ];
-  const navItems = baseNav;
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#FFFFFF] border-b border-[#E3DFC8] shadow-[0_2px_10px_rgba(20,38,24,0.04)]">
@@ -304,9 +308,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <p className="text-xs font-bold text-[#163323]">{currentUser.name}</p>
                 <p className="text-[11px] text-[#637568]">
                   {isUserAdmin(currentUser)
-                    ? 'Administrador General'
+                    ? 'Administrador (Finanzas)'
                     : isUserIntendente(currentUser)
-                    ? 'Intendente General'
+                    ? 'Intendente (Acceso 100%)'
                     : isUserFiduciante(currentUser)
                     ? 'Fiduciante del Fideicomiso'
                     : currentUser.partName || 'Copropietario'}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Booking, DateBlock, TrustSettings } from '../types';
+import { User, Booking, DateBlock, TrustSettings, isUserAdmin } from '../types';
 import {
   Calendar,
   CheckCircle2,
@@ -9,6 +9,7 @@ import {
   Sparkles,
   Wifi,
   Shield,
+  ShieldCheck,
   KeyRound,
   Home,
   Check,
@@ -17,6 +18,9 @@ import {
   Building,
   CreditCard,
   Upload,
+  Receipt,
+  DollarSign,
+  Wallet,
 } from 'lucide-react';
 import { PasswordManagementModal } from './PasswordManagementModal';
 
@@ -29,6 +33,8 @@ interface OwnerQuotaSummaryProps {
   onGoToCalendar: () => void;
   onGoToMyBookings: () => void;
   onGoToCobranzas?: () => void;
+  onGoToGastos?: () => void;
+  onGoToCashflow?: () => void;
 }
 
 export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
@@ -40,6 +46,8 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
   onGoToCalendar,
   onGoToMyBookings,
   onGoToCobranzas,
+  onGoToGastos,
+  onGoToCashflow,
 }) => {
   const currentYear = 2026;
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -62,6 +70,29 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
         b.checkOutDate >= new Date().toISOString().split('T')[0]
     )
     .sort((a, b) => a.checkInDate.localeCompare(b.checkInDate));
+
+  const isIndependent =
+    !currentUser.cabezaNumber ||
+    currentUser.cabezaNumber === 0 ||
+    (currentUser.partName &&
+      (currentUser.partName.toLowerCase().includes('sin') ||
+        currentUser.partName.toLowerCase().includes('independiente')));
+
+  const sharePercent =
+    typeof currentUser.sharePercentage === 'number'
+      ? currentUser.sharePercentage
+      : currentUser.sharePercentage !== undefined && currentUser.sharePercentage !== null
+      ? Number(currentUser.sharePercentage)
+      : 0;
+
+  const quotaDays =
+    typeof currentUser.annualQuotaDays === 'number'
+      ? currentUser.annualQuotaDays
+      : currentUser.annualQuotaDays !== undefined && currentUser.annualQuotaDays !== null
+      ? Number(currentUser.annualQuotaDays)
+      : 0;
+
+  const isAdmin = isUserAdmin(currentUser);
 
   const totalNightsReserved = bookings
     .filter((b) => b.userId === currentUser.id && (b.status === 'confirmed' || b.status === 'completed'))
@@ -93,7 +124,9 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 <span aria-hidden="true">·</span>
                 <span>Temporada {currentYear}</span>
                 <span aria-hidden="true">·</span>
-                <span className="font-semibold text-[#1B3B2B]">{currentUser.partName}</span>
+                <span className="font-semibold text-[#1B3B2B]">
+                  {isIndependent ? 'Sin Grupo (Independiente)' : currentUser.partName}
+                </span>
               </div>
               <h1
                 className="text-2xl sm:text-3xl font-bold text-[#163323] mt-1.5 flex items-center gap-3"
@@ -107,7 +140,9 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 />
               </h1>
               <p className="text-sm text-[#4E6152] mt-1 max-w-2xl leading-relaxed">
-                Portal privado de copropietarios. Consulte la agenda de ocupación de la estancia, reserve sus turnos y gestione sus accesos.
+                {isAdmin
+                  ? 'Panel de Copropietario y Consola de Administración Financiera. Gestioná gastos, cobranzas y cuentas, o reservá tus turnos en la estancia.'
+                  : 'Portal privado de copropietarios. Consulte la agenda de ocupación de la estancia, reserve sus turnos y gestione sus accesos.'}
               </p>
             </div>
 
@@ -130,7 +165,84 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
             </div>
           </div>
 
-          {/* Metric / Information Cards (Clean, no quota mechanics) */}
+          {/* Dedicated Administrator Financial Operations Panel */}
+          {isAdmin && (
+            <div className="mt-5 p-4 bg-gradient-to-r from-[#17341B]/10 via-[#FAF8F5] to-[#BFA270]/10 border border-[#BFA270] rounded-xs shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#DDD5BF]">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-[#17341B] text-[#FAF8F5] rounded-xs">
+                    <ShieldCheck className="w-4 h-4 text-[#E5C378]" />
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#163323]">
+                      Poder Administrativo: Gastos, Cobranzas, Caja & Cuentas
+                    </h3>
+                    <p className="text-[11px] text-[#637568]">
+                      Tenés facultades plenas en las 3 áreas financieras del Fideicomiso. Para el resto del sistema disponés de las funciones de un copropietario.
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 bg-[#17341B] text-[#E5C378] text-[10px] font-mono font-bold uppercase tracking-wider shrink-0 border border-[#BFA270]">
+                  ROL: ADMINISTRADOR
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={onGoToGastos}
+                  className="p-3 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] hover:border-[#17341B] text-left transition-all group cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center justify-between text-[#163323] font-bold text-xs uppercase mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <Receipt className="w-4 h-4 text-[#BFA270]" />
+                      <span>Gastos & Facturas</span>
+                    </span>
+                    <ArrowUpRight className="w-3.5 h-3.5 text-[#637568] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  </div>
+                  <p className="text-[11px] text-[#637568]">
+                    Cargar facturas, clasificar costos operativos y transferir sumas del mes a liquidación.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onGoToCobranzas}
+                  className="p-3 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] hover:border-[#17341B] text-left transition-all group cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center justify-between text-[#163323] font-bold text-xs uppercase mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <DollarSign className="w-4 h-4 text-emerald-700" />
+                      <span>Cobranzas & Expensas</span>
+                    </span>
+                    <ArrowUpRight className="w-3.5 h-3.5 text-[#637568] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  </div>
+                  <p className="text-[11px] text-[#637568]">
+                    Emitir cuotas de expensas, auditar pagos recibidos y emitir comprobantes a los socios.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onGoToCashflow}
+                  className="p-3 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] hover:border-[#17341B] text-left transition-all group cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center justify-between text-[#163323] font-bold text-xs uppercase mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <Wallet className="w-4 h-4 text-blue-700" />
+                      <span>Caja & Cuentas</span>
+                    </span>
+                    <ArrowUpRight className="w-3.5 h-3.5 text-[#637568] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  </div>
+                  <p className="text-[11px] text-[#637568]">
+                    Registrar movimientos de fondos, conciliar saldos de caja y cuentas corrientes.
+                  </p>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Metric / Information Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-6">
             {/* Grupo / Cabeza & Acciones */}
             <div className="border-l-2 border-[#1B3B2B] pl-4">
@@ -138,9 +250,9 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                 Pertenencia Societaria & Cuota Social
               </span>
               <div className="text-lg font-bold text-[#19231A] mt-1 flex items-center gap-2 flex-wrap">
-                <span>{currentUser.partName}</span>
+                <span>{isIndependent ? 'Sin Grupo (Independiente)' : currentUser.partName}</span>
                 <span className="px-2 py-0.5 bg-[#1B3B2B] text-[#FAF8F5] text-xs font-mono font-bold rounded shadow-2xs">
-                  {(currentUser.sharePercentage ?? 6.25).toFixed(4)}% de Acciones
+                  {sharePercent.toFixed(4)}% de Acciones
                 </span>
               </div>
               <p className="text-xs text-[#7A8E7E] mt-1 flex items-center gap-1.5">
@@ -148,7 +260,11 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                   className="w-2.5 h-2.5 rounded-full inline-block"
                   style={{ backgroundColor: currentUser.color }}
                 />
-                <span>Base activa para la división de expensas y gastos</span>
+                <span>
+                  {isIndependent
+                    ? 'Copropietario independiente sin grupo asignado'
+                    : 'Base activa para la división de expensas y gastos'}
+                </span>
               </p>
             </div>
 

@@ -874,7 +874,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                     )}
                   </div>
                   <p className={`text-[11px] leading-relaxed ${role === 'admin' ? 'text-[#FAF8F5]/90' : 'text-[#637568]'}`}>
-                    Poder pleno de gestión: aprobación y cancelación de reservas, control operativo, liquidación de gastos y emisión de expensas.
+                    Poder exclusivo de gestión financiera: Gastos, Cobranzas & Expensas, y Cajas y Cuentas Corrientes. Para turnos y estadías opera como copropietario.
                   </p>
                 </div>
 
@@ -927,7 +927,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                         <Wrench className="w-4 h-4" />
                       </span>
                       <strong className="text-xs font-bold uppercase tracking-wide">
-                        Intendente
+                        Intendente (100% Acceso)
                       </strong>
                     </div>
                     {role === 'intendente' && (
@@ -937,7 +937,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                     )}
                   </div>
                   <p className={`text-[11px] leading-relaxed ${role === 'intendente' ? 'text-teal-100' : 'text-[#637568]'}`}>
-                    Operación 100% en el campo: coordinación de caseros, mantenimiento, compras de insumos, inventario y novedades.
+                    Único rol con acceso al 100% del sistema: Consola máster, mantenimiento, stock e inventario, novedades, caseros y ajustes.
                   </p>
                 </div>
 

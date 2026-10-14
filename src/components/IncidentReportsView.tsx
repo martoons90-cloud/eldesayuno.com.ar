@@ -34,7 +34,7 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
   bookings,
   settings,
 }) => {
-  const isAdmin = currentUser.role === 'admin' || isUserIntendente(currentUser);
+  const isAdmin = isUserIntendente(currentUser);
 
   const [incidents, setIncidents] = useState<IncidentReport[]>(storageService.getIncidents());
   const [filterStatus, setFilterStatus] = useState<string>('all');

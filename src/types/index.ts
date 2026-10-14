@@ -23,21 +23,25 @@ export interface User {
 }
 
 export const isUserAdmin = (user?: User | null): boolean => user?.role === 'admin';
+// Intendente is the ONLY role with 100% access across the entire system
 export const isUserIntendente = (user?: User | null): boolean => user?.role === 'intendente';
+export const hasTotalSystemAccess = (user?: User | null): boolean =>
+  Boolean(isUserIntendente(user));
+
 export const isUserFiduciante = (user?: User | null): boolean =>
   user?.role === 'fiduciante' || Boolean(user?.isFiduciante);
 export const isUserCabezaDeEquipo = (user?: User | null): boolean =>
   Boolean(user?.isCabezaDeEquipo);
 
-// Intendente has full complete operational rights (100%)
+// Full operational rights (inventory management, incident resolution, maintenance blocks)
 export const hasFullOperationalAccess = (user?: User | null): boolean =>
   Boolean(isUserIntendente(user));
 
-// Financial power: approving expenses, cash flow / incomes & expenses distribution, fee collections (Intendente & Admin)
+// Financial power: exclusively for Gastos, Cobranzas, Caja & Cuentas (Admin & Intendente)
 export const hasFinancialAccess = (user?: User | null): boolean =>
   Boolean(isUserAdmin(user) || isUserIntendente(user));
 
-// Only Cabezas de Equipo, Admin, Intendente can submit/upload expenses
+// Upload expenses allowed for Cabezas de Equipo, Admin & Intendente
 export const canUploadExpenses = (user?: User | null): boolean =>
   Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserCabezaDeEquipo(user));
 

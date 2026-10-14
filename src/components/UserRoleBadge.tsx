@@ -36,13 +36,13 @@ export const UserRoleBadge: React.FC<UserRoleBadgeProps> = ({
 
   const badges = [];
 
-  // 1. Administrador (Ícono Especial: Escudo de Oro / Corona)
+  // 1. Administrador (Poder en Gastos, Cobranzas, Caja y Cuentas)
   if (isAdmin) {
     badges.push(
       <span
         key="admin"
         className={`inline-flex items-center gap-1 font-bold uppercase tracking-wider rounded-2xs bg-[#163323] text-[#FAF8F5] border border-[#BFA270] shadow-2xs ${textSizes[size]}`}
-        title="Administrador General: Acceso y control total de la gestión fiduciaria"
+        title="Administrador: Poder de gestión en Gastos, Cobranzas, Caja y Cuentas. Copropietario para el resto de funciones."
       >
         <ShieldCheck className={`${iconSizes[size]} text-[#E5C378] shrink-0`} />
         <span>Admin</span>
@@ -50,13 +50,13 @@ export const UserRoleBadge: React.FC<UserRoleBadgeProps> = ({
     );
   }
 
-  // 1.5. Intendente (Operación 100%)
+  // 1.5. Intendente (Único con acceso al 100% del sistema)
   if (isIntendente) {
     badges.push(
       <span
         key="intendente"
         className={`inline-flex items-center gap-1 font-bold uppercase tracking-wider rounded-2xs bg-[#0F766E] text-[#ECFDF5] border border-[#5EEAD4] shadow-2xs ${textSizes[size]}`}
-        title="Intendente General: Operación 100% y gestión de estancias"
+        title="Intendente General: Único rol con acceso al 100% de la consola y sistema."
       >
         <Wrench className={`${iconSizes[size]} text-[#99F6E4] shrink-0`} />
         <span>Intendente</span>

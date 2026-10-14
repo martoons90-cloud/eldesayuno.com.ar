@@ -32,7 +32,7 @@ interface InventoryStockViewProps {
 }
 
 export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentUser, settings }) => {
-  const isAdmin = currentUser.role === 'admin' || isUserIntendente(currentUser);
+  const isAdmin = isUserIntendente(currentUser);
 
   const [inventory, setInventory] = useState<InventoryItem[]>(storageService.getInventory());
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
