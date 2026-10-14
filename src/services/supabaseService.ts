@@ -462,10 +462,10 @@ class SupabaseService {
         });
       }
 
-      if (expCats.length > 0) data.settings.expenseCategories = expCats;
-      if (cfCats.length > 0) data.settings.cashFlowCategories = cfCats;
-      if (feeCats.length > 0) data.settings.feeCategories = feeCats;
-      if (invCats.length > 0) data.settings.inventoryCategories = invCats;
+      data.settings.expenseCategories = expCats.length > 0 ? expCats : (DEFAULT_EXPENSE_CATEGORIES);
+      data.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : (DEFAULT_CASHFLOW_CATEGORIES);
+      data.settings.feeCategories = feeCats.length > 0 ? feeCats : (DEFAULT_FEE_CATEGORIES);
+      data.settings.inventoryCategories = invCats.length > 0 ? invCats : (DEFAULT_INVENTORY_CATEGORIES);
 
       if (!blocksRes.error && Array.isArray(blocksRes.data)) data.blocks = blocksRes.data;
       if (!rulesRes.error && Array.isArray(rulesRes.data)) data.rules = rulesRes.data;

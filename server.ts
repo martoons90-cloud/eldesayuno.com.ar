@@ -1463,10 +1463,10 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       });
     }
 
-    if (expCats.length > 0) state.settings.expenseCategories = expCats;
-    if (cfCats.length > 0) state.settings.cashFlowCategories = cfCats;
-    if (feeCats.length > 0) state.settings.feeCategories = feeCats;
-    if (invCats.length > 0) state.settings.inventoryCategories = invCats;
+    state.settings.expenseCategories = expCats.length > 0 ? expCats : (currentState.settings?.expenseCategories || DEFAULT_EXPENSE_CATEGORIES);
+    state.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : (currentState.settings?.cashFlowCategories || DEFAULT_CASHFLOW_CATEGORIES);
+    state.settings.feeCategories = feeCats.length > 0 ? feeCats : (currentState.settings?.feeCategories || DEFAULT_FEE_CATEGORIES);
+    state.settings.inventoryCategories = invCats.length > 0 ? invCats : (currentState.settings?.inventoryCategories || DEFAULT_INVENTORY_CATEGORIES);
 
     if (!blocksRes?.error && Array.isArray(blocksRes?.data)) {
       state.blocks = blocksRes.data.map((b: any) => ({
