@@ -146,6 +146,92 @@ class SupabaseService {
         return { success: false, message: `Error guardando en Supabase: ${error.message}` };
       }
 
+      // Sync relational tables directly
+      if (Array.isArray(payload.users) && payload.users.length > 0) {
+        const userRows = payload.users.map((u: any) => ({
+          id: u.id,
+          name: u.name || '',
+          username: u.username || '',
+          email: u.email || '',
+          phone: u.phone || '',
+          role: u.role || 'owner',
+          cabeza_number: u.cabezaNumber || 0,
+          part_name: u.partName || '',
+          color: u.color || '#000000',
+          active: u.active ?? true,
+          annual_quota_days: u.annualQuotaDays || 30,
+          pending_days: u.pendingDays || 0,
+          used_days: u.usedDays || 0,
+          share_percentage: typeof u.sharePercentage === 'number' ? u.sharePercentage : (parseFloat(u.sharePercentage) || 0),
+          avatar_initials: u.avatarInitials || '',
+          created_at: u.createdAt || new Date().toISOString(),
+        }));
+        try { await this.client.from('users').upsert(userRows, { onConflict: 'id' }); } catch {}
+      }
+
+      if (Array.isArray(payload.expenses) && payload.expenses.length > 0) {
+        const expRows = payload.expenses.map((e: any) => ({
+          id: e.id,
+          date: e.date || null,
+          concept: e.concept || '',
+          amount: e.amount || 0,
+          currency: e.currency || 'ARS',
+          category: e.category || 'otro',
+          provider: e.provider || '',
+          status: e.status || 'paid',
+          created_by: e.createdBy || '',
+          receipt_url: e.receiptUrl || '',
+          payment_method: e.paymentMethod || 'cash',
+          period_month: e.periodMonth || '',
+          notes: e.notes || '',
+          created_at: e.createdAt || new Date().toISOString(),
+        }));
+        try { await this.client.from('expenses').upsert(expRows, { onConflict: 'id' }); } catch {}
+      }
+
+      if (Array.isArray(payload.cashFlow) && payload.cashFlow.length > 0) {
+        const cfRows = payload.cashFlow.map((cf: any) => ({
+          id: cf.id,
+          type: cf.type || 'ingreso',
+          category: cf.category || 'otro_ingreso',
+          concept: cf.concept || '',
+          amount: cf.amount || 0,
+          currency: cf.currency || 'ARS',
+          date: cf.date || null,
+          user_id: cf.userId || null,
+          user_name: cf.userName || '',
+          part_name: cf.partName || '',
+          expense_id: cf.expenseId || null,
+          notes: cf.notes || '',
+          created_by: cf.createdBy || '',
+          created_at: cf.createdAt || new Date().toISOString(),
+        }));
+        try { await this.client.from('cash_flow').upsert(cfRows, { onConflict: 'id' }); } catch {}
+      }
+
+      if (Array.isArray(payload.fees) && payload.fees.length > 0) {
+        const feeRows = payload.fees.map((f: any) => ({
+          id: f.id,
+          concept: f.concept || '',
+          category: f.category || 'expensas_ordinarias',
+          total_amount: f.totalAmount || 0,
+          currency: f.currency || 'ARS',
+          recurrence: f.recurrence || 'mensual',
+          issue_date: f.issueDate || null,
+          due_date: f.dueDate || null,
+          distribution_mode: f.distributionMode || 'proporcional',
+          allocations: f.allocations ? JSON.stringify(f.allocations) : '[]',
+          status: f.status || 'active',
+          created_by: f.createdBy || '',
+          created_at: f.createdAt || new Date().toISOString(),
+          notes: f.notes || '',
+          installments_count: f.installmentsCount || 1,
+          installment_number: f.installmentNumber || 1,
+          original_expense_id: f.originalExpenseId || null,
+        }));
+        try { await this.client.from('fee_collections').upsert(feeRows, { onConflict: 'id' }); } catch {}
+      }
+
       this.saveConfig({ lastSyncedAt: new Date().toISOString() });
       return { success: true, message: '¡Datos sincronizados exitosamente en Supabase!' };
     } catch (err: any) {

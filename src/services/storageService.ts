@@ -17,6 +17,7 @@ import {
   CustomCategory,
 } from '../types';
 import { pushService } from './notificationService';
+import { supabaseService } from './supabaseService';
 
 const USERS_KEY = 'el_desayuno_users_v3';
 const BOOKINGS_KEY = 'el_desayuno_bookings_v3';
@@ -484,6 +485,18 @@ class StorageService {
     }
   }
 
+  private async syncToSupabaseAsync() {
+    if (typeof window === 'undefined') return;
+    try {
+      if (supabaseService.isConnected()) {
+        const payload = this.getAllDataPackage();
+        await supabaseService.pushDataToSupabase(payload);
+      }
+    } catch (err) {
+      console.warn('[StorageService] Supabase background push notice:', err);
+    }
+  }
+
   public subscribe(cb: () => void): () => void {
     this.listeners.push(cb);
     return () => {
@@ -512,6 +525,7 @@ class StorageService {
     if (syncD1) {
       this.syncToD1Async();
     }
+    this.syncToSupabaseAsync();
   }
 
   // Current User / Auth
