@@ -10,7 +10,7 @@ import fs from 'fs';
 dotenv.config();
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zzfmsxrqhshmoiaysjtr.supabase.co';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6Zm1zeHJxaHNobW9pYXlzanRyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTg3OTgzMCwiZXhwIjoyMTA3NTU1ODMwfQ.KId3yfr-2Ss2ZaACtKegE3s0th1ykCKJEG1pHPzHp3g';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6Zm1zeHJxaHNobW9pYXlzanRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Nzk4MzAsImV4cCI6MjEwNzU1NTgzMH0.D3M9dPwdqMFos6HRmWOlTBSeLNSDnk0V3X9HQZnyoMY';
 
 let supabaseServerClient: SupabaseClient | null = null;
 if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
