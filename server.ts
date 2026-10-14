@@ -1092,6 +1092,23 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
       };
       try { await supabaseServerClient.from('settings').upsert(row, { onConflict: 'id' }); } catch {}
 
+      if (Array.isArray(s.expenseCategories) && s.expenseCategories.length > 0) {
+        const rows = s.expenseCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+        try { await supabaseServerClient.from('expense_categories').upsert(rows, { onConflict: 'id' }); } catch {}
+      }
+      if (Array.isArray(s.cashFlowCategories) && s.cashFlowCategories.length > 0) {
+        const rows = s.cashFlowCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+        try { await supabaseServerClient.from('cashflow_categories').upsert(rows, { onConflict: 'id' }); } catch {}
+      }
+      if (Array.isArray(s.feeCategories) && s.feeCategories.length > 0) {
+        const rows = s.feeCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+        try { await supabaseServerClient.from('fee_categories').upsert(rows, { onConflict: 'id' }); } catch {}
+      }
+      if (Array.isArray(s.inventoryCategories) && s.inventoryCategories.length > 0) {
+        const rows = s.inventoryCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+        try { await supabaseServerClient.from('inventory_categories').upsert(rows, { onConflict: 'id' }); } catch {}
+      }
+
       const categoriesRows: Array<{ id: string; type: string; name: string }> = [];
       if (Array.isArray(s.expenseCategories)) {
         s.expenseCategories.forEach((c: any) => categoriesRows.push({ id: String(c.id), type: 'expense', name: String(c.name) }));
@@ -1189,6 +1206,10 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       feesRes,
       expensesRes,
       cashFlowRes,
+      expCatRes,
+      cfCatRes,
+      feeCatRes,
+      invCatRes,
       opCatsRes,
       blocksRes,
       rulesRes,
@@ -1204,6 +1225,10 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       supabaseServerClient.from('fee_collections').select('*'),
       supabaseServerClient.from('expenses').select('*').order('date', { ascending: false }),
       supabaseServerClient.from('cash_flow').select('*').order('date', { ascending: false }),
+      supabaseServerClient.from('expense_categories').select('*'),
+      supabaseServerClient.from('cashflow_categories').select('*'),
+      supabaseServerClient.from('fee_categories').select('*'),
+      supabaseServerClient.from('inventory_categories').select('*'),
       supabaseServerClient.from('operational_categories').select('*'),
       supabaseServerClient.from('blocks').select('*').order('start_date', { ascending: false }),
       supabaseServerClient.from('rules').select('*'),
@@ -1408,6 +1433,40 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
         updatedAt: s.updated_at || new Date().toISOString(),
       };
     }
+
+    if (!state.settings) state.settings = {};
+    const expCats: Array<{ id: string; name: string }> = [];
+    const cfCats: Array<{ id: string; name: string }> = [];
+    const feeCats: Array<{ id: string; name: string }> = [];
+    const invCats: Array<{ id: string; name: string }> = [];
+
+    if (!expCatRes?.error && Array.isArray(expCatRes?.data) && expCatRes.data.length > 0) {
+      expCatRes.data.forEach((c: any) => expCats.push({ id: c.id, name: c.name || c.id }));
+    }
+    if (!cfCatRes?.error && Array.isArray(cfCatRes?.data) && cfCatRes.data.length > 0) {
+      cfCatRes.data.forEach((c: any) => cfCats.push({ id: c.id, name: c.name || c.id }));
+    }
+    if (!feeCatRes?.error && Array.isArray(feeCatRes?.data) && feeCatRes.data.length > 0) {
+      feeCatRes.data.forEach((c: any) => feeCats.push({ id: c.id, name: c.name || c.id }));
+    }
+    if (!invCatRes?.error && Array.isArray(invCatRes?.data) && invCatRes.data.length > 0) {
+      invCatRes.data.forEach((c: any) => invCats.push({ id: c.id, name: c.name || c.id }));
+    }
+
+    if (!opCatsRes?.error && Array.isArray(opCatsRes?.data) && opCatsRes.data.length > 0) {
+      opCatsRes.data.forEach((c: any) => {
+        const item = { id: c.id, name: c.name || c.id };
+        if (c.type === 'expense' && !expCats.some(x => x.id === item.id)) expCats.push(item);
+        else if (c.type === 'cashflow' && !cfCats.some(x => x.id === item.id)) cfCats.push(item);
+        else if (c.type === 'fee' && !feeCats.some(x => x.id === item.id)) feeCats.push(item);
+        else if (c.type === 'inventory' && !invCats.some(x => x.id === item.id)) invCats.push(item);
+      });
+    }
+
+    if (expCats.length > 0) state.settings.expenseCategories = expCats;
+    if (cfCats.length > 0) state.settings.cashFlowCategories = cfCats;
+    if (feeCats.length > 0) state.settings.feeCategories = feeCats;
+    if (invCats.length > 0) state.settings.inventoryCategories = invCats;
 
     if (!blocksRes?.error && Array.isArray(blocksRes?.data)) {
       state.blocks = blocksRes.data.map((b: any) => ({

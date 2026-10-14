@@ -233,6 +233,43 @@ class SupabaseService {
           updated_at: new Date().toISOString(),
         };
         try { await this.client.from('settings').upsert(sRow, { onConflict: 'id' }); } catch {}
+
+        // Push categories to dedicated Supabase tables
+        if (Array.isArray(s.expenseCategories) && s.expenseCategories.length > 0) {
+          const expRows = s.expenseCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+          try { await this.client.from('expense_categories').upsert(expRows, { onConflict: 'id' }); } catch {}
+        }
+        if (Array.isArray(s.cashFlowCategories) && s.cashFlowCategories.length > 0) {
+          const cfRows = s.cashFlowCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+          try { await this.client.from('cashflow_categories').upsert(cfRows, { onConflict: 'id' }); } catch {}
+        }
+        if (Array.isArray(s.feeCategories) && s.feeCategories.length > 0) {
+          const feeRows = s.feeCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+          try { await this.client.from('fee_categories').upsert(feeRows, { onConflict: 'id' }); } catch {}
+        }
+        if (Array.isArray(s.inventoryCategories) && s.inventoryCategories.length > 0) {
+          const invRows = s.inventoryCategories.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+          try { await this.client.from('inventory_categories').upsert(invRows, { onConflict: 'id' }); } catch {}
+        }
+
+        // Also push to operational_categories for fallback
+        const catRows: Array<{ id: string; name: string; type: string }> = [];
+        if (Array.isArray(s.expenseCategories)) {
+          s.expenseCategories.forEach((c: any) => catRows.push({ id: String(c.id), name: String(c.name), type: 'expense' }));
+        }
+        if (Array.isArray(s.cashFlowCategories)) {
+          s.cashFlowCategories.forEach((c: any) => catRows.push({ id: String(c.id), name: String(c.name), type: 'cashflow' }));
+        }
+        if (Array.isArray(s.feeCategories)) {
+          s.feeCategories.forEach((c: any) => catRows.push({ id: String(c.id), name: String(c.name), type: 'fee' }));
+        }
+        if (Array.isArray(s.inventoryCategories)) {
+          s.inventoryCategories.forEach((c: any) => catRows.push({ id: String(c.id), name: String(c.name), type: 'inventory' }));
+        }
+
+        if (catRows.length > 0) {
+          try { await this.client.from('operational_categories').upsert(catRows, { onConflict: 'id' }); } catch (e) { console.warn('Supabase operational_categories push error:', e); }
+        }
       }
 
       if (Array.isArray(payload.bookings) && payload.bookings.length > 0) {
@@ -339,6 +376,10 @@ class SupabaseService {
         inventoryRes,
         incidentsRes,
         settingsRes,
+        expCatRes,
+        cfCatRes,
+        feeCatRes,
+        invCatRes,
         opCatsRes,
         blocksRes,
         rulesRes,
@@ -351,6 +392,10 @@ class SupabaseService {
         this.client.from('inventory').select('*'),
         this.client.from('incidents').select('*'),
         this.client.from('settings').select('*').limit(1),
+        this.client.from('expense_categories').select('*'),
+        this.client.from('cashflow_categories').select('*'),
+        this.client.from('fee_categories').select('*'),
+        this.client.from('inventory_categories').select('*'),
         this.client.from('operational_categories').select('*'),
         this.client.from('blocks').select('*'),
         this.client.from('rules').select('*'),
@@ -385,6 +430,43 @@ class SupabaseService {
         };
       }
 
+      if (!data.settings) data.settings = {};
+
+      // Parse dedicated category tables first
+      const expCats: Array<{ id: string; name: string }> = [];
+      const cfCats: Array<{ id: string; name: string }> = [];
+      const feeCats: Array<{ id: string; name: string }> = [];
+      const invCats: Array<{ id: string; name: string }> = [];
+
+      if (!expCatRes.error && Array.isArray(expCatRes.data) && expCatRes.data.length > 0) {
+        expCatRes.data.forEach((c: any) => expCats.push({ id: c.id, name: c.name || c.id }));
+      }
+      if (!cfCatRes.error && Array.isArray(cfCatRes.data) && cfCatRes.data.length > 0) {
+        cfCatRes.data.forEach((c: any) => cfCats.push({ id: c.id, name: c.name || c.id }));
+      }
+      if (!feeCatRes.error && Array.isArray(feeCatRes.data) && feeCatRes.data.length > 0) {
+        feeCatRes.data.forEach((c: any) => feeCats.push({ id: c.id, name: c.name || c.id }));
+      }
+      if (!invCatRes.error && Array.isArray(invCatRes.data) && invCatRes.data.length > 0) {
+        invCatRes.data.forEach((c: any) => invCats.push({ id: c.id, name: c.name || c.id }));
+      }
+
+      // Fallback from operational_categories table if dedicated tables are empty
+      if (!opCatsRes.error && Array.isArray(opCatsRes.data) && opCatsRes.data.length > 0) {
+        opCatsRes.data.forEach((c: any) => {
+          const item = { id: c.id, name: c.name || c.id };
+          if (c.type === 'expense' && !expCats.some(x => x.id === item.id)) expCats.push(item);
+          else if (c.type === 'cashflow' && !cfCats.some(x => x.id === item.id)) cfCats.push(item);
+          else if (c.type === 'fee' && !feeCats.some(x => x.id === item.id)) feeCats.push(item);
+          else if (c.type === 'inventory' && !invCats.some(x => x.id === item.id)) invCats.push(item);
+        });
+      }
+
+      if (expCats.length > 0) data.settings.expenseCategories = expCats;
+      if (cfCats.length > 0) data.settings.cashFlowCategories = cfCats;
+      if (feeCats.length > 0) data.settings.feeCategories = feeCats;
+      if (invCats.length > 0) data.settings.inventoryCategories = invCats;
+
       if (!blocksRes.error && Array.isArray(blocksRes.data)) data.blocks = blocksRes.data;
       if (!rulesRes.error && Array.isArray(rulesRes.data)) data.rules = rulesRes.data;
 
@@ -396,6 +478,42 @@ class SupabaseService {
     } catch (err: any) {
       return { success: false, message: `Error descargando de Supabase: ${err.message}` };
     }
+  }
+
+  public async saveCategoryToTable(
+    categoryType: 'expense' | 'cashflow' | 'fee' | 'inventory',
+    category: { id: string; name: string }
+  ): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
+      await this.client.from(tableName).upsert({ id: String(category.id), name: String(category.name) }, { onConflict: 'id' });
+      await this.client.from('operational_categories').upsert({ id: String(category.id), name: String(category.name), type: categoryType }, { onConflict: 'id' });
+      return true;
+    } catch (err) {
+      console.error('Error guardando categoría en Supabase:', err);
+      return false;
+    }
+  }
+
+  public async deleteCategoryFromTable(
+    categoryType: 'expense' | 'cashflow' | 'fee' | 'inventory',
+    categoryId: string
+  ): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
+      await this.client.from(tableName).delete().eq('id', categoryId);
+      await this.client.from('operational_categories').delete().eq('id', categoryId);
+      return true;
+    } catch (err) {
+      console.error('Error eliminando categoría de Supabase:', err);
+      return false;
+    }
+  }
+
+  public async deleteOperationalCategory(categoryId: string): Promise<boolean> {
+    return this.deleteCategoryFromTable('expense', categoryId);
   }
 
   public async deleteUser(userId: string): Promise<boolean> {

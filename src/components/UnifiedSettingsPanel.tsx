@@ -184,6 +184,10 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
 
     const unsub = storageService.subscribe(() => {
       setSettingsFormData(storageService.getSettings());
+      setExpenseCategoriesList(storageService.getExpenseCategories());
+      setCashFlowCategoriesList(storageService.getCashFlowCategories());
+      setFeeCategoriesList(storageService.getFeeCategories());
+      setInventoryCategoriesList(storageService.getInventoryCategories());
       setRulesList(storageService.getRules());
       setContactsList(storageService.getContacts());
       setDocumentsList(storageService.getDocuments());
@@ -271,47 +275,49 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     const type = categoryModal.type;
     const editing = categoryModal.itemToEdit;
 
+    let targetId = editing ? editing.id : categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (!targetId) targetId = `cat_${Date.now()}`;
+    const targetObj = { id: targetId, name: categoryNameInput.trim() };
+
     if (type === 'expense') {
       let list = [...expenseCategoriesList];
       if (editing) {
-        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+        list = list.map(c => c.id === editing.id ? targetObj : c);
       } else {
-        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        list.push({ id: newId, name: categoryNameInput.trim() });
+        list.push(targetObj);
       }
       storageService.saveExpenseCategories(list);
       setExpenseCategoriesList(list);
     } else if (type === 'cashflow') {
       let list = [...cashFlowCategoriesList];
       if (editing) {
-        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+        list = list.map(c => c.id === editing.id ? targetObj : c);
       } else {
-        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        list.push({ id: newId, name: categoryNameInput.trim() });
+        list.push(targetObj);
       }
       storageService.saveCashFlowCategories(list);
       setCashFlowCategoriesList(list);
     } else if (type === 'fee') {
       let list = [...feeCategoriesList];
       if (editing) {
-        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+        list = list.map(c => c.id === editing.id ? targetObj : c);
       } else {
-        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        list.push({ id: newId, name: categoryNameInput.trim() });
+        list.push(targetObj);
       }
       storageService.saveFeeCategories(list);
       setFeeCategoriesList(list);
     } else if (type === 'inventory') {
       let list = [...inventoryCategoriesList];
       if (editing) {
-        list = list.map(c => c.id === editing.id ? { ...c, name: categoryNameInput.trim() } : c);
+        list = list.map(c => c.id === editing.id ? targetObj : c);
       } else {
-        const newId = categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        list.push({ id: newId, name: categoryNameInput.trim() });
+        list.push(targetObj);
       }
       storageService.saveInventoryCategories(list);
       setInventoryCategoriesList(list);
     }
+
+    supabaseService.saveCategoryToTable(type, targetObj).catch(() => {});
 
     setCategoryModal({ isOpen: false, type: 'expense', itemToEdit: null });
     setCategoryNameInput('');
@@ -359,6 +365,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           storageService.saveInventoryCategories(list);
           setInventoryCategoriesList(list);
         }
+        supabaseService.deleteCategoryFromTable(type, id).catch(() => {});
         showSuccess('Categoría eliminada.');
       },
     });
