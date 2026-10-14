@@ -183,7 +183,11 @@ class SupabaseService {
           reimbursed_amount: e.reimbursedAmount || 0,
           created_at: e.createdAt || new Date().toISOString(),
         }));
-        try { await this.client.from('expenses').upsert(expRows, { onConflict: 'id' }); } catch {}
+        const { error: expError } = await this.client.from('expenses').upsert(expRows, { onConflict: 'id' });
+        if (expError) {
+          console.error('[Supabase] Error guardando expenses:', expError.message);
+          return { success: false, message: `Error guardando gastos en Supabase: ${expError.message}` };
+        }
       }
 
       if (Array.isArray(payload.cashFlow) && payload.cashFlow.length > 0) {

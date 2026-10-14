@@ -947,7 +947,10 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
         reimbursed_amount: e.reimbursedAmount || 0,
         created_at: e.createdAt || new Date().toISOString(),
       }));
-      try { await supabaseServerClient.from('expenses').upsert(rows, { onConflict: 'id' }); } catch {}
+      const { error: expSyncErr } = await supabaseServerClient.from('expenses').upsert(rows, { onConflict: 'id' });
+      if (expSyncErr) {
+        console.warn('Supabase sync expenses warning:', expSyncErr.message);
+      }
     }
 
     if (Array.isArray(state.cashFlow) && state.cashFlow.length > 0) {
@@ -2841,51 +2844,40 @@ app.post('/api/expenses', async (req, res) => {
     saveServerState(state);
 
     if (supabaseServerClient) {
-      try {
-        const { error: sbError } = await supabaseServerClient.from('expenses').upsert({
-          id: expense.id,
-          date: expense.date || null,
-          concept: expense.concept || '',
-          amount: expense.amount || 0,
-          currency: expense.currency || 'ARS',
-          category: expense.category || 'otro',
-          provider: expense.provider || '',
-          invoice_number: expense.invoiceNumber || '',
-          status: expense.status || 'paid',
-          paid_at: expense.paidAt || null,
-          payment_method: expense.paymentMethod || 'cash',
-          receipt_url: expense.receiptUrl || '',
-          period_month: expense.periodMonth || '',
-          notes: expense.notes || '',
-          created_by: expense.createdBy || '',
-          user_id: expense.userId || null,
-          user_name: expense.userName || '',
-          part_name: expense.partName || '',
-          approval_status: expense.approvalStatus || 'approved',
-          approved_at: expense.approvedAt || null,
-          approved_by: expense.approvedBy || '',
-          rejection_reason: expense.rejectionReason || '',
-          reimbursement_status: expense.reimbursementStatus || 'unpaid',
-          reimbursed_amount: expense.reimbursedAmount || 0,
-          created_at: expense.createdAt || new Date().toISOString(),
-        }, { onConflict: 'id' });
+      const { error: sbError } = await supabaseServerClient.from('expenses').upsert({
+        id: expense.id,
+        date: expense.date || null,
+        concept: expense.concept || '',
+        amount: expense.amount || 0,
+        currency: expense.currency || 'ARS',
+        category: expense.category || 'otro',
+        provider: expense.provider || '',
+        invoice_number: expense.invoiceNumber || '',
+        status: expense.status || 'paid',
+        paid_at: expense.paidAt || null,
+        payment_method: expense.paymentMethod || 'cash',
+        receipt_url: expense.receiptUrl || '',
+        period_month: expense.periodMonth || '',
+        notes: expense.notes || '',
+        created_by: expense.createdBy || '',
+        user_id: expense.userId || null,
+        user_name: expense.userName || '',
+        part_name: expense.partName || '',
+        approval_status: expense.approvalStatus || 'approved',
+        approved_at: expense.approvedAt || null,
+        approved_by: expense.approvedBy || '',
+        rejection_reason: expense.rejectionReason || '',
+        reimbursement_status: expense.reimbursementStatus || 'unpaid',
+        reimbursed_amount: expense.reimbursedAmount || 0,
+        created_at: expense.createdAt || new Date().toISOString(),
+      }, { onConflict: 'id' });
 
-        if (sbError) {
-          console.warn('Supabase expense upsert warning (falling back to basic columns if missing):', sbError.message);
-          await supabaseServerClient.from('expenses').upsert({
-            id: expense.id,
-            date: expense.date || null,
-            concept: expense.concept || '',
-            amount: expense.amount || 0,
-            currency: expense.currency || 'ARS',
-            category: expense.category || 'otro',
-            provider: expense.provider || '',
-            status: expense.status || 'paid',
-            created_at: expense.createdAt || new Date().toISOString(),
-          }, { onConflict: 'id' });
-        }
-      } catch (sbErr: any) {
-        console.warn('Error upserting expense to Supabase (non-fatal):', sbErr?.message || sbErr);
+      if (sbError) {
+        console.error('Supabase expense upsert error:', sbError.message);
+        return res.status(500).json({ 
+          success: false, 
+          error: `Error al persistir el gasto en Supabase: ${sbError.message}. Verifique que la tabla 'expenses' en Supabase tenga las columnas user_id, user_name y part_name.` 
+        });
       }
     }
     broadcastSyncEvent('expenses_updated', { expenses: state.expenses });
