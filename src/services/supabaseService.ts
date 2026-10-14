@@ -92,8 +92,8 @@ class SupabaseService {
     const startTime = Date.now();
     try {
       const tempClient = createClient(url, key, { auth: { persistSession: false } });
-      // Ping Supabase RPC or rest endpoint
-      const { error } = await tempClient.from('app_state').select('id').limit(1);
+      // Ping Supabase rest endpoint
+      const { error } = await tempClient.from('settings').select('id').limit(1);
 
       // If table doesn't exist yet, it will return 42P01 (relation does not exist) or 200/empty, both prove successful connection
       const latencyMs = Date.now() - startTime;
@@ -117,7 +117,7 @@ class SupabaseService {
     }
   }
 
-  // Save/Push complete app state to Supabase JSON table 'app_state'
+  // Save/Push state into normalized Supabase tables
   public async pushDataToSupabase(payload: Record<string, any>): Promise<{
     success: boolean;
     message: string;
@@ -127,25 +127,6 @@ class SupabaseService {
     }
 
     try {
-      const row = {
-        id: 'default_app_state',
-        data: payload,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await this.client.from('app_state').upsert(row, { onConflict: 'id' });
-
-      if (error) {
-        // If table doesn't exist, provide SQL query instructions
-        if (error.code === '42P01') {
-          return {
-            success: false,
-            message: 'La tabla "app_state" no existe en Supabase. Ejecutá la consulta de inicialización en el SQL Editor de Supabase.',
-          };
-        }
-        return { success: false, message: `Error guardando en Supabase: ${error.message}` };
-      }
-
       // Sync relational tables directly
       if (Array.isArray(payload.users) && payload.users.length > 0) {
         const userRows = payload.users.map((u: any) => ({
@@ -303,14 +284,42 @@ class SupabaseService {
         try { await this.client.from('incidents').upsert(incRows, { onConflict: 'id' }); } catch {}
       }
 
+      if (Array.isArray(payload.blocks) && payload.blocks.length > 0) {
+        const blkRows = payload.blocks.map((b: any) => ({
+          id: b.id,
+          start_date: b.startDate || b.start_date || null,
+          end_date: b.endDate || b.end_date || null,
+          total_days: b.totalDays || b.total_days || 0,
+          reason: b.reason || '',
+          title: b.title || '',
+          notes: b.notes || '',
+          created_by: b.createdBy || b.created_by || '',
+          created_at: b.createdAt || b.created_at || new Date().toISOString(),
+        }));
+        try { await this.client.from('blocks').upsert(blkRows, { onConflict: 'id' }); } catch {}
+      }
+
+      if (Array.isArray(payload.rules) && payload.rules.length > 0) {
+        const ruleRows = payload.rules.map((r: any) => ({
+          id: r.id,
+          title: r.title || '',
+          description: r.description || '',
+          category: r.category || '',
+          icon: r.icon || '',
+          priority: r.priority || 0,
+          created_at: r.createdAt || r.created_at || new Date().toISOString(),
+        }));
+        try { await this.client.from('rules').upsert(ruleRows, { onConflict: 'id' }); } catch {}
+      }
+
       this.saveConfig({ lastSyncedAt: new Date().toISOString() });
-      return { success: true, message: '¡Datos sincronizados exitosamente en Supabase (app_state y tablas relacionales)!' };
+      return { success: true, message: '¡Datos sincronizados exitosamente en las tablas de Supabase!' };
     } catch (err: any) {
       return { success: false, message: `Error en la solicitud: ${err.message}` };
     }
   }
 
-  // Pull complete app state from Supabase JSON table 'app_state'
+  // Pull complete app state directly from Supabase relational tables
   public async pullDataFromSupabase(): Promise<{
     success: boolean;
     data?: Record<string, any>;
@@ -321,20 +330,68 @@ class SupabaseService {
     }
 
     try {
-      const { data, error } = await this.client
-        .from('app_state')
-        .select('data, updated_at')
-        .eq('id', 'default_app_state')
-        .single();
+      const [
+        usersRes,
+        expensesRes,
+        cashFlowRes,
+        feesRes,
+        bookingsRes,
+        inventoryRes,
+        incidentsRes,
+        settingsRes,
+        opCatsRes,
+        blocksRes,
+        rulesRes,
+      ] = await Promise.all([
+        this.client.from('users').select('*'),
+        this.client.from('expenses').select('*'),
+        this.client.from('cash_flow').select('*'),
+        this.client.from('fee_collections').select('*'),
+        this.client.from('bookings').select('*'),
+        this.client.from('inventory').select('*'),
+        this.client.from('incidents').select('*'),
+        this.client.from('settings').select('*').limit(1),
+        this.client.from('operational_categories').select('*'),
+        this.client.from('blocks').select('*'),
+        this.client.from('rules').select('*'),
+      ]);
 
-      if (error) {
-        return { success: false, message: `Error leyendo de Supabase: ${error.message}` };
+      const data: Record<string, any> = {};
+
+      if (!usersRes.error && Array.isArray(usersRes.data)) data.users = usersRes.data;
+      if (!expensesRes.error && Array.isArray(expensesRes.data)) data.expenses = expensesRes.data;
+      if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) data.cashFlow = cashFlowRes.data;
+      if (!feesRes.error && Array.isArray(feesRes.data)) data.fees = feesRes.data;
+      if (!bookingsRes.error && Array.isArray(bookingsRes.data)) data.bookings = bookingsRes.data;
+      if (!inventoryRes.error && Array.isArray(inventoryRes.data)) data.inventory = inventoryRes.data;
+      if (!incidentsRes.error && Array.isArray(incidentsRes.data)) data.incidents = incidentsRes.data;
+
+      if (!settingsRes.error && Array.isArray(settingsRes.data) && settingsRes.data[0]) {
+        const s = settingsRes.data[0];
+        data.settings = {
+          houseName: s.house_name,
+          slogan: s.slogan,
+          cuitFideicomiso: s.cuit_fideicomiso,
+          titularCuenta: s.titular_cuenta,
+          cbu: s.cbu,
+          aliasBancario: s.alias_bancario,
+          bancoNombre: s.banco_nombre,
+          location: s.location,
+          checkInTime: s.check_in_time,
+          checkOutTime: s.check_out_time,
+          logoUrl: s.logo_url,
+          wifiSsid: s.wifi_ssid,
+          wifiPassword: s.wifi_password,
+        };
       }
+
+      if (!blocksRes.error && Array.isArray(blocksRes.data)) data.blocks = blocksRes.data;
+      if (!rulesRes.error && Array.isArray(rulesRes.data)) data.rules = rulesRes.data;
 
       return {
         success: true,
-        data: data?.data,
-        message: '¡Datos descargados correctamente desde Supabase!',
+        data,
+        message: '¡Datos descargados correctamente desde las tablas relacionales de Supabase!',
       };
     } catch (err: any) {
       return { success: false, message: `Error descargando de Supabase: ${err.message}` };

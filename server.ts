@@ -1091,6 +1091,52 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
         updated_at: new Date().toISOString(),
       };
       try { await supabaseServerClient.from('settings').upsert(row, { onConflict: 'id' }); } catch {}
+
+      const categoriesRows: Array<{ id: string; type: string; name: string }> = [];
+      if (Array.isArray(s.expenseCategories)) {
+        s.expenseCategories.forEach((c: any) => categoriesRows.push({ id: String(c.id), type: 'expense', name: String(c.name) }));
+      }
+      if (Array.isArray(s.cashFlowCategories)) {
+        s.cashFlowCategories.forEach((c: any) => categoriesRows.push({ id: String(c.id), type: 'cashflow', name: String(c.name) }));
+      }
+      if (Array.isArray(s.feeCategories)) {
+        s.feeCategories.forEach((c: any) => categoriesRows.push({ id: String(c.id), type: 'fee', name: String(c.name) }));
+      }
+      if (Array.isArray(s.inventoryCategories)) {
+        s.inventoryCategories.forEach((c: any) => categoriesRows.push({ id: String(c.id), type: 'inventory', name: String(c.name) }));
+      }
+
+      if (categoriesRows.length > 0) {
+        try { await supabaseServerClient.from('operational_categories').upsert(categoriesRows, { onConflict: 'id' }); } catch {}
+      }
+    }
+
+    if (Array.isArray(state.blocks) && state.blocks.length > 0) {
+      const rows = state.blocks.map((b: any) => ({
+        id: b.id,
+        start_date: b.startDate || b.start_date || null,
+        end_date: b.endDate || b.end_date || null,
+        total_days: b.totalDays || b.total_days || 0,
+        reason: b.reason || '',
+        title: b.title || '',
+        notes: b.notes || '',
+        created_by: b.createdBy || b.created_by || '',
+        created_at: b.createdAt || b.created_at || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('blocks').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.rules) && state.rules.length > 0) {
+      const rows = state.rules.map((r: any) => ({
+        id: r.id,
+        title: r.title || '',
+        description: r.description || '',
+        category: r.category || '',
+        icon: r.icon || '',
+        priority: r.priority || 0,
+        created_at: r.createdAt || r.created_at || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('rules').upsert(rows, { onConflict: 'id' }); } catch {}
     }
   } catch (err: any) {
     console.warn('[Supabase Relational Sync] Notice:', err.message);
@@ -1100,20 +1146,8 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
 async function syncStateToSupabase(state: Record<string, any>): Promise<boolean> {
   if (!supabaseServerClient) return false;
   try {
-    const { error } = await supabaseServerClient.from('app_state').upsert({
-      id: 'default_app_state',
-      data: state,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'id' });
-    
-    // Sync to relational tables as well
-    syncRelationalTablesToSupabase(state).catch(() => {});
-
-    if (error) {
-      console.warn('[Supabase Server Sync] Warning:', error.message);
-      return false;
-    }
-    console.log('[Supabase Server Sync] Estado e información relacional sincronizados con Supabase.');
+    await syncRelationalTablesToSupabase(state);
+    console.log('[Supabase Server Sync] Tablas relacionales sincronizadas con Supabase.');
     return true;
   } catch (err: any) {
     console.warn('[Supabase Server Sync] Exception:', err.message);
@@ -1155,7 +1189,9 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       feesRes,
       expensesRes,
       cashFlowRes,
-      appStateRes,
+      opCatsRes,
+      blocksRes,
+      rulesRes,
     ] = await Promise.all([
       supabaseServerClient.from('users').select('*').order('name'),
       supabaseServerClient.from('bookings').select('*').order('check_in_date'),
@@ -1168,7 +1204,9 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       supabaseServerClient.from('fee_collections').select('*'),
       supabaseServerClient.from('expenses').select('*').order('date', { ascending: false }),
       supabaseServerClient.from('cash_flow').select('*').order('date', { ascending: false }),
-      supabaseServerClient.from('app_state').select('data').eq('id', 'default_app_state').single(),
+      supabaseServerClient.from('operational_categories').select('*'),
+      supabaseServerClient.from('blocks').select('*').order('start_date', { ascending: false }),
+      supabaseServerClient.from('rules').select('*'),
     ]);
 
     const state: Record<string, any> = { ...currentState };
@@ -1371,19 +1409,43 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       };
     }
 
-    if (appStateRes?.data?.data) {
-      if (appStateRes.data.data.settings && typeof appStateRes.data.data.settings === 'object') {
-        state.settings = {
-          ...appStateRes.data.data.settings,
-          ...state.settings,
-        };
-      }
-      if (Array.isArray(appStateRes.data.data.blocks)) {
-        state.blocks = appStateRes.data.data.blocks;
-      }
-      if (Array.isArray(appStateRes.data.data.rules)) {
-        state.rules = appStateRes.data.data.rules;
-      }
+    if (!blocksRes?.error && Array.isArray(blocksRes?.data)) {
+      state.blocks = blocksRes.data.map((b: any) => ({
+        id: b.id,
+        startDate: b.start_date || b.startDate || '',
+        endDate: b.end_date || b.endDate || '',
+        totalDays: b.total_days || b.totalDays || 0,
+        reason: b.reason || '',
+        title: b.title || '',
+        notes: b.notes || '',
+        createdBy: b.created_by || b.createdBy || '',
+        createdAt: b.created_at || b.createdAt,
+      }));
+    }
+
+    if (!rulesRes?.error && Array.isArray(rulesRes?.data)) {
+      state.rules = rulesRes.data.map((r: any) => ({
+        id: r.id,
+        title: r.title || '',
+        description: r.description || '',
+        category: r.category || '',
+        icon: r.icon || '',
+        priority: r.priority || 0,
+        createdAt: r.created_at || r.createdAt,
+      }));
+    }
+
+    if (!opCatsRes?.error && Array.isArray(opCatsRes?.data) && opCatsRes.data.length > 0) {
+      if (!state.settings) state.settings = {};
+      const expCats = opCatsRes.data.filter((c: any) => c.type === 'expense').map((c: any) => ({ id: c.id, name: c.name }));
+      const cfCats = opCatsRes.data.filter((c: any) => c.type === 'cashflow').map((c: any) => ({ id: c.id, name: c.name }));
+      const feeCats = opCatsRes.data.filter((c: any) => c.type === 'fee').map((c: any) => ({ id: c.id, name: c.name }));
+      const invCats = opCatsRes.data.filter((c: any) => c.type === 'inventory').map((c: any) => ({ id: c.id, name: c.name }));
+
+      if (expCats.length > 0) state.settings.expenseCategories = expCats;
+      if (cfCats.length > 0) state.settings.cashFlowCategories = cfCats;
+      if (feeCats.length > 0) state.settings.feeCategories = feeCats;
+      if (invCats.length > 0) state.settings.inventoryCategories = invCats;
     }
 
     memoryServerState = state;
@@ -1442,14 +1504,14 @@ app.get('/api/supabase/status', async (_req, res) => {
   }
   const startTime = Date.now();
   try {
-    const { data, error } = await supabaseServerClient.from('app_state').select('id, updated_at').limit(1);
+    const { data, error } = await supabaseServerClient.from('settings').select('id, updated_at').limit(1);
     const latencyMs = Date.now() - startTime;
     if (!error) {
       return res.json({
         connected: true,
         tableExists: true,
         latencyMs,
-        message: `Conectado exitosamente a Supabase (Latencia: ${latencyMs}ms). Tabla "app_state" lista.`,
+        message: `Conectado exitosamente a Supabase (Latencia: ${latencyMs}ms). Tablas relacionales listas.`,
       });
     }
     if (error.code === 'PGRST205' || error.code === '42P01') {
@@ -1457,7 +1519,7 @@ app.get('/api/supabase/status', async (_req, res) => {
         connected: true,
         tableExists: false,
         latencyMs,
-        message: 'Conectado a Supabase pero la tabla "app_state" aún no fue creada. Ejecutá el script SQL provisto.',
+        message: 'Conectado a Supabase pero la tabla "settings" aún no fue creada. Ejecutá el script SQL provisto.',
       });
     }
     return res.json({ connected: false, message: `Error de Supabase: ${error.message}` });
@@ -1472,25 +1534,8 @@ app.post('/api/supabase/push', async (_req, res) => {
   }
   try {
     const state = loadServerState(true);
-    const { error } = await supabaseServerClient.from('app_state').upsert({
-      id: 'default_app_state',
-      data: state,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'id' });
-
-    syncRelationalTablesToSupabase(state).catch(() => {});
-
-    if (error) {
-      if (error.code === 'PGRST205' || error.code === '42P01') {
-        return res.json({
-          success: false,
-          needsTable: true,
-          message: 'La tabla "app_state" no existe en Supabase. Ejecutá la consulta de inicialización en el SQL Editor.'
-        });
-      }
-      return res.json({ success: false, message: error.message });
-    }
-    return res.json({ success: true, message: '¡Sincronizado exitosamente a Supabase!' });
+    await syncRelationalTablesToSupabase(state);
+    return res.json({ success: true, message: '¡Sincronizado exitosamente a las tablas de Supabase!' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
