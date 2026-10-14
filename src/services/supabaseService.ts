@@ -7,6 +7,11 @@ export interface SupabaseConfig {
   lastSyncedAt?: string;
 }
 
+const DEFAULT_EXPENSE_CATEGORIES = [{ id: 'mantenimiento', name: 'Mantenimiento' }, { id: 'servicios', name: 'Servicios' }, { id: 'impuestos', name: 'Impuestos' }, { id: 'reparaciones', name: 'Reparaciones' }, { id: 'otro', name: 'Otro' }];
+const DEFAULT_CASHFLOW_CATEGORIES = [{ id: 'ingreso_cuota', name: 'Ingreso Cuota' }, { id: 'pago_gasto', name: 'Pago de Gasto' }, { id: 'otro_ingreso', name: 'Otro Ingreso' }];
+const DEFAULT_FEE_CATEGORIES = [{ id: 'expensas_ordinarias', name: 'Expensas Ordinarias' }, { id: 'expensas_extraordinarias', name: 'Expensas Extraordinarias' }, { id: 'fondo_reserva', name: 'Fondo de Reserva' }];
+const DEFAULT_INVENTORY_CATEGORIES = [{ id: 'general', name: 'General' }, { id: 'cocina', name: 'Cocina' }, { id: 'limpieza', name: 'Limpieza' }, { id: 'herramientas', name: 'Herramientas' }];
+
 const SUPABASE_CONFIG_KEY = 'el_desayuno_supabase_config_v1';
 
 export const DEFAULT_SUPABASE_CONFIG: SupabaseConfig = {

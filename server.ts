@@ -1188,6 +1188,19 @@ function saveServerState(state: Record<string, any>): void {
   }
 }
 
+const DEFAULT_EXPENSE_CATEGORIES = [{ id: 'mantenimiento', name: 'Mantenimiento' }, { id: 'servicios', name: 'Servicios' }, { id: 'impuestos', name: 'Impuestos' }, { id: 'reparaciones', name: 'Reparaciones' }, { id: 'otro', name: 'Otro' }];
+const DEFAULT_CASHFLOW_CATEGORIES = [{ id: 'ingreso_cuota', name: 'Ingreso Cuota' }, { id: 'pago_gasto', name: 'Pago de Gasto' }, { id: 'otro_ingreso', name: 'Otro Ingreso' }];
+const DEFAULT_FEE_CATEGORIES = [{ id: 'expensas_ordinarias', name: 'Expensas Ordinarias' }, { id: 'expensas_extraordinarias', name: 'Expensas Extraordinarias' }, { id: 'fondo_reserva', name: 'Fondo de Reserva' }];
+const DEFAULT_INVENTORY_CATEGORIES = [{ id: 'general', name: 'General' }, { id: 'cocina', name: 'Cocina' }, { id: 'limpieza', name: 'Limpieza' }, { id: 'herramientas', name: 'Herramientas' }];
+
+async function safeSupabaseQuery(queryPromise: any) {
+  try {
+    return await queryPromise;
+  } catch (err) {
+    return { error: err, data: [] };
+  }
+}
+
 // Authoritative Real-Time Data Hydration from Supabase Relational Tables
 async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any>> {
   const currentState = loadServerState();
@@ -1214,24 +1227,24 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       blocksRes,
       rulesRes,
     ] = await Promise.all([
-      supabaseServerClient.from('users').select('*').order('name'),
-      supabaseServerClient.from('bookings').select('*').order('check_in_date'),
-      supabaseServerClient.from('settings').select('*').limit(1),
-      supabaseServerClient.from('contacts').select('*'),
-      supabaseServerClient.from('documents').select('*'),
-      supabaseServerClient.from('inventory').select('*'),
-      supabaseServerClient.from('incidents').select('*'),
-      supabaseServerClient.from('notifications').select('*').order('created_at', { ascending: false }),
-      supabaseServerClient.from('fee_collections').select('*'),
-      supabaseServerClient.from('expenses').select('*').order('date', { ascending: false }),
-      supabaseServerClient.from('cash_flow').select('*').order('date', { ascending: false }),
-      supabaseServerClient.from('expense_categories').select('*'),
-      supabaseServerClient.from('cashflow_categories').select('*'),
-      supabaseServerClient.from('fee_categories').select('*'),
-      supabaseServerClient.from('inventory_categories').select('*'),
-      supabaseServerClient.from('operational_categories').select('*'),
-      supabaseServerClient.from('blocks').select('*').order('start_date', { ascending: false }),
-      supabaseServerClient.from('rules').select('*'),
+      safeSupabaseQuery(supabaseServerClient.from('users').select('*').order('name')),
+      safeSupabaseQuery(supabaseServerClient.from('bookings').select('*').order('check_in_date')),
+      safeSupabaseQuery(supabaseServerClient.from('settings').select('*').limit(1)),
+      safeSupabaseQuery(supabaseServerClient.from('contacts').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('documents').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('inventory').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('incidents').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('notifications').select('*').order('created_at', { ascending: false })),
+      safeSupabaseQuery(supabaseServerClient.from('fee_collections').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('expenses').select('*').order('date', { ascending: false })),
+      safeSupabaseQuery(supabaseServerClient.from('cash_flow').select('*').order('date', { ascending: false })),
+      safeSupabaseQuery(supabaseServerClient.from('expense_categories').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('cashflow_categories').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('fee_categories').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('inventory_categories').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('operational_categories').select('*')),
+      safeSupabaseQuery(supabaseServerClient.from('blocks').select('*').order('start_date', { ascending: false })),
+      safeSupabaseQuery(supabaseServerClient.from('rules').select('*')),
     ]);
 
     const state: Record<string, any> = { ...currentState };

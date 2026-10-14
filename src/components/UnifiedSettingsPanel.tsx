@@ -9,6 +9,7 @@ import { PasswordManagementModal } from './PasswordManagementModal';
 import { TransferAdminModal } from './TransferAdminModal';
 import { UserFormModal } from './UserFormModal';
 import { CustomDialogModal } from './CustomDialogModal';
+import { DiagnosticsLogTab } from './DiagnosticsLogTab';
 import { APP_VERSION, APP_BUILD_DATE, APP_STAGE } from '../version';
 import { UserRoleBadge } from './UserRoleBadge';
 import {
@@ -57,6 +58,7 @@ import {
   Building,
   PieChart,
   X,
+  Activity,
 } from 'lucide-react';
 
 export type SettingsTabId =
@@ -68,7 +70,8 @@ export type SettingsTabId =
   | 'documents'
   | 'identity'
   | 'categories'
-  | 'database';
+  | 'database'
+  | 'diagnostics';
 
 interface UnifiedSettingsPanelProps {
   currentUser: User;
@@ -1003,6 +1006,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       description: 'Conexión PostgreSQL Supabase, Cloudflare D1 y respaldos',
       icon: Database,
       badge: supabaseService.isConnected() ? '⚡ Supabase' : d1Service.isConnected() ? '● D1' : '○ Local',
+    },
+    {
+      id: 'diagnostics',
+      label: 'Registro de Diagnóstico (Logs)',
+      description: 'Monitoreo en vivo de peticiones API, consola y estado',
+      icon: Activity,
     },
   ];
 
@@ -2966,6 +2975,11 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
               </div>
             </div>
           )}
+
+          {/* ========================================================= */}
+          {/* 9. DIAGNOSTICS & LOGS CONSOLE                             */}
+          {/* ========================================================= */}
+          {activeTab === 'diagnostics' && <DiagnosticsLogTab />}
         </div>
       </div>
 
