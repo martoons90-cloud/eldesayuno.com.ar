@@ -1559,6 +1559,12 @@ class StorageService {
     this.notify(false);
   }
 
+  public resetIncidents() {
+    localStorage.removeItem(INCIDENTS_KEY);
+    localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
+    this.notify(false);
+  }
+
   // Fee Collections & Cobranzas
   public getFeeCollections(): FeeCollection[] {
     if (typeof window === 'undefined') return DEFAULT_FEE_COLLECTIONS;

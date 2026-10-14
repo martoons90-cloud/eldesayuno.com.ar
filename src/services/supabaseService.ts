@@ -164,12 +164,23 @@ class SupabaseService {
           currency: e.currency || 'ARS',
           category: e.category || 'otro',
           provider: e.provider || '',
+          invoice_number: e.invoiceNumber || '',
           status: e.status || 'paid',
-          created_by: e.createdBy || '',
-          receipt_url: e.receiptUrl || '',
+          paid_at: e.paidAt || null,
           payment_method: e.paymentMethod || 'cash',
+          receipt_url: e.receiptUrl || '',
           period_month: e.periodMonth || '',
           notes: e.notes || '',
+          created_by: e.createdBy || '',
+          user_id: e.userId || null,
+          user_name: e.userName || '',
+          part_name: e.partName || '',
+          approval_status: e.approvalStatus || 'approved',
+          approved_at: e.approvedAt || null,
+          approved_by: e.approvedBy || '',
+          rejection_reason: e.rejectionReason || '',
+          reimbursement_status: e.reimbursementStatus || 'unpaid',
+          reimbursed_amount: e.reimbursedAmount || 0,
           created_at: e.createdAt || new Date().toISOString(),
         }));
         try { await this.client.from('expenses').upsert(expRows, { onConflict: 'id' }); } catch {}
@@ -409,7 +420,35 @@ class SupabaseService {
       const data: Record<string, any> = {};
 
       if (!usersRes.error && Array.isArray(usersRes.data)) data.users = usersRes.data;
-      if (!expensesRes.error && Array.isArray(expensesRes.data)) data.expenses = expensesRes.data;
+      if (!expensesRes.error && Array.isArray(expensesRes.data)) {
+        data.expenses = expensesRes.data.map((e: any) => ({
+          id: e.id,
+          date: e.date || '',
+          concept: e.concept || '',
+          amount: Number(e.amount) || 0,
+          currency: e.currency || 'ARS',
+          category: e.category || 'otro',
+          provider: e.provider || '',
+          invoiceNumber: e.invoice_number || '',
+          status: e.status || 'paid',
+          paidAt: e.paid_at || undefined,
+          createdBy: e.created_by || '',
+          receiptUrl: e.receipt_url || '',
+          paymentMethod: e.payment_method || 'transfer',
+          periodMonth: e.period_month || '',
+          notes: e.notes || '',
+          createdAt: e.created_at,
+          userId: e.user_id || null,
+          userName: e.user_name || '',
+          partName: e.part_name || '',
+          approvalStatus: e.approval_status || 'approved',
+          approvedAt: e.approved_at || null,
+          approvedBy: e.approved_by || '',
+          rejectionReason: e.rejection_reason || '',
+          reimbursementStatus: e.reimbursement_status || 'unpaid',
+          reimbursedAmount: Number(e.reimbursed_amount) || 0,
+        }));
+      }
       if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) data.cashFlow = cashFlowRes.data;
       if (!feesRes.error && Array.isArray(feesRes.data)) data.fees = feesRes.data;
       if (!bookingsRes.error && Array.isArray(bookingsRes.data)) data.bookings = bookingsRes.data;

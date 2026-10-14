@@ -265,24 +265,41 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setPhotoPreview(null);
-            setFormData({
-              bookingId: relevantBookings[0]?.id || '',
-              title: '',
-              location: '',
-              category: 'rotura',
-              urgency: 'media',
-              description: '',
-            });
-            setIsNewModalOpen(true);
-          }}
-          className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs self-start md:self-auto"
-        >
-          <Camera className="w-4 h-4 text-[#BFA270]" />
-          <span>+ Reportar Novedad / Daño</span>
-        </button>
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          {isAdmin && (
+            <button
+              onClick={() => {
+                if (confirm('¿Desea limpiar la caché local y reiniciar los reportes de novedades? Esto eliminará registros obsoletos.')) {
+                  storageService.resetIncidents();
+                  setIncidents(storageService.getIncidents());
+                  showToast('Caché de novedades restablecida.');
+                }
+              }}
+              className="px-3 py-2.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+              title="Limpiar caché local y registros obsoletos"
+            >
+              <span>Limpiar Caché</span>
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setPhotoPreview(null);
+              setFormData({
+                bookingId: relevantBookings[0]?.id || '',
+                title: '',
+                location: '',
+                category: 'rotura',
+                urgency: 'media',
+                description: '',
+              });
+              setIsNewModalOpen(true);
+            }}
+            className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+          >
+            <Camera className="w-4 h-4 text-[#BFA270]" />
+            <span>+ Reportar Novedad / Daño</span>
+          </button>
+        </div>
       </div>
 
       {/* Success alert */}

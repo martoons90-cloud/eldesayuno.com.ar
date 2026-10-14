@@ -144,19 +144,28 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [transferSuccessMsg, setTransferSuccessMsg] = useState(false);
   const [isSharesBreakdownModalOpen, setIsSharesBreakdownModalOpen] = useState(false);
 
+  const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
+
   const loadExpenses = () => {
     setExpenses(storageService.getExpenses());
   };
 
   useEffect(() => {
     loadExpenses();
+    setFeeCollections(storageService.getFeeCollections());
     storageService.fetchExpensesFromDatabase().then((fresh) => {
       if (fresh && Array.isArray(fresh)) {
         setExpenses(fresh);
       }
     });
     const unsub = storageService.subscribe(loadExpenses);
-    return () => unsub();
+    const unsubFees = storageService.subscribe(() => {
+      setFeeCollections(storageService.getFeeCollections());
+    });
+    return () => {
+      unsub();
+      unsubFees();
+    };
   }, []);
 
   // Distinct Periods available in expenses
@@ -306,6 +315,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return;
     }
 
+    const foundUser = allCurrentUsers.find((u) => u.id === expenseForm.userId || u.name === expenseForm.userId);
+    const finalUserId = foundUser ? foundUser.id : (expenseForm.userId || undefined);
+    const finalUserName = foundUser ? foundUser.name : (expenseForm.userName || (expenseForm.userId ? expenseForm.userId : undefined));
+    const finalPartName = foundUser ? foundUser.partName : (expenseForm.partName || undefined);
+
     const itemToSave: ExpenseItem = {
       id: editingExpense ? editingExpense.id : 'exp-' + Date.now(),
       concept: expenseForm.concept.trim(),
@@ -316,9 +330,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       date: expenseForm.date,
       provider: expenseForm.provider.trim(),
       invoiceNumber: expenseForm.invoiceNumber.trim() || undefined,
-      userId: expenseForm.userId || undefined,
-      userName: expenseForm.userName || undefined,
-      partName: expenseForm.partName || undefined,
+      userId: finalUserId,
+      userName: finalUserName,
+      partName: finalPartName,
       status: expenseForm.status,
       paymentMethod: expenseForm.paymentMethod,
       receiptUrl: expenseForm.receiptUrl,
@@ -556,6 +570,35 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }, 2000);
   };
 
+  const getExpenseCollectionStatus = (exp: ExpenseItem) => {
+    if (!exp.transferredToFeeCollectionId && !exp.transferredPercentage) {
+      return { label: 'Aún No', color: 'bg-neutral-100 text-neutral-600 border border-neutral-300' };
+    }
+    const matchingCollections = feeCollections.filter(
+      (fc) => fc.id === exp.transferredToFeeCollectionId || fc.notes?.includes(exp.concept) || fc.originalExpenseId === exp.id
+    );
+    if (matchingCollections.length === 0) {
+      return { label: `Enviado (${exp.transferredPercentage || 100}%)`, color: 'bg-blue-100 text-blue-800 border border-blue-300' };
+    }
+    let totalAllocations = 0;
+    let paidAllocations = 0;
+    for (const fc of matchingCollections) {
+      for (const alloc of fc.allocations || []) {
+        totalAllocations++;
+        if (alloc.status === 'paid') {
+          paidAllocations++;
+        }
+      }
+    }
+    if (totalAllocations > 0 && paidAllocations === totalAllocations) {
+      return { label: 'Cobrado (100%)', color: 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold' };
+    } else if (paidAllocations > 0) {
+      return { label: `Parcial (${paidAllocations}/${totalAllocations})`, color: 'bg-amber-100 text-amber-800 border border-amber-300' };
+    } else {
+      return { label: 'Pendiente Cobro', color: 'bg-indigo-100 text-indigo-800 border border-indigo-300' };
+    }
+  };
+
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Top Banner Header */}
@@ -765,8 +808,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <th className="py-2.5 px-3">Concepto del Gasto</th>
                 <th className="py-2.5 px-3">Categoría</th>
                 <th className="py-2.5 px-3">Proveedor / Entidad</th>
+                <th className="py-2.5 px-3">Realizado por</th>
                 <th className="py-2.5 px-3 text-right">Monto ($ ARS)</th>
-                <th className="py-2.5 px-3 text-center">Estado</th>
+                <th className="py-2.5 px-3 text-center">Estado Pago</th>
+                <th className="py-2.5 px-3 text-center">Estado Cobro</th>
                 <th className="py-2.5 px-3 text-center">Factura / Comprobante</th>
                 {isAdmin && <th className="py-2.5 px-3 text-right">Acciones</th>}
               </tr>
@@ -774,7 +819,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             <tbody className="divide-y divide-[#E3DFC8]">
               {filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-[#7A8E7E]">
+                  <td colSpan={10} className="py-8 text-center text-[#7A8E7E]">
                     No se encontraron registros de gastos para el período seleccionado.
                   </td>
                 </tr>
@@ -802,11 +847,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                             </span>
                           )}
                         </div>
-                        {exp.userName && (
-                          <span className="block text-[10px] text-emerald-900 font-medium mt-0.5 pl-4">
-                            👤 Realizado por: <strong>{exp.userName}</strong> {exp.partName ? `(${exp.partName})` : ''}
-                          </span>
-                        )}
                         {exp.notes && <span className="block text-[10px] text-[#637568] font-normal italic pl-4">"{exp.notes}"</span>}
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap">
@@ -822,6 +862,16 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                           )}
                         </div>
                       </td>
+                      <td className="py-3 px-3 whitespace-nowrap text-[#46574B]">
+                        {exp.userName ? (
+                          <div>
+                            <span className="font-semibold text-[#163323]">{exp.userName}</span>
+                            {exp.partName && <span className="block text-[10px] text-[#7A8E7E]">{exp.partName}</span>}
+                          </div>
+                        ) : (
+                          <span className="text-[#7A8E7E] italic">Fideicomiso</span>
+                        )}
+                      </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-[#163323]">
                       ${exp.amount.toLocaleString()}
                     </td>
@@ -835,6 +885,16 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                           Pendiente
                         </span>
                       )}
+                    </td>
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      {(() => {
+                        const colStatus = getExpenseCollectionStatus(exp);
+                        return (
+                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${colStatus.color}`}>
+                            {colStatus.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="py-3 px-3 text-center whitespace-nowrap">
                       {exp.receiptUrl ? (

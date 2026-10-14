@@ -40,25 +40,30 @@ class LoggerService {
     // Intercept fetch requests safely
     try {
       const originalFetch = window.fetch;
-      window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        const method = init?.method || 'GET';
-        const startTime = performance.now();
-        try {
-          const response = await originalFetch(input, init);
-          const duration = Math.round(performance.now() - startTime);
-          if (!response.ok) {
-            this.addLog('error', 'API_ERROR', `${method} ${url} -> Status ${response.status} (${duration}ms)`);
-          } else {
-            this.addLog('fetch', 'API_SUCCESS', `${method} ${url} -> Status ${response.status} (${duration}ms)`);
-          }
-          return response;
-        } catch (err: any) {
-          const duration = Math.round(performance.now() - startTime);
-          this.addLog('error', 'API_EXCEPTION', `${method} ${url} -> ${err?.message || err} (${duration}ms)`);
-          throw err;
+      if (originalFetch) {
+        const descriptor = Object.getOwnPropertyDescriptor(window, 'fetch');
+        if (!descriptor || descriptor.writable || descriptor.configurable) {
+          window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+            const method = init?.method || 'GET';
+            const startTime = performance.now();
+            try {
+              const response = await originalFetch(input, init);
+              const duration = Math.round(performance.now() - startTime);
+              if (!response.ok) {
+                this.addLog('error', 'API_ERROR', `${method} ${url} -> Status ${response.status} (${duration}ms)`);
+              } else {
+                this.addLog('fetch', 'API_SUCCESS', `${method} ${url} -> Status ${response.status} (${duration}ms)`);
+              }
+              return response;
+            } catch (err: any) {
+              const duration = Math.round(performance.now() - startTime);
+              this.addLog('error', 'API_EXCEPTION', `${method} ${url} -> ${err?.message || err} (${duration}ms)`);
+              throw err;
+            }
+          };
         }
-      };
+      }
     } catch (e) {
       console.warn('Could not override window.fetch:', e);
     }
