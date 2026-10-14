@@ -939,6 +939,76 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
       try { await supabaseServerClient.from('expenses').upsert(rows, { onConflict: 'id' }); } catch {}
     }
 
+    if (Array.isArray(state.cashFlow) && state.cashFlow.length > 0) {
+      const rows = state.cashFlow.map((cf: any) => ({
+        id: cf.id,
+        type: cf.type || 'ingreso',
+        category: cf.category || 'otro_ingreso',
+        concept: cf.concept || '',
+        amount: cf.amount || 0,
+        currency: cf.currency || 'ARS',
+        date: cf.date || null,
+        user_id: cf.userId || null,
+        user_name: cf.userName || '',
+        part_name: cf.partName || '',
+        expense_id: cf.expenseId || null,
+        notes: cf.notes || '',
+        created_by: cf.createdBy || '',
+        created_at: cf.createdAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('cash_flow').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.fees) && state.fees.length > 0) {
+      const rows = state.fees.map((f: any) => ({
+        id: f.id,
+        concept: f.concept || '',
+        category: f.category || 'expensas_ordinarias',
+        total_amount: f.totalAmount || 0,
+        currency: f.currency || 'ARS',
+        recurrence: f.recurrence || 'mensual',
+        issue_date: f.issueDate || null,
+        due_date: f.dueDate || null,
+        distribution_mode: f.distributionMode || 'proporcional',
+        allocations: f.allocations ? JSON.stringify(f.allocations) : '[]',
+        status: f.status || 'active',
+        created_by: f.createdBy || '',
+        created_at: f.createdAt || new Date().toISOString(),
+        notes: f.notes || '',
+        installments_count: f.installmentsCount || 1,
+        installment_number: f.installmentNumber || 1,
+        original_expense_id: f.originalExpenseId || null,
+      }));
+      try { await supabaseServerClient.from('fee_collections').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.incidents) && state.incidents.length > 0) {
+      const rows = state.incidents.map((inc: any) => ({
+        id: inc.id,
+        title: inc.title || '',
+        description: inc.description || '',
+        severity: inc.severity || 'baja',
+        status: inc.status || 'abierto',
+        location: inc.location || '',
+        reported_by: inc.reportedBy || '',
+        created_at: inc.createdAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('incidents').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.documents) && state.documents.length > 0) {
+      const rows = state.documents.map((doc: any) => ({
+        id: doc.id,
+        title: doc.title || '',
+        category: doc.category || 'general',
+        file_url: doc.fileUrl || '',
+        file_type: doc.fileType || '',
+        uploaded_by: doc.uploadedBy || '',
+        uploaded_at: doc.uploadedAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('documents').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
     if (Array.isArray(state.bookings) && state.bookings.length > 0) {
       const rows = state.bookings.map((b: any) => ({
         id: b.id,

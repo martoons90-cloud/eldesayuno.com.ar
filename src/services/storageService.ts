@@ -645,6 +645,10 @@ class StorageService {
       // 2. Preserve all newly created custom users not present in DEFAULT_USERS
       const customUsers = parsed.filter(
         (p) =>
+          p.id !== 'user-fiduciante' &&
+          p.id !== 'user-intendente' &&
+          p.email !== 'fiduciante@eldesayuno.com.ar' &&
+          p.email !== 'intendente@eldesayuno.com.ar' &&
           !DEFAULT_USERS.some(
             (def) => def.id === p.id || def.email === p.email || (def.username && p.username && def.username === p.username)
           )
@@ -655,9 +659,23 @@ class StorageService {
           : Math.round((100 / Math.max(1, parsed.length)) * 10000) / 10000,
       }));
 
-      return [...defaultMerged, ...customUsers];
+      const finalUsers = [...defaultMerged, ...customUsers].filter(
+        (u) =>
+          u.id !== 'user-fiduciante' &&
+          u.id !== 'user-intendente' &&
+          u.email !== 'fiduciante@eldesayuno.com.ar' &&
+          u.email !== 'intendente@eldesayuno.com.ar'
+      );
+
+      return finalUsers;
     } catch {
-      return DEFAULT_USERS;
+      return DEFAULT_USERS.filter(
+        (u) =>
+          u.id !== 'user-fiduciante' &&
+          u.id !== 'user-intendente' &&
+          u.email !== 'fiduciante@eldesayuno.com.ar' &&
+          u.email !== 'intendente@eldesayuno.com.ar'
+      );
     }
   }
 

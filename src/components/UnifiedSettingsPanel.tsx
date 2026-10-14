@@ -2701,25 +2701,95 @@ CREATE TABLE IF NOT EXISTS public.users (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Gastos y Expensas
+-- 3. Gastos y Facturas
 CREATE TABLE IF NOT EXISTS public.expenses (
   id TEXT PRIMARY KEY,
-  date DATE,
   concept TEXT,
+  category TEXT,
   amount NUMERIC,
   currency TEXT DEFAULT 'ARS',
-  category TEXT,
-  provider TEXT,
-  status TEXT,
-  created_by TEXT,
-  receipt_url TEXT,
-  payment_method TEXT,
   period_month TEXT,
+  date DATE,
+  provider TEXT,
+  invoice_number TEXT,
+  status TEXT,
+  paid_at DATE,
+  payment_method TEXT,
+  receipt_url TEXT,
   notes TEXT,
+  created_by TEXT,
+  user_id TEXT,
+  user_name TEXT,
+  part_name TEXT,
+  approval_status TEXT,
+  reimbursement_status TEXT,
+  reimbursed_amount NUMERIC,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Reservas
+-- 4. Movimientos de Caja y Cuentas Bancarias
+CREATE TABLE IF NOT EXISTS public.cash_flow (
+  id TEXT PRIMARY KEY,
+  type TEXT,
+  category TEXT,
+  concept TEXT,
+  amount NUMERIC,
+  currency TEXT DEFAULT 'ARS',
+  date DATE,
+  user_id TEXT,
+  user_name TEXT,
+  part_name TEXT,
+  expense_id TEXT,
+  notes TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Cobranzas, Expensas, Cuotas y Liquidaciones
+CREATE TABLE IF NOT EXISTS public.fee_collections (
+  id TEXT PRIMARY KEY,
+  concept TEXT,
+  category TEXT,
+  total_amount NUMERIC,
+  currency TEXT DEFAULT 'ARS',
+  recurrence TEXT,
+  issue_date DATE,
+  due_date DATE,
+  distribution_mode TEXT,
+  allocations JSONB,
+  status TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  notes TEXT,
+  installments_count INT DEFAULT 1,
+  installment_number INT DEFAULT 1,
+  original_expense_id TEXT
+);
+
+-- 6. Incidentes y Mantenimiento
+CREATE TABLE IF NOT EXISTS public.incidents (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  description TEXT,
+  severity TEXT,
+  status TEXT,
+  location TEXT,
+  reported_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. Documentos y Comprobantes
+CREATE TABLE IF NOT EXISTS public.documents (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  category TEXT,
+  file_url TEXT,
+  file_type TEXT,
+  uploaded_by TEXT,
+  uploaded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. Reservas
 CREATE TABLE IF NOT EXISTS public.bookings (
   id TEXT PRIMARY KEY,
   user_id TEXT,
@@ -2738,7 +2808,7 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Contactos y Servicios
+-- 9. Contactos y Servicios
 CREATE TABLE IF NOT EXISTS public.contacts (
   id TEXT PRIMARY KEY,
   name TEXT,
@@ -2750,7 +2820,7 @@ CREATE TABLE IF NOT EXISTS public.contacts (
   notes TEXT
 );
 
--- 6. Inventario
+-- 10. Inventario
 CREATE TABLE IF NOT EXISTS public.inventory (
   id TEXT PRIMARY KEY,
   name TEXT,
@@ -2762,7 +2832,7 @@ CREATE TABLE IF NOT EXISTS public.inventory (
   last_checked_date DATE
 );
 
--- 7. Notificaciones
+-- 11. Notificaciones
 CREATE TABLE IF NOT EXISTS public.notifications (
   id TEXT PRIMARY KEY,
   title TEXT,
@@ -2773,7 +2843,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. Configuración General
+-- 12. Configuración General
 CREATE TABLE IF NOT EXISTS public.settings (
   id TEXT PRIMARY KEY DEFAULT 'default',
   house_name TEXT,
@@ -2796,6 +2866,10 @@ CREATE TABLE IF NOT EXISTS public.settings (
 ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cash_flow ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fee_collections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
@@ -2811,6 +2885,18 @@ CREATE POLICY "Acceso users" ON public.users FOR ALL USING (true) WITH CHECK (tr
 
 DROP POLICY IF EXISTS "Acceso expenses" ON public.expenses;
 CREATE POLICY "Acceso expenses" ON public.expenses FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso cash_flow" ON public.cash_flow;
+CREATE POLICY "Acceso cash_flow" ON public.cash_flow FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso fee_collections" ON public.fee_collections;
+CREATE POLICY "Acceso fee_collections" ON public.fee_collections FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso incidents" ON public.incidents;
+CREATE POLICY "Acceso incidents" ON public.incidents FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso documents" ON public.documents;
+CREATE POLICY "Acceso documents" ON public.documents FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Acceso bookings" ON public.bookings;
 CREATE POLICY "Acceso bookings" ON public.bookings FOR ALL USING (true) WITH CHECK (true);
