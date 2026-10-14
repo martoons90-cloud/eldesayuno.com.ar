@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   Database,
+  Wrench,
   Image as ImageIcon,
   KeyRound,
 } from 'lucide-react';
@@ -224,7 +225,11 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <span className="text-[9px] text-[#7A8E7E] leading-none flex items-center gap-1 mt-0.5">
                   {isUserAdmin(currentUser) ? (
                     <span className="text-[#A68853] font-semibold flex items-center gap-0.5">
-                      <ShieldCheck className="w-2.5 h-2.5" /> Admin
+                      <ShieldCheck className="w-2.5 h-2.5" /> Administrador
+                    </span>
+                  ) : isUserIntendente(currentUser) ? (
+                    <span className="text-teal-700 font-semibold flex items-center gap-0.5">
+                      <Wrench className="w-2.5 h-2.5" /> Intendente
                     </span>
                   ) : isUserFiduciante(currentUser) ? (
                     <span className="text-indigo-700 font-semibold flex items-center gap-0.5">
@@ -235,7 +240,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       <Award className="w-2.5 h-2.5" /> Líder
                     </span>
                   ) : (
-                    <span className="truncate max-w-[100px]">{currentUser.partName}</span>
+                    <span className="truncate max-w-[100px]">{currentUser.partName || 'Copropietario'}</span>
                   )}
                 </span>
               </div>
@@ -298,7 +303,13 @@ export const TopBar: React.FC<TopBarProps> = ({
               <div>
                 <p className="text-xs font-bold text-[#163323]">{currentUser.name}</p>
                 <p className="text-[11px] text-[#637568]">
-                  {isIntendente ? 'Intendente General' : isFinancialOnlyAdmin ? 'Administrador Financiero' : currentUser.partName}
+                  {isUserAdmin(currentUser)
+                    ? 'Administrador General'
+                    : isUserIntendente(currentUser)
+                    ? 'Intendente General'
+                    : isUserFiduciante(currentUser)
+                    ? 'Fiduciante del Fideicomiso'
+                    : currentUser.partName || 'Copropietario'}
                 </p>
               </div>
             </div>

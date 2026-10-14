@@ -1,11 +1,12 @@
 import React from 'react';
-import { User, isUserAdmin, isUserFiduciante, isUserCabezaDeEquipo, hasPrivilegedAccess } from '../types';
+import { User, isUserAdmin, isUserIntendente, isUserFiduciante, isUserCabezaDeEquipo, hasPrivilegedAccess } from '../types';
 import { UserRoleBadge, AvatarRolePin } from './UserRoleBadge';
 import {
   X,
   ShieldCheck,
   Landmark,
   Award,
+  Wrench,
   KeyRound,
   Mail,
   Phone,
@@ -36,6 +37,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   if (!isOpen) return null;
 
   const isAdmin = isUserAdmin(user);
+  const isIntendente = isUserIntendente(user);
   const isFid = isUserFiduciante(user);
   const isLeader = isUserCabezaDeEquipo(user);
   const privileged = hasPrivilegedAccess(user);
@@ -99,6 +101,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   </strong>
                   <span className="text-emerald-800 text-[11px]">
                     Facultades plenipotenciarias: Aprobación y cancelación de reservas, control operativo, liquidación de gastos y emisión de expensas.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {isIntendente && (
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-xs flex items-start gap-2.5">
+                <Wrench className="w-4 h-4 text-teal-800 shrink-0 mt-0.5" />
+                <div className="leading-snug">
+                  <strong className="text-teal-950 block text-[11px]">
+                    Intendente General de la Estancia
+                  </strong>
+                  <span className="text-teal-800 text-[11px]">
+                    Operación 100% en el campo: Mantenimiento del predio, coordinación de caseros, inventarios, novedades, compras operativas y logística.
                   </span>
                 </div>
               </div>

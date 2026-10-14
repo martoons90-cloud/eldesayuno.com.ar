@@ -114,10 +114,11 @@ export const UserRoleBadge: React.FC<UserRoleBadgeProps> = ({
 // Avatar Badge Adornment (Small pin overlay for avatars)
 export const AvatarRolePin: React.FC<{ user: User; size?: 'sm' | 'md' }> = ({ user, size = 'sm' }) => {
   const isAdmin = isUserAdmin(user);
+  const isIntendente = isUserIntendente(user);
   const isFid = isUserFiduciante(user);
   const isLeader = isUserCabezaDeEquipo(user);
 
-  if (!isAdmin && !isFid && !isLeader) return null;
+  if (!isAdmin && !isIntendente && !isFid && !isLeader) return null;
 
   const pinSize = size === 'sm' ? 'w-3.5 h-3.5 -bottom-0.5 -right-0.5 text-[8px]' : 'w-4 h-4 -bottom-1 -right-1 text-[9px]';
 
@@ -128,6 +129,17 @@ export const AvatarRolePin: React.FC<{ user: User; size?: 'sm' | 'md' }> = ({ us
         title="Administrador General"
       >
         <ShieldCheck className="w-2.5 h-2.5" />
+      </span>
+    );
+  }
+
+  if (isIntendente) {
+    return (
+      <span
+        className={`absolute ${pinSize} rounded-full bg-[#0F766E] border border-[#5EEAD4] text-[#ECFDF5] flex items-center justify-center shadow-xs`}
+        title="Intendente General"
+      >
+        <Wrench className="w-2.5 h-2.5" />
       </span>
     );
   }

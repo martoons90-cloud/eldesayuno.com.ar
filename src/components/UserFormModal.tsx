@@ -16,6 +16,8 @@ import {
   Layers,
   Sparkles,
   CheckCircle2,
+  Wrench,
+  User as UserIcon,
 } from 'lucide-react';
 
 interface UserFormModalProps {
@@ -92,10 +94,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const existingCabezasList = Array.from(existingCabezasMap.values());
 
   // Form State
-  const [cabezaMode, setCabezaSelectionMode] = useState<'existing' | 'new'>('existing');
+  const [cabezaMode, setCabezaSelectionMode] = useState<'existing' | 'new' | 'none'>('existing');
   const [selectedCabezaKey, setSelectedCabezaKey] = useState<string>(
     existingCabezasList.length > 0 ? existingCabezasList[0].key : ''
   );
+  const [independentColor, setIndependentColor] = useState<string>('#475569');
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -152,17 +155,30 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setIsCabezaDeEquipo(Boolean(editingUser.isCabezaDeEquipo));
       setIsFiduciante(Boolean(editingUser.isFiduciante || editingUser.role === 'fiduciante'));
 
-      // Check if editingUser's partName matches an existing Cabeza
-      const matched = existingCabezasList.find(
-        (c) => c.partName === editingUser.partName || c.key === editingUser.partName
-      );
-      if (matched) {
-        setCabezaSelectionMode('existing');
-        setSelectedCabezaKey(matched.key);
+      // Check if user belongs to no cabeza (independent)
+      if (
+        !editingUser.cabezaNumber ||
+        editingUser.cabezaNumber === 0 ||
+        (editingUser.partName && (
+          editingUser.partName.toLowerCase().includes('sin') ||
+          editingUser.partName.toLowerCase().includes('independiente')
+        ))
+      ) {
+        setCabezaSelectionMode('none');
+        setIndependentColor(editingUser.color || '#475569');
       } else {
-        setCabezaSelectionMode('new');
-        setNewPartName(editingUser.partName);
-        setNewCabezaColor(editingUser.color || '#7C3AED');
+        // Check if editingUser's partName matches an existing Cabeza
+        const matched = existingCabezasList.find(
+          (c) => c.partName === editingUser.partName || c.key === editingUser.partName
+        );
+        if (matched) {
+          setCabezaSelectionMode('existing');
+          setSelectedCabezaKey(matched.key);
+        } else {
+          setCabezaSelectionMode('new');
+          setNewPartName(editingUser.partName);
+          setNewCabezaColor(editingUser.color || '#7C3AED');
+        }
       }
     } else {
       // New user default
@@ -174,6 +190,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setRole('owner');
       setIsCabezaDeEquipo(false);
       setIsFiduciante(false);
+      setIndependentColor('#475569');
 
       if (existingCabezasList.length > 0) {
         setCabezaSelectionMode('existing');
@@ -194,18 +211,24 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
   // Compute final Cabeza parameters based on current mode
   const effectivePartName =
-    cabezaMode === 'existing'
+    cabezaMode === 'none'
+      ? 'Sin Grupo / Independiente'
+      : cabezaMode === 'existing'
       ? activeSelectedCabeza?.partName || selectedCabezaKey || 'Cabeza 1'
       : newPartName.trim() || 'Nueva Cabeza';
 
   const effectiveColor =
-    cabezaMode === 'existing'
+    cabezaMode === 'none'
+      ? independentColor
+      : cabezaMode === 'existing'
       ? activeSelectedCabeza?.color || '#DC2626'
       : newCabezaColor;
 
   const effectiveCabezaNumber =
-    cabezaMode === 'existing'
-      ? activeSelectedCabeza?.cabezaNumber
+    cabezaMode === 'none'
+      ? 0
+      : cabezaMode === 'existing'
+      ? activeSelectedCabeza?.cabezaNumber || 1
       : existingCabezasList.length + 1;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -343,11 +366,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             </div>
 
             {/* Selector Mode Toggle */}
-            <div className="grid grid-cols-2 gap-2 p-1 bg-[#F4EFE6] border border-[#DDD5BF]">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-1 bg-[#F4EFE6] border border-[#DDD5BF]">
               <button
                 type="button"
                 onClick={() => setCabezaSelectionMode('existing')}
-                className={`py-2 px-3 text-center font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`py-2 px-2.5 text-center font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
                   cabezaMode === 'existing'
                     ? 'bg-[#1B3B2B] text-white shadow-2xs'
                     : 'text-[#56685B] hover:text-[#163323]'
@@ -358,14 +381,25 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               <button
                 type="button"
                 onClick={() => setCabezaSelectionMode('new')}
-                className={`py-2 px-3 text-center font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                className={`py-2 px-2.5 text-center font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   cabezaMode === 'new'
                     ? 'bg-[#1B3B2B] text-white shadow-2xs'
                     : 'text-[#56685B] hover:text-[#163323]'
                 }`}
               >
                 <Plus className="w-3.5 h-3.5 text-[#BFA270]" />
-                <span>+ Crear Nueva Cabeza</span>
+                <span>+ Nueva Cabeza</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCabezaSelectionMode('none')}
+                className={`py-2 px-2.5 text-center font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  cabezaMode === 'none'
+                    ? 'bg-[#1B3B2B] text-white shadow-2xs'
+                    : 'text-[#56685B] hover:text-[#163323]'
+                }`}
+              >
+                <span>○ Sin Grupo (Independiente)</span>
               </button>
             </div>
 
@@ -373,7 +407,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             {cabezaMode === 'existing' && (
               <div className="space-y-3">
                 <label className="block font-semibold text-[#35483A]">
-                  Seleccione la Cabeza a la que pertenecera este socio:
+                  Seleccione la Cabeza a la que pertenecerá este socio:
                 </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -512,6 +546,70 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Mode C: Independent Co-owner (Sin Grupo / Sin Cabeza) */}
+            {cabezaMode === 'none' && (
+              <div className="p-4 bg-[#FAF8F5] border border-[#DDD5BF] space-y-3">
+                <div className="p-3 bg-blue-50 border border-blue-200 text-blue-950 text-xs flex items-start gap-2.5">
+                  <Users className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold">Copropietario Independiente (Sin Grupo ni Cabeza)</strong>
+                    <p className="text-[11px] text-blue-800 mt-0.5">
+                      Este copropietario participa del condominio individualmente, sin pertenecer a ninguna de las cabezas indivisas. Tiene su propio color en el calendario de reservas, gestiona sus propias estadías y participa según sus acciones.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                    Color Propio para el Calendario de Reservas
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={independentColor}
+                      onChange={(e) => setIndependentColor(e.target.value)}
+                      className="w-10 h-9 border cursor-pointer shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={independentColor}
+                      onChange={(e) => setIndependentColor(e.target.value)}
+                      className="w-32 p-2 bg-white border border-[#DCD4C0] font-mono font-bold text-xs uppercase"
+                    />
+                    <span className="text-[11px] text-[#637568]">
+                      Color con el que se mostrarán sus reservas en el almanaque.
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-[#637568] mb-1.5">
+                    Paleta de Colores Sugerida:
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {PRESET_COLORS.map((p) => (
+                      <button
+                        key={p.hex}
+                        type="button"
+                        onClick={() => setIndependentColor(p.hex)}
+                        className={`w-6 h-6 rounded-full border-2 transition-transform cursor-pointer flex items-center justify-center ${
+                          independentColor.toLowerCase() === p.hex.toLowerCase()
+                            ? 'scale-125 border-[#163323] shadow-xs'
+                            : 'border-white hover:scale-110'
+                        }`}
+                        style={{ backgroundColor: p.hex }}
+                        title={p.name}
+                      >
+                        {independentColor.toLowerCase() === p.hex.toLowerCase() && (
+                          <Check className="w-3 h-3 text-white drop-shadow-xs" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Section 3: Quota & Credentials */}
@@ -646,68 +744,188 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           <div className="space-y-3 pt-2">
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#163323] pb-1.5 border-b border-[#EFEAE0] flex items-center justify-between">
               <span>5. Rol Societario, Liderazgo & Privilegios Especiales</span>
-              <span className="text-[10px] font-normal text-[#8C7A53]">Acceso a Actas & Gastos</span>
+              <span className="text-[10px] font-normal text-[#8C7A53]">3 Figuras Clave + Copropietarios</span>
             </h4>
 
             <div className="space-y-3 bg-[#FAF8F5] p-3.5 border border-[#DCD4C0]">
-              {/* Role Select */}
-              <div>
-                <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  Rol Principal en la Plataforma
-                </label>
-                <select
-                  value={role}
-                  onChange={(e) => {
-                    const newRole = e.target.value as UserRole;
-                    setRole(newRole);
-                    if (newRole === 'fiduciante') setIsFiduciante(true);
+              <label className="block font-semibold uppercase text-[#35483A] text-xs">
+                Seleccione la Figura o Rol en la Estancia / Fideicomiso:
+              </label>
+
+              {/* 4 Interactive Visual Role Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* 1. Administrador */}
+                <div
+                  onClick={() => {
+                    setRole('admin');
                   }}
-                  className="w-full p-2.5 bg-white border border-[#DCD4C0] font-semibold text-xs text-[#163323] focus:outline-none focus:border-[#163323] cursor-pointer"
+                  className={`p-3 border cursor-pointer transition-all flex flex-col justify-between ${
+                    role === 'admin'
+                      ? 'bg-[#163323] text-white border-[#BFA270] shadow-sm ring-1 ring-[#BFA270]'
+                      : 'bg-white text-[#163323] border-[#DCD4C0] hover:border-[#163323]'
+                  }`}
                 >
-                  <option value="owner">Copropietario Socio Ordinario</option>
-                  <option value="admin">Administrador General (Poder Pleno y Operativo)</option>
-                  <option value="fiduciante">Fiduciante del Fideicomiso (Órgano de Control)</option>
-                </select>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`p-1 rounded-xs ${role === 'admin' ? 'bg-[#E5C378]/20 text-[#E5C378]' : 'bg-[#163323]/10 text-[#163323]'}`}>
+                        <ShieldCheck className="w-4 h-4" />
+                      </span>
+                      <strong className="text-xs font-bold uppercase tracking-wide">
+                        Administrador
+                      </strong>
+                    </div>
+                    {role === 'admin' && (
+                      <span className="text-[9px] font-mono font-bold bg-[#E5C378] text-[#163323] px-1.5 py-0.5 rounded-2xs">
+                        ACTIVO
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-[11px] leading-relaxed ${role === 'admin' ? 'text-[#FAF8F5]/90' : 'text-[#637568]'}`}>
+                    Poder pleno de gestión: aprobación y cancelación de reservas, control operativo, liquidación de gastos y emisión de expensas.
+                  </p>
+                </div>
+
+                {/* 2. Fiduciante */}
+                <div
+                  onClick={() => {
+                    setRole('fiduciante');
+                    setIsFiduciante(true);
+                  }}
+                  className={`p-3 border cursor-pointer transition-all flex flex-col justify-between ${
+                    role === 'fiduciante'
+                      ? 'bg-[#2E285F] text-white border-[#818CF8] shadow-sm ring-1 ring-[#818CF8]'
+                      : 'bg-white text-[#163323] border-[#DCD4C0] hover:border-[#2E285F]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`p-1 rounded-xs ${role === 'fiduciante' ? 'bg-[#818CF8]/25 text-[#C7D2FE]' : 'bg-[#2E285F]/10 text-[#2E285F]'}`}>
+                        <Landmark className="w-4 h-4" />
+                      </span>
+                      <strong className="text-xs font-bold uppercase tracking-wide">
+                        Fiduciante
+                      </strong>
+                    </div>
+                    {role === 'fiduciante' && (
+                      <span className="text-[9px] font-mono font-bold bg-[#818CF8] text-white px-1.5 py-0.5 rounded-2xs">
+                        ACTIVO
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-[11px] leading-relaxed ${role === 'fiduciante' ? 'text-indigo-100' : 'text-[#637568]'}`}>
+                    Órgano Fiduciario Constitutivo: control institucional, acceso al Libro de Gastos, balances y consulta de actas societarias.
+                  </p>
+                </div>
+
+                {/* 3. Intendente */}
+                <div
+                  onClick={() => {
+                    setRole('intendente');
+                  }}
+                  className={`p-3 border cursor-pointer transition-all flex flex-col justify-between ${
+                    role === 'intendente'
+                      ? 'bg-[#0F766E] text-white border-[#5EEAD4] shadow-sm ring-1 ring-[#5EEAD4]'
+                      : 'bg-white text-[#163323] border-[#DCD4C0] hover:border-[#0F766E]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`p-1 rounded-xs ${role === 'intendente' ? 'bg-[#5EEAD4]/25 text-[#99F6E4]' : 'bg-[#0F766E]/10 text-[#0F766E]'}`}>
+                        <Wrench className="w-4 h-4" />
+                      </span>
+                      <strong className="text-xs font-bold uppercase tracking-wide">
+                        Intendente
+                      </strong>
+                    </div>
+                    {role === 'intendente' && (
+                      <span className="text-[9px] font-mono font-bold bg-[#5EEAD4] text-[#0F766E] px-1.5 py-0.5 rounded-2xs">
+                        ACTIVO
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-[11px] leading-relaxed ${role === 'intendente' ? 'text-teal-100' : 'text-[#637568]'}`}>
+                    Operación 100% en el campo: coordinación de caseros, mantenimiento, compras de insumos, inventario y novedades.
+                  </p>
+                </div>
+
+                {/* 4. Copropietario Ordinario */}
+                <div
+                  onClick={() => {
+                    setRole('owner');
+                  }}
+                  className={`p-3 border cursor-pointer transition-all flex flex-col justify-between ${
+                    role === 'owner'
+                      ? 'bg-[#35483A] text-white border-[#BFA270] shadow-sm ring-1 ring-[#BFA270]'
+                      : 'bg-white text-[#163323] border-[#DCD4C0] hover:border-[#35483A]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`p-1 rounded-xs ${role === 'owner' ? 'bg-[#BFA270]/25 text-[#E5C378]' : 'bg-[#35483A]/10 text-[#35483A]'}`}>
+                        <UserIcon className="w-4 h-4" />
+                      </span>
+                      <strong className="text-xs font-bold uppercase tracking-wide">
+                        Copropietario
+                      </strong>
+                    </div>
+                    {role === 'owner' && (
+                      <span className="text-[9px] font-mono font-bold bg-[#E5C378] text-[#163323] px-1.5 py-0.5 rounded-2xs">
+                        ACTIVO
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-[11px] leading-relaxed ${role === 'owner' ? 'text-emerald-100' : 'text-[#637568]'}`}>
+                    Socio del condominio con derecho a cupo anual de estadías, calendario de reservas y pago de expensas según sus acciones.
+                  </p>
+                </div>
               </div>
 
               {/* Designation Checkboxes */}
-              <div className="space-y-2 pt-1 border-t border-[#EFEAE0]">
-                <label className="flex items-start gap-2.5 p-2 bg-white border border-[#DDD5BF] hover:border-[#F59E0B] cursor-pointer transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={isCabezaDeEquipo}
-                    onChange={(e) => setIsCabezaDeEquipo(e.target.checked)}
-                    className="mt-0.5 accent-[#F59E0B] w-4 h-4 cursor-pointer"
-                  />
-                  <div className="leading-snug">
-                    <strong className="text-xs text-[#163323] flex items-center gap-1.5">
-                      <Award className="w-3.5 h-3.5 text-[#D97706]" />
-                      <span>Designar como Cabeza de Equipo (Líder del Grupo)</span>
-                    </strong>
-                    <span className="text-[11px] text-[#637568] block mt-0.5">
-                      Otorga distintivo dorado especial en su perfil y habilita acceso directo al Libro de Gastos y las Actas de Asamblea.
-                    </span>
+              <div className="space-y-2 pt-2 border-t border-[#EFEAE0]">
+                {cabezaMode !== 'none' ? (
+                  <label className="flex items-start gap-2.5 p-2 bg-white border border-[#DDD5BF] hover:border-[#F59E0B] cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isCabezaDeEquipo}
+                      onChange={(e) => setIsCabezaDeEquipo(e.target.checked)}
+                      className="mt-0.5 accent-[#F59E0B] w-4 h-4 cursor-pointer"
+                    />
+                    <div className="leading-snug">
+                      <strong className="text-xs text-[#163323] flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5 text-[#D97706]" />
+                        <span>Designar como Cabeza de Equipo (Líder del Grupo)</span>
+                      </strong>
+                      <span className="text-[11px] text-[#637568] block mt-0.5">
+                        Otorga distintivo dorado especial en su perfil y habilita acceso directo al Libro de Gastos y las Actas de Asamblea.
+                      </span>
+                    </div>
+                  </label>
+                ) : (
+                  <div className="p-2 bg-[#F3EFE6] border border-[#DDD5BF] text-[11px] text-[#637568] flex items-center gap-2">
+                    <Info className="w-3.5 h-3.5 text-[#8C7A53] shrink-0" />
+                    <span>Los copropietarios independientes no forman parte de una cabeza, por lo que no aplica el liderazgo de cabeza.</span>
                   </div>
-                </label>
+                )}
 
                 <label className="flex items-start gap-2.5 p-2 bg-white border border-[#DDD5BF] hover:border-[#6366F1] cursor-pointer transition-colors">
                   <input
                     type="checkbox"
-                    checked={isFiduciante}
+                    checked={isFiduciante || role === 'fiduciante'}
                     onChange={(e) => {
                       const checked = e.target.checked;
                       setIsFiduciante(checked);
                       if (checked && role === 'owner') setRole('fiduciante');
+                      if (!checked && role === 'fiduciante') setRole('owner');
                     }}
                     className="mt-0.5 accent-[#4F46E5] w-4 h-4 cursor-pointer"
                   />
                   <div className="leading-snug">
                     <strong className="text-xs text-[#163323] flex items-center gap-1.5">
                       <Landmark className="w-3.5 h-3.5 text-indigo-700" />
-                      <span>Designar como Fiduciante (Órgano Fiduciario Constitutivo)</span>
+                      <span>Investir con Atributo de Fiduciante Constitutivo</span>
                     </strong>
                     <span className="text-[11px] text-[#637568] block mt-0.5">
-                      Otorga insignia fiduciaria con ícono especial y habilita acceso a Actas societarias y Libro de Gastos.
+                      Otorga insignia fiduciaria y habilita acceso completo a Actas societarias notariales y Libro de Gastos.
                     </span>
                   </div>
                 </label>

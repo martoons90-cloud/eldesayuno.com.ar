@@ -1368,13 +1368,20 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                             </div>
                           </td>
                           <td className="py-3 px-3">
-                            <span
-                              className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold rounded-2xs border text-[#163323] shadow-2xs"
-                              style={{ backgroundColor: `${u.color}15`, borderColor: u.color }}
-                            >
-                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.color }} />
-                              <span>{u.partName}</span>
-                            </span>
+                            {!u.cabezaNumber || u.cabezaNumber === 0 || u.partName.toLowerCase().includes('sin') || u.partName.toLowerCase().includes('independiente') ? (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-semibold rounded-2xs bg-slate-100 text-slate-800 border border-slate-300 shadow-2xs">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.color }} />
+                                <span>Sin Grupo (Independiente)</span>
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold rounded-2xs border text-[#163323] shadow-2xs"
+                                style={{ backgroundColor: `${u.color}15`, borderColor: u.color }}
+                              >
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.color }} />
+                                <span>{u.partName}</span>
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-1.5">
