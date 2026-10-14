@@ -104,8 +104,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [annualQuotaDays, setAnnualQuotaDays] = useState<number>(30);
-  const [sharePercentage, setSharePercentage] = useState<number>(6.25);
+  const [annualQuotaDays, setAnnualQuotaDays] = useState<number | string>(30);
+  const [sharePercentage, setSharePercentage] = useState<number | string>(6.25);
+  const [customCabezaNumber, setCustomCabezaNumber] = useState<number | string>(1);
   const [role, setRole] = useState<UserRole>('owner');
   const [isCabezaDeEquipo, setIsCabezaDeEquipo] = useState<boolean>(false);
   const [isFiduciante, setIsFiduciante] = useState<boolean>(false);
@@ -145,20 +146,33 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setEmail(editingUser.email);
       setPhone(editingUser.phone || '');
       setPassword(editingUser.password || '');
-      setAnnualQuotaDays(editingUser.annualQuotaDays || 30);
+      
+      // Preserve 0 explicitly for annualQuotaDays
+      setAnnualQuotaDays(
+        typeof editingUser.annualQuotaDays === 'number'
+          ? editingUser.annualQuotaDays
+          : (editingUser.annualQuotaDays !== undefined && editingUser.annualQuotaDays !== null ? Number(editingUser.annualQuotaDays) : 30)
+      );
+
+      // Preserve 0 explicitly for sharePercentage
       setSharePercentage(
         typeof editingUser.sharePercentage === 'number' && !isNaN(editingUser.sharePercentage)
           ? editingUser.sharePercentage
-          : 6.25
+          : (editingUser.sharePercentage !== undefined && editingUser.sharePercentage !== null ? Number(editingUser.sharePercentage) : 0)
       );
+
       setRole(editingUser.role || 'owner');
       setIsCabezaDeEquipo(Boolean(editingUser.isCabezaDeEquipo));
       setIsFiduciante(Boolean(editingUser.isFiduciante || editingUser.role === 'fiduciante'));
 
-      // Check if user belongs to no cabeza (independent)
+      const userCabNum = typeof editingUser.cabezaNumber === 'number' 
+        ? editingUser.cabezaNumber 
+        : (editingUser.cabezaNumber !== undefined && editingUser.cabezaNumber !== null ? Number(editingUser.cabezaNumber) : 0);
+      setCustomCabezaNumber(userCabNum);
+
+      // Check if user belongs to no cabeza (independent / Cabeza 0)
       if (
-        !editingUser.cabezaNumber ||
-        editingUser.cabezaNumber === 0 ||
+        userCabNum === 0 ||
         (editingUser.partName && (
           editingUser.partName.toLowerCase().includes('sin') ||
           editingUser.partName.toLowerCase().includes('independiente')
@@ -169,7 +183,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       } else {
         // Check if editingUser's partName matches an existing Cabeza
         const matched = existingCabezasList.find(
-          (c) => c.partName === editingUser.partName || c.key === editingUser.partName
+          (c) => c.partName === editingUser.partName || c.key === editingUser.partName || (c.cabezaNumber !== undefined && c.cabezaNumber === userCabNum)
         );
         if (matched) {
           setCabezaSelectionMode('existing');
@@ -195,12 +209,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       if (existingCabezasList.length > 0) {
         setCabezaSelectionMode('existing');
         setSelectedCabezaKey(existingCabezasList[0].key);
+        setCustomCabezaNumber(existingCabezasList[0].cabezaNumber ?? 1);
         const membersCount = existingCabezasList[0].members.length;
         setSharePercentage(Math.round((25 / Math.max(1, membersCount + 1)) * 10000) / 10000);
       } else {
         setCabezaSelectionMode('new');
         setNewPartName('Cabeza 1');
         setNewCabezaColor('#DC2626');
+        setCustomCabezaNumber(1);
         setSharePercentage(25);
       }
     }
@@ -209,13 +225,22 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   // Selected Cabeza Details
   const activeSelectedCabeza = existingCabezasList.find((c) => c.key === selectedCabezaKey);
 
-  // Compute final Cabeza parameters based on current mode
+  // Compute final Cabeza parameters based on current mode & customCabezaNumber
+  const effectiveCabezaNumber =
+    cabezaMode === 'none'
+      ? (customCabezaNumber !== '' && !isNaN(Number(customCabezaNumber)) ? Number(customCabezaNumber) : 0)
+      : customCabezaNumber !== '' && !isNaN(Number(customCabezaNumber))
+      ? Number(customCabezaNumber)
+      : cabezaMode === 'existing'
+      ? activeSelectedCabeza?.cabezaNumber ?? 1
+      : existingCabezasList.length + 1;
+
   const effectivePartName =
     cabezaMode === 'none'
-      ? 'Sin Grupo / Independiente'
+      ? (effectiveCabezaNumber === 0 ? 'Sin Grupo / Independiente' : `Grupo Independiente ${effectiveCabezaNumber}`)
       : cabezaMode === 'existing'
-      ? activeSelectedCabeza?.partName || selectedCabezaKey || 'Cabeza 1'
-      : newPartName.trim() || 'Nueva Cabeza';
+      ? activeSelectedCabeza?.partName || selectedCabezaKey || `Cabeza ${effectiveCabezaNumber}`
+      : newPartName.trim() || `Cabeza ${effectiveCabezaNumber}`;
 
   const effectiveColor =
     cabezaMode === 'none'
@@ -223,13 +248,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       : cabezaMode === 'existing'
       ? activeSelectedCabeza?.color || '#DC2626'
       : newCabezaColor;
-
-  const effectiveCabezaNumber =
-    cabezaMode === 'none'
-      ? 0
-      : cabezaMode === 'existing'
-      ? activeSelectedCabeza?.cabezaNumber || 1
-      : existingCabezasList.length + 1;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -256,6 +274,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       return;
     }
 
+    // Allow 0 explicitly for annualQuotaDays (e.g. Intendente or Admins or non-staying owners)
+    const parsedQuota = annualQuotaDays === '' || isNaN(Number(annualQuotaDays)) ? 0 : Number(annualQuotaDays);
+
+    // Allow 0 explicitly for sharePercentage (e.g. non-contributing administrative staff)
+    const parsedShare = sharePercentage === '' || isNaN(Number(String(sharePercentage).replace(',', '.')))
+      ? 0
+      : Math.max(0, Math.round(Number(String(sharePercentage).replace(',', '.')) * 10000) / 10000);
+
     onSaveUser({
       id: editingUser?.id,
       name: name.trim(),
@@ -263,8 +289,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       phone: phone.trim(),
       partName: effectivePartName,
       cabezaNumber: effectiveCabezaNumber,
-      annualQuotaDays: Number(annualQuotaDays) || 30,
-      sharePercentage: Math.max(0, Math.round(Number(sharePercentage) * 10000) / 10000),
+      annualQuotaDays: parsedQuota,
+      sharePercentage: parsedShare,
       color: effectiveColor,
       password: password.trim().toUpperCase() || generateRandomPassword(),
       role,
@@ -472,6 +498,46 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               </div>
             )}
 
+            {/* Cabeza Number direct configuration */}
+            <div className="p-3 bg-[#FAF8F5] border border-[#DDD5BF] space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block font-bold uppercase text-[#163323] text-xs">
+                    Número de Cabeza / Grupo Asignado *
+                  </label>
+                  <p className="text-[11px] text-[#637568]">
+                    Ingrese <strong>0</strong> si el copropietario es independiente y no pertenece a ningún grupo, o el número correspondiente (1, 2, 3, etc.).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="99"
+                    value={customCabezaNumber}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomCabezaNumber(val);
+                      if (val === '0' || Number(val) === 0) {
+                        setCabezaSelectionMode('none');
+                      }
+                    }}
+                    className="w-20 p-2 bg-white border border-[#DCD4C0] font-mono font-bold text-center text-sm text-[#163323] focus:outline-none focus:border-[#163323]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomCabezaNumber(0);
+                      setCabezaSelectionMode('none');
+                    }}
+                    className="px-2.5 py-2 bg-[#F4EFE6] hover:bg-[#EFE7D5] border border-[#DDD5BF] text-[11px] font-bold uppercase tracking-wider text-[#163323] cursor-pointer whitespace-nowrap"
+                  >
+                    Fijar en 0 (Sin Grupo)
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Mode B: Create New Cabeza */}
             {cabezaMode === 'new' && (
               <div className="p-4 bg-[#FAF8F5] border border-[#DDD5BF] space-y-3">
@@ -541,7 +607,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 <div className="p-2.5 bg-purple-50 border border-purple-200 text-purple-900 text-xs flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-purple-700 shrink-0" />
                   <span>
-                    Se registrará una nueva Cabeza en el Fideicomiso con este color de calendario.
+                    Se registrará una nueva Cabeza (Cabeza #{customCabezaNumber}) en el Fideicomiso.
                   </span>
                 </div>
               </div>
@@ -553,9 +619,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 <div className="p-3 bg-blue-50 border border-blue-200 text-blue-950 text-xs flex items-start gap-2.5">
                   <Users className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
                   <div>
-                    <strong className="block font-bold">Copropietario Independiente (Sin Grupo ni Cabeza)</strong>
+                    <strong className="block font-bold">Copropietario Independiente (Cabeza 0 - Sin Grupo)</strong>
                     <p className="text-[11px] text-blue-800 mt-0.5">
-                      Este copropietario participa del condominio individualmente, sin pertenecer a ninguna de las cabezas indivisas. Tiene su propio color en el calendario de reservas, gestiona sus propias estadías y participa según sus acciones.
+                      Este copropietario participa del condominio individualmente con <strong>Cabeza 0</strong>, sin pertenecer a ninguna de las cabezas indivisas. Tiene su propio color en el calendario de reservas, gestiona sus propias estadías y participa según sus acciones.
                     </p>
                   </div>
                 </div>
@@ -578,7 +644,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                       className="w-32 p-2 bg-white border border-[#DCD4C0] font-mono font-bold text-xs uppercase"
                     />
                     <span className="text-[11px] text-[#637568]">
-                      Color con el que se mostrarán sus reservas en el almanaque.
+                      Color identificador individual en el almanaque.
                     </span>
                   </div>
                 </div>
@@ -626,13 +692,36 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 </label>
                 <input
                   type="number"
-                  min="1"
+                  min="0"
                   max="365"
                   value={annualQuotaDays}
-                  onChange={(e) => setAnnualQuotaDays(Number(e.target.value))}
+                  onChange={(e) => setAnnualQuotaDays(e.target.value)}
                   required
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-xs"
                 />
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAnnualQuotaDays(0)}
+                    className="px-2 py-0.5 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    0 días (Sin Cupo / Directivo o Intendente)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnnualQuotaDays(15)}
+                    className="px-2 py-0.5 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    15 días
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnnualQuotaDays(30)}
+                    className="px-2 py-0.5 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    30 días (Estándar)
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -669,7 +758,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 <span>4. Porcentaje de Acciones / Aporte (% División de Gastos)</span>
               </h4>
               <span className="px-2 py-0.5 bg-[#EFE9DB] border border-[#DCD4C0] text-[10px] font-mono font-bold text-[#163323]">
-                {Number(sharePercentage).toFixed(4)}% de Acciones
+                {Number(String(sharePercentage).replace(',', '.') || 0).toFixed(4)}% de Acciones
               </span>
             </div>
 
@@ -688,11 +777,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                     step="any"
                     min="0"
                     max="100"
-                    value={sharePercentage || ''}
-                    onChange={(e) => {
-                      const valStr = e.target.value.replace(',', '.');
-                      setSharePercentage(parseFloat(valStr) || 0);
-                    }}
+                    value={sharePercentage}
+                    onChange={(e) => setSharePercentage(e.target.value)}
                     required
                     className="w-full p-2.5 bg-white border border-[#DCD4C0] font-mono font-bold text-sm text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   />
@@ -704,9 +790,16 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
               <div className="sm:col-span-7 space-y-1">
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-[#637568]">
-                  Valores Sugeridos según Cabeza:
+                  Valores Rápidos:
                 </label>
                 <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSharePercentage(0)}
+                    className="px-2 py-1 bg-white hover:bg-[#F2EDE1] border border-[#DCD4C0] text-[10px] font-semibold text-[#163323] cursor-pointer"
+                  >
+                    0.000% (Sin Acciones / Operativo)
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSharePercentage(25)}

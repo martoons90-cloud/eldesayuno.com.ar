@@ -62,7 +62,7 @@
       "active": true,
       "annualQuotaDays": 30,
       "pendingDays": 0,
-      "usedDays": 3,
+      "usedDays": 0,
       "sharePercentage": 6.25,
       "avatarInitials": "AC",
       "createdAt": "2026-01-01T00:00:00+00:00"
@@ -242,7 +242,7 @@
       "active": true,
       "annualQuotaDays": 30,
       "pendingDays": 0,
-      "usedDays": 7,
+      "usedDays": 0,
       "sharePercentage": 6.25,
       "avatarInitials": "JC",
       "createdAt": "2026-01-01T00:00:00+00:00"
@@ -433,20 +433,20 @@
   ],
   "expenses": [
     {
-      "id": "exp-1791989121797",
+      "id": "exp-1791990460764",
       "date": "2026-10-14",
-      "concept": "erererererer",
-      "amount": 234234,
+      "concept": "345345dfgdfgdfg",
+      "amount": 234,
       "currency": "ARS",
-      "category": "servicios",
-      "provider": "dsfsdf",
+      "category": "mantenimiento",
+      "provider": "dfgdfgdfg",
       "status": "paid",
       "createdBy": "Efraín Rodríguez",
       "receiptUrl": "",
       "paymentMethod": "transfer",
       "periodMonth": "2026-10",
       "notes": "",
-      "createdAt": "2026-10-14T14:45:21.797+00:00"
+      "createdAt": "2026-10-14T15:07:40.764+00:00"
     }
   ],
   "settings": {
@@ -456,7 +456,7 @@
     "location": "Ruta Provincial 41, Km 82, San Antonio de Areco / Mercedes, Bs. As.",
     "wifiSsid": "ElDesayuno_WiFi_2026",
     "houseName": "Estancia El Desayuno",
-    "updatedAt": "2026-10-14T15:01:09.759+00:00",
+    "updatedAt": "2026-10-14T15:40:23.074+00:00",
     "bancoNombre": "Banco Macro S.A.",
     "checkInTime": "14:00",
     "checkOutTime": "11:00",
@@ -625,5 +625,5 @@
     }
   ],
   "cashFlow": [],
-  "updatedAt": "2026-10-14T15:01:06.658Z"
+  "updatedAt": "2026-10-14T15:40:27.772Z"
 }
