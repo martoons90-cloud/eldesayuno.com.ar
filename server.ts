@@ -912,7 +912,7 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
         annual_quota_days: u.annualQuotaDays || 30,
         pending_days: u.pendingDays || 0,
         used_days: u.usedDays || 0,
-        share_percentage: u.sharePercentage || 0,
+        share_percentage: typeof u.sharePercentage === 'number' ? u.sharePercentage : (parseFloat(u.sharePercentage) || 0),
         avatar_initials: u.avatarInitials || '',
         created_at: u.createdAt || new Date().toISOString(),
       }));
