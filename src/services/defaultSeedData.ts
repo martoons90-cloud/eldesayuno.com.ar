@@ -331,49 +331,6 @@ export const SEED_USERS: User[] = [
     active: true,
     createdAt: '2026-01-01',
   },
-
-  // FIDUCIANTE DEL FIDEICOMISO (Órgano Fiduciario Constitutivo)
-  {
-    id: 'user-fiduciante',
-    name: 'Fiduciante del Fideicomiso',
-    username: 'fiduciante',
-    email: 'fiduciante@eldesayuno.com.ar',
-    role: 'fiduciante',
-    isFiduciante: true,
-    partName: 'Órgano Fiduciario',
-    cabezaNumber: 0,
-    sharePercentage: 0,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#4338CA',
-    avatarInitials: 'FD',
-    phone: '+54 9 11 4872-9100',
-    password: 'FID2026',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-
-  // INTENDENTE GENERAL (Operación y Gestión 100% de la Estancia)
-  {
-    id: 'user-intendente',
-    name: 'Intendente General (Don Raúl / Ops)',
-    username: 'intendente',
-    email: 'intendente@eldesayuno.com.ar',
-    role: 'intendente',
-    partName: 'Gerencia Operativa',
-    cabezaNumber: 0,
-    sharePercentage: 0,
-    annualQuotaDays: 30,
-    usedDays: 0,
-    pendingDays: 0,
-    color: '#0D9488',
-    avatarInitials: 'IG',
-    phone: '+54 9 2326 55-8910',
-    password: 'INT2026',
-    active: true,
-    createdAt: '2026-01-01',
-  },
 ];
 
 export const SEED_SETTINGS: TrustSettings = {

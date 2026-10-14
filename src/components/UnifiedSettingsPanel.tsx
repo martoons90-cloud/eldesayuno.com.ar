@@ -2662,28 +2662,170 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   )}
                 </form>
 
-                {/* SQL Helper instructions for creating app_state table in Supabase */}
+                {/* SQL Helper instructions for creating relational tables in Supabase */}
                 <div className="p-3 bg-black/40 border border-emerald-800/60 text-[11px] font-mono text-emerald-300/90 rounded space-y-1">
                   <p className="font-bold text-white uppercase text-[10px] tracking-wider">
-                    📋 Consulta para crear la tabla en el SQL Editor de Supabase (Copiar y Ejecutar):
+                    📋 Consulta SQL para crear TODAS las tablas relacionales en Supabase (Copiar y Ejecutar):
                   </p>
-                  <pre className="p-2.5 bg-black/60 border border-emerald-900 overflow-x-auto text-[10px] text-emerald-400 select-all font-mono leading-relaxed">
-                    {`-- Copiá y ejecutá este código en el SQL Editor de tu proyecto Supabase:
+                  <pre className="p-2.5 bg-black/60 border border-emerald-900 overflow-x-auto text-[10px] text-emerald-400 select-all font-mono leading-relaxed max-h-60 overflow-y-auto">
+                    {`-- =======================================================
+-- SCHEMA Y TABLAS RELACIONALES PARA SUPABASE - EL DESAYUNO ERP
+-- Copiá y ejecutá este script en el SQL Editor de Supabase:
+-- https://supabase.com/dashboard/project/zzfmsxrqhshmoiaysjtr/sql
+-- =======================================================
+
+-- 1. Tabla Principal de Estado JSON
 CREATE TABLE IF NOT EXISTS public.app_state (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 2. Usuarios / Propietarios / Fiduciantes
+CREATE TABLE IF NOT EXISTS public.users (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  username TEXT,
+  email TEXT,
+  phone TEXT,
+  role TEXT,
+  cabeza_number INT,
+  part_name TEXT,
+  color TEXT,
+  active BOOLEAN DEFAULT TRUE,
+  annual_quota_days INT,
+  pending_days INT,
+  used_days INT,
+  share_percentage NUMERIC,
+  avatar_initials TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Gastos y Expensas
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id TEXT PRIMARY KEY,
+  date DATE,
+  concept TEXT,
+  amount NUMERIC,
+  currency TEXT DEFAULT 'ARS',
+  category TEXT,
+  provider TEXT,
+  status TEXT,
+  created_by TEXT,
+  receipt_url TEXT,
+  payment_method TEXT,
+  period_month TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Reservas
+CREATE TABLE IF NOT EXISTS public.bookings (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  user_name TEXT,
+  check_in_date DATE,
+  check_out_date DATE,
+  total_days INT,
+  guests_count INT,
+  status TEXT,
+  user_color TEXT,
+  part_name TEXT,
+  arrival_time TEXT,
+  cancellation_reason TEXT,
+  cancelled_at TIMESTAMPTZ,
+  cancelled_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Contactos y Servicios
+CREATE TABLE IF NOT EXISTS public.contacts (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  role TEXT,
+  phone TEXT,
+  category TEXT,
+  is_emergency BOOLEAN DEFAULT FALSE,
+  available_hours TEXT,
+  notes TEXT
+);
+
+-- 6. Inventario
+CREATE TABLE IF NOT EXISTS public.inventory (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  category TEXT,
+  quantity INT,
+  unit TEXT,
+  condition TEXT,
+  location_room TEXT,
+  last_checked_date DATE
+);
+
+-- 7. Notificaciones
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  body TEXT,
+  type TEXT,
+  booking_id TEXT,
+  read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. Configuración General
+CREATE TABLE IF NOT EXISTS public.settings (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  house_name TEXT,
+  slogan TEXT,
+  cuit_fideicomiso TEXT,
+  titular_cuenta TEXT,
+  cbu TEXT,
+  alias_bancario TEXT,
+  banco_nombre TEXT,
+  location TEXT,
+  check_in_time TEXT,
+  check_out_time TEXT,
+  logo_url TEXT,
+  wifi_ssid TEXT,
+  wifi_password TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- HABILITAR ROW LEVEL SECURITY (RLS)
 ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Acceso total a app_state" ON public.app_state;
+-- POLITICAS DE ACCESO PERMISIVAS
+DROP POLICY IF EXISTS "Acceso app_state" ON public.app_state;
+CREATE POLICY "Acceso app_state" ON public.app_state FOR ALL USING (true) WITH CHECK (true);
 
-CREATE POLICY "Acceso total a app_state"
-ON public.app_state
-FOR ALL
-USING (true)
-WITH CHECK (true);`}
+DROP POLICY IF EXISTS "Acceso users" ON public.users;
+CREATE POLICY "Acceso users" ON public.users FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso expenses" ON public.expenses;
+CREATE POLICY "Acceso expenses" ON public.expenses FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso bookings" ON public.bookings;
+CREATE POLICY "Acceso bookings" ON public.bookings FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso contacts" ON public.contacts;
+CREATE POLICY "Acceso contacts" ON public.contacts FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso inventory" ON public.inventory;
+CREATE POLICY "Acceso inventory" ON public.inventory FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso notifications" ON public.notifications;
+CREATE POLICY "Acceso notifications" ON public.notifications FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso settings" ON public.settings;
+CREATE POLICY "Acceso settings" ON public.settings FOR ALL USING (true) WITH CHECK (true);`}
                   </pre>
                 </div>
               </div>

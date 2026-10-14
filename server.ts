@@ -894,6 +894,139 @@ function broadcastSyncEvent(eventType: string, payload?: any): void {
   }
 }
 
+async function syncRelationalTablesToSupabase(state: Record<string, any>): Promise<void> {
+  if (!supabaseServerClient) return;
+  try {
+    if (Array.isArray(state.users) && state.users.length > 0) {
+      const rows = state.users.map((u: any) => ({
+        id: u.id,
+        name: u.name || '',
+        username: u.username || '',
+        email: u.email || '',
+        phone: u.phone || '',
+        role: u.role || 'owner',
+        cabeza_number: u.cabezaNumber || 0,
+        part_name: u.partName || '',
+        color: u.color || '#000000',
+        active: u.active ?? true,
+        annual_quota_days: u.annualQuotaDays || 30,
+        pending_days: u.pendingDays || 0,
+        used_days: u.usedDays || 0,
+        share_percentage: u.sharePercentage || 0,
+        avatar_initials: u.avatarInitials || '',
+        created_at: u.createdAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('users').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.expenses) && state.expenses.length > 0) {
+      const rows = state.expenses.map((e: any) => ({
+        id: e.id,
+        date: e.date || null,
+        concept: e.concept || '',
+        amount: e.amount || 0,
+        currency: e.currency || 'ARS',
+        category: e.category || 'otro',
+        provider: e.provider || '',
+        status: e.status || 'paid',
+        created_by: e.createdBy || '',
+        receipt_url: e.receiptUrl || '',
+        payment_method: e.paymentMethod || 'cash',
+        period_month: e.periodMonth || '',
+        notes: e.notes || '',
+        created_at: e.createdAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('expenses').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.bookings) && state.bookings.length > 0) {
+      const rows = state.bookings.map((b: any) => ({
+        id: b.id,
+        user_id: b.userId || '',
+        user_name: b.userName || '',
+        check_in_date: b.checkInDate || null,
+        check_out_date: b.checkOutDate || null,
+        total_days: b.totalDays || 0,
+        guests_count: b.guestsCount || 1,
+        status: b.status || 'confirmed',
+        user_color: b.userColor || '',
+        part_name: b.partName || '',
+        arrival_time: b.arrivalTime || '',
+        cancellation_reason: b.cancellationReason || '',
+        cancelled_at: b.cancelledAt || null,
+        cancelled_by: b.cancelledBy || '',
+        created_at: b.createdAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('bookings').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.contacts) && state.contacts.length > 0) {
+      const rows = state.contacts.map((c: any) => ({
+        id: c.id,
+        name: c.name || '',
+        role: c.role || '',
+        phone: c.phone || '',
+        category: c.category || '',
+        is_emergency: c.isEmergency ?? false,
+        available_hours: c.availableHours || '',
+        notes: c.notes || '',
+      }));
+      try { await supabaseServerClient.from('contacts').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.inventory) && state.inventory.length > 0) {
+      const rows = state.inventory.map((inv: any) => ({
+        id: inv.id,
+        name: inv.name || '',
+        category: inv.category || '',
+        quantity: inv.quantity || 0,
+        unit: inv.unit || 'unidades',
+        condition: inv.condition || 'bueno',
+        location_room: inv.locationRoom || '',
+        last_checked_date: inv.lastCheckedDate || null,
+      }));
+      try { await supabaseServerClient.from('inventory').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (Array.isArray(state.notifications) && state.notifications.length > 0) {
+      const rows = state.notifications.map((n: any) => ({
+        id: n.id,
+        title: n.title || '',
+        body: n.body || '',
+        type: n.type || '',
+        booking_id: n.bookingId || '',
+        read: n.read ?? false,
+        created_at: n.createdAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('notifications').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
+    if (state.settings) {
+      const s = state.settings;
+      const row = {
+        id: 'default',
+        house_name: s.houseName || '',
+        slogan: s.slogan || '',
+        cuit_fideicomiso: s.cuitFideicomiso || '',
+        titular_cuenta: s.titularCuenta || '',
+        cbu: s.cbu || '',
+        alias_bancario: s.aliasBancario || '',
+        banco_nombre: s.bancoNombre || '',
+        location: s.location || '',
+        check_in_time: s.checkInTime || '',
+        check_out_time: s.checkOutTime || '',
+        logo_url: s.logoUrl || '',
+        wifi_ssid: s.wifiSsid || '',
+        wifi_password: s.wifiPassword || '',
+        updated_at: new Date().toISOString(),
+      };
+      try { await supabaseServerClient.from('settings').upsert(row, { onConflict: 'id' }); } catch {}
+    }
+  } catch (err: any) {
+    console.warn('[Supabase Relational Sync] Notice:', err.message);
+  }
+}
+
 async function syncStateToSupabase(state: Record<string, any>): Promise<boolean> {
   if (!supabaseServerClient) return false;
   try {
@@ -902,11 +1035,15 @@ async function syncStateToSupabase(state: Record<string, any>): Promise<boolean>
       data: state,
       updated_at: new Date().toISOString()
     }, { onConflict: 'id' });
+    
+    // Sync to relational tables as well
+    syncRelationalTablesToSupabase(state).catch(() => {});
+
     if (error) {
       console.warn('[Supabase Server Sync] Warning:', error.message);
       return false;
     }
-    console.log('[Supabase Server Sync] Estado sincronizado exitosamente con Supabase.');
+    console.log('[Supabase Server Sync] Estado e información relacional sincronizados con Supabase.');
     return true;
   } catch (err: any) {
     console.warn('[Supabase Server Sync] Exception:', err.message);
