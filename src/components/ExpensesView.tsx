@@ -146,25 +146,23 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
 
-  const loadExpenses = () => {
-    setExpenses(storageService.getExpenses());
+  const loadExpenses = async () => {
+    const fresh = await storageService.fetchExpensesFromDatabase();
+    if (fresh && Array.isArray(fresh)) {
+      setExpenses(fresh);
+    }
   };
 
   useEffect(() => {
     loadExpenses();
-    setFeeCollections(storageService.getFeeCollections());
-    storageService.fetchExpensesFromDatabase().then((fresh) => {
+    storageService.fetchFeesFromDatabase().then((fresh) => {
       if (fresh && Array.isArray(fresh)) {
-        setExpenses(fresh);
+        setFeeCollections(fresh);
       }
     });
     const unsub = storageService.subscribe(loadExpenses);
-    const unsubFees = storageService.subscribe(() => {
-      setFeeCollections(storageService.getFeeCollections());
-    });
     return () => {
       unsub();
-      unsubFees();
     };
   }, []);
 

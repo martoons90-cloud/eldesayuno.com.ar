@@ -125,15 +125,13 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   const [isUploadingVoucher, setIsUploadingVoucher] = useState(false);
 
   // Load collections
-  const loadCollections = () => {
-    setFeeCollections(storageService.getFeeCollections());
+  const loadCollections = async () => {
+    const fresh = await storageService.fetchFeesFromDatabase();
+    if (fresh && Array.isArray(fresh)) setFeeCollections(fresh);
   };
 
   useEffect(() => {
     loadCollections();
-    storageService.fetchFeesFromDatabase().then((fresh) => {
-      if (fresh && Array.isArray(fresh)) setFeeCollections(fresh);
-    });
     const unsub = storageService.subscribe(loadCollections);
     return () => unsub();
   }, []);
