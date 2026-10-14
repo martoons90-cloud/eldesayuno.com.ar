@@ -232,8 +232,79 @@ class SupabaseService {
         try { await this.client.from('fee_collections').upsert(feeRows, { onConflict: 'id' }); } catch {}
       }
 
+      if (payload.settings && typeof payload.settings === 'object') {
+        const s = payload.settings;
+        const sRow = {
+          id: 'default',
+          house_name: s.houseName || '',
+          slogan: s.slogan || '',
+          cuit_fideicomiso: s.cuitFideicomiso || '',
+          titular_cuenta: s.titularCuenta || '',
+          cbu: s.cbu || '',
+          alias_bancario: s.aliasBancario || '',
+          banco_nombre: s.bancoNombre || '',
+          location: s.location || '',
+          check_in_time: s.checkInTime || '',
+          check_out_time: s.checkOutTime || '',
+          logo_url: s.logoUrl || '',
+          wifi_ssid: s.wifiSsid || '',
+          wifi_password: s.wifiPassword || '',
+          updated_at: new Date().toISOString(),
+        };
+        try { await this.client.from('settings').upsert(sRow, { onConflict: 'id' }); } catch {}
+      }
+
+      if (Array.isArray(payload.bookings) && payload.bookings.length > 0) {
+        const bRows = payload.bookings.map((b: any) => ({
+          id: b.id,
+          user_id: b.userId || '',
+          user_name: b.userName || '',
+          check_in_date: b.checkInDate || null,
+          check_out_date: b.checkOutDate || null,
+          total_days: b.totalDays || 0,
+          guests_count: b.guestsCount || 1,
+          status: b.status || 'confirmed',
+          user_color: b.userColor || '',
+          part_name: b.partName || '',
+          arrival_time: b.arrivalTime || '',
+          cancellation_reason: b.cancellationReason || '',
+          cancelled_at: b.cancelledAt || null,
+          cancelled_by: b.cancelledBy || '',
+          created_at: b.createdAt || new Date().toISOString(),
+        }));
+        try { await this.client.from('bookings').upsert(bRows, { onConflict: 'id' }); } catch {}
+      }
+
+      if (Array.isArray(payload.inventory) && payload.inventory.length > 0) {
+        const invRows = payload.inventory.map((inv: any) => ({
+          id: inv.id,
+          name: inv.name || '',
+          category: inv.category || '',
+          quantity: inv.quantity || 0,
+          unit: inv.unit || 'unidades',
+          condition: inv.condition || 'bueno',
+          location_room: inv.locationRoom || '',
+          last_checked_date: inv.lastCheckedDate || null,
+        }));
+        try { await this.client.from('inventory').upsert(invRows, { onConflict: 'id' }); } catch {}
+      }
+
+      if (Array.isArray(payload.incidents) && payload.incidents.length > 0) {
+        const incRows = payload.incidents.map((inc: any) => ({
+          id: inc.id,
+          title: inc.title || '',
+          description: inc.description || '',
+          severity: inc.severity || 'baja',
+          status: inc.status || 'abierto',
+          location: inc.location || '',
+          reported_by: inc.reportedBy || '',
+          created_at: inc.createdAt || new Date().toISOString(),
+        }));
+        try { await this.client.from('incidents').upsert(incRows, { onConflict: 'id' }); } catch {}
+      }
+
       this.saveConfig({ lastSyncedAt: new Date().toISOString() });
-      return { success: true, message: '¡Datos sincronizados exitosamente en Supabase!' };
+      return { success: true, message: '¡Datos sincronizados exitosamente en Supabase (app_state y tablas relacionales)!' };
     } catch (err: any) {
       return { success: false, message: `Error en la solicitud: ${err.message}` };
     }

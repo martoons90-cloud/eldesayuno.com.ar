@@ -1372,6 +1372,12 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
     }
 
     if (appStateRes?.data?.data) {
+      if (appStateRes.data.data.settings && typeof appStateRes.data.data.settings === 'object') {
+        state.settings = {
+          ...appStateRes.data.data.settings,
+          ...state.settings,
+        };
+      }
       if (Array.isArray(appStateRes.data.data.blocks)) {
         state.blocks = appStateRes.data.data.blocks;
       }
@@ -1659,6 +1665,8 @@ const handleSaveSettings = async (req: express.Request, res: express.Response) =
           wifi_password: s.wifiPassword || '',
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' });
+
+        await syncStateToSupabase(state);
       } catch (sbErr) {
         console.error('Error guardando settings en Supabase:', sbErr);
       }
