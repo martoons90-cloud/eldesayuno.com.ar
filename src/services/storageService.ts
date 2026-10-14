@@ -243,7 +243,13 @@ class StorageService {
         this.hydrateFromAppStateAsync();
       }
     });
-    setInterval(() => this.hydrateFromAppStateAsync(), 2000);
+
+    // Smart background sync: only poll every 30s as a fallback when tab is active
+    setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        this.hydrateFromAppStateAsync();
+      }
+    }, 30000);
   }
 
   private initRealtimeSyncStream() {
