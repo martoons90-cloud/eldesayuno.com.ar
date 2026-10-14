@@ -911,6 +911,25 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     showSuccess(`Estado de ${user.name} actualizado.`);
   };
 
+  const handleDeleteUserConfirm = (user: User) => {
+    if (user.id === currentUser.id) {
+      alert('No puede eliminar su propio usuario administrador.');
+      return;
+    }
+    setDialogState({
+      isOpen: true,
+      title: 'Eliminar Copropietario',
+      message: `¿Está seguro de que desea eliminar a "${user.name}"? Esta acción eliminará al copropietario del sistema y de Supabase.`,
+      type: 'confirm',
+      confirmText: 'Sí, Eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        storageService.deleteUser(user.id);
+        showSuccess(`Copropietario ${user.name} eliminado correctamente.`);
+      },
+    });
+  };
+
   // Nav items for sidebar
   const tabsList: Array<{
     id: SettingsTabId;
@@ -1517,17 +1536,26 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               {!isCurrentUser && (
-                                <button
-                                  onClick={() => handleToggleUserActive(u)}
-                                  className={`p-1 transition-colors cursor-pointer ${
-                                    u.active
-                                      ? 'text-red-700 hover:bg-red-50'
-                                      : 'text-emerald-700 hover:bg-emerald-50'
-                                  }`}
-                                  title={u.active ? 'Desactivar usuario' : 'Activar usuario'}
-                                >
-                                  {u.active ? <Lock className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => handleToggleUserActive(u)}
+                                    className={`p-1 transition-colors cursor-pointer ${
+                                      u.active
+                                        ? 'text-amber-700 hover:bg-amber-50'
+                                        : 'text-emerald-700 hover:bg-emerald-50'
+                                    }`}
+                                    title={u.active ? 'Desactivar usuario' : 'Activar usuario'}
+                                  >
+                                    {u.active ? <Lock className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteUserConfirm(u)}
+                                    className="p-1 text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                    title="Eliminar copropietario"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>

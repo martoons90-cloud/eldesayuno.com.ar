@@ -90,6 +90,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
       setUsers(storageService.getUsers());
     };
     syncData();
+    storageService.fetchCashFlowFromDatabase().then((fresh) => {
+      if (fresh && Array.isArray(fresh)) setCashFlows(fresh);
+    });
+    storageService.fetchExpensesFromDatabase().then((fresh) => {
+      if (fresh && Array.isArray(fresh)) setExpenses(fresh);
+    });
     const unsub = storageService.subscribe(syncData);
     return () => unsub();
   }, []);

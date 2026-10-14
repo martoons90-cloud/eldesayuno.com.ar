@@ -150,6 +150,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   useEffect(() => {
     loadExpenses();
+    storageService.fetchExpensesFromDatabase().then((fresh) => {
+      if (fresh && Array.isArray(fresh)) {
+        setExpenses(fresh);
+      }
+    });
     const unsub = storageService.subscribe(loadExpenses);
     return () => unsub();
   }, []);

@@ -1137,24 +1137,270 @@ function saveServerState(state: Record<string, any>): void {
   }
 }
 
-// Initialize seed on startup and try hydrating from Supabase
+// Authoritative Real-Time Data Hydration from Supabase Relational Tables
+async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any>> {
+  const currentState = loadServerState();
+  if (!supabaseServerClient) return currentState;
+
+  try {
+    const [
+      usersRes,
+      bookingsRes,
+      settingsRes,
+      contactsRes,
+      docsRes,
+      invRes,
+      incRes,
+      notifsRes,
+      feesRes,
+      expensesRes,
+      cashFlowRes,
+      appStateRes,
+    ] = await Promise.all([
+      supabaseServerClient.from('users').select('*').order('name'),
+      supabaseServerClient.from('bookings').select('*').order('check_in_date'),
+      supabaseServerClient.from('settings').select('*').limit(1),
+      supabaseServerClient.from('contacts').select('*'),
+      supabaseServerClient.from('documents').select('*'),
+      supabaseServerClient.from('inventory').select('*'),
+      supabaseServerClient.from('incidents').select('*'),
+      supabaseServerClient.from('notifications').select('*').order('created_at', { ascending: false }),
+      supabaseServerClient.from('fee_collections').select('*'),
+      supabaseServerClient.from('expenses').select('*').order('date', { ascending: false }),
+      supabaseServerClient.from('cash_flow').select('*').order('date', { ascending: false }),
+      supabaseServerClient.from('app_state').select('data').eq('id', 'default_app_state').single(),
+    ]);
+
+    const state: Record<string, any> = { ...currentState };
+
+    if (!usersRes.error && Array.isArray(usersRes.data) && usersRes.data.length > 0) {
+      state.users = usersRes.data.map((u: any) => ({
+        id: u.id,
+        name: u.name || '',
+        username: u.username || '',
+        email: u.email || '',
+        phone: u.phone || '',
+        role: u.role || 'owner',
+        cabezaNumber: u.cabeza_number || 0,
+        partName: u.part_name || '',
+        color: u.color || '#000000',
+        active: u.active ?? true,
+        annualQuotaDays: u.annual_quota_days || 30,
+        pendingDays: u.pending_days || 0,
+        usedDays: u.used_days || 0,
+        sharePercentage: typeof u.share_percentage === 'number' ? u.share_percentage : (parseFloat(u.share_percentage) || 0),
+        avatarInitials: u.avatar_initials || '',
+        createdAt: u.created_at,
+      }));
+    }
+
+    if (!bookingsRes.error && Array.isArray(bookingsRes.data)) {
+      state.bookings = bookingsRes.data.map((b: any) => ({
+        id: b.id,
+        userId: b.user_id,
+        userName: b.user_name,
+        userColor: b.user_color || '#16A34A',
+        partName: b.part_name || '',
+        checkInDate: b.check_in_date,
+        checkOutDate: b.check_out_date,
+        totalDays: b.total_days,
+        guestsCount: b.guests_count || 1,
+        status: b.status || 'confirmed',
+        arrivalTime: b.arrival_time || '14:00',
+        notes: b.notes || '',
+        cleaningFee: b.cleaning_fee || 0,
+        maintenanceFee: b.maintenance_fee || 0,
+        depositAmount: b.deposit_amount || 0,
+        sharePercentage: b.share_percentage,
+        cancellationReason: b.cancellation_reason || '',
+        cancelledAt: b.cancelled_at,
+        cancelledBy: b.cancelled_by,
+        createdAt: b.created_at,
+      }));
+    }
+
+    if (!expensesRes.error && Array.isArray(expensesRes.data)) {
+      state.expenses = expensesRes.data.map((e: any) => ({
+        id: e.id,
+        date: e.date || '',
+        concept: e.concept || '',
+        amount: Number(e.amount) || 0,
+        currency: e.currency || 'ARS',
+        category: e.category || 'otro',
+        provider: e.provider || '',
+        status: e.status || 'paid',
+        createdBy: e.created_by || '',
+        receiptUrl: e.receipt_url || '',
+        paymentMethod: e.payment_method || 'transfer',
+        periodMonth: e.period_month || '',
+        notes: e.notes || '',
+        createdAt: e.created_at,
+      }));
+    }
+
+    if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) {
+      state.cashFlow = cashFlowRes.data.map((cf: any) => ({
+        id: cf.id,
+        type: cf.type || 'ingreso',
+        category: cf.category || 'otro_ingreso',
+        concept: cf.concept || '',
+        amount: Number(cf.amount) || 0,
+        currency: cf.currency || 'ARS',
+        date: cf.date || '',
+        userId: cf.user_id || null,
+        userName: cf.user_name || '',
+        partName: cf.part_name || '',
+        expenseId: cf.expense_id || null,
+        notes: cf.notes || '',
+        createdBy: cf.created_by || '',
+        createdAt: cf.created_at,
+      }));
+    }
+
+    if (!feesRes.error && Array.isArray(feesRes.data)) {
+      state.fees = feesRes.data.map((f: any) => ({
+        id: f.id,
+        concept: f.concept || '',
+        category: f.category || 'expensas_ordinarias',
+        totalAmount: Number(f.total_amount) || 0,
+        currency: f.currency || 'ARS',
+        recurrence: f.recurrence || 'mensual',
+        issueDate: f.issue_date || null,
+        dueDate: f.due_date || null,
+        distributionMode: f.distribution_mode || 'share_percentage',
+        allocations: typeof f.allocations === 'string' ? JSON.parse(f.allocations) : (f.allocations || []),
+        shares: typeof f.shares === 'string' ? JSON.parse(f.shares) : (f.shares || []),
+        targetMonth: f.target_month || '',
+        status: f.status || 'active',
+        notes: f.notes || '',
+        installmentsCount: f.installments_count || 1,
+        installmentNumber: f.installment_number || 1,
+        originalExpenseId: f.original_expense_id || null,
+        createdBy: f.created_by || '',
+        createdAt: f.created_at,
+      }));
+    }
+
+    if (!contactsRes.error && Array.isArray(contactsRes.data)) {
+      state.contacts = contactsRes.data.map((c: any) => ({
+        id: c.id,
+        name: c.name || '',
+        role: c.role || '',
+        phone: c.phone || '',
+        category: c.category || 'personal',
+        isEmergency: c.is_emergency ?? false,
+        availableHours: c.available_hours || '',
+        notes: c.notes || '',
+      }));
+    }
+
+    if (!docsRes.error && Array.isArray(docsRes.data)) {
+      state.documents = docsRes.data.map((d: any) => ({
+        id: d.id,
+        title: d.title || '',
+        category: d.category || 'otro',
+        fileUrl: d.file_url || '',
+        fileType: d.file_type || '',
+        fileSize: d.file_size || 0,
+        description: d.description || '',
+        uploadedAt: d.uploaded_at,
+      }));
+    }
+
+    if (!invRes.error && Array.isArray(invRes.data)) {
+      state.inventory = invRes.data.map((i: any) => ({
+        id: i.id,
+        name: i.name || '',
+        category: i.category || 'general',
+        location: i.location || '',
+        quantity: i.quantity || 0,
+        unit: i.unit || 'unidad',
+        status: i.status || 'good',
+        minThreshold: i.min_threshold || 1,
+        notes: i.notes || '',
+        lastChecked: i.last_checked,
+      }));
+    }
+
+    if (!incRes.error && Array.isArray(incRes.data)) {
+      state.incidents = incRes.data.map((inc: any) => ({
+        id: inc.id,
+        title: inc.title || '',
+        description: inc.description || '',
+        category: inc.category || 'general',
+        priority: inc.priority || 'medium',
+        status: inc.status || 'open',
+        reportedBy: inc.reported_by || '',
+        reportedAt: inc.reported_at,
+        assignedTo: inc.assigned_to || '',
+        resolvedAt: inc.resolved_at,
+        resolutionNotes: inc.resolution_notes || '',
+      }));
+    }
+
+    if (!notifsRes.error && Array.isArray(notifsRes.data)) {
+      state.notifications = notifsRes.data.map((n: any) => ({
+        id: n.id,
+        title: n.title || '',
+        body: n.body || '',
+        type: n.type || 'system',
+        bookingId: n.booking_id || undefined,
+        read: n.read ?? false,
+        createdAt: n.created_at,
+      }));
+    }
+
+    if (!settingsRes.error && Array.isArray(settingsRes.data) && settingsRes.data[0]) {
+      const s = settingsRes.data[0];
+      state.settings = {
+        ...state.settings,
+        houseName: s.house_name || state.settings?.houseName,
+        slogan: s.slogan || state.settings?.slogan,
+        cuitFideicomiso: s.cuit_fideicomiso || state.settings?.cuitFideicomiso,
+        titularCuenta: s.titular_cuenta || state.settings?.titularCuenta,
+        cbu: s.cbu || state.settings?.cbu,
+        aliasBancario: s.alias_bancario || state.settings?.aliasBancario,
+        bancoNombre: s.banco_nombre || state.settings?.bancoNombre,
+        location: s.location || state.settings?.location,
+        checkInTime: s.check_in_time || state.settings?.checkInTime,
+        checkOutTime: s.check_out_time || state.settings?.checkOutTime,
+        logoUrl: s.logo_url || state.settings?.logoUrl,
+        wifiSsid: s.wifi_ssid || state.settings?.wifiSsid,
+        wifiPassword: s.wifi_password || state.settings?.wifiPassword,
+        updatedAt: s.updated_at || new Date().toISOString(),
+      };
+    }
+
+    if (appStateRes?.data?.data) {
+      if (Array.isArray(appStateRes.data.data.blocks)) {
+        state.blocks = appStateRes.data.data.blocks;
+      }
+      if (Array.isArray(appStateRes.data.data.rules)) {
+        state.rules = appStateRes.data.data.rules;
+      }
+    }
+
+    memoryServerState = state;
+    try {
+      fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+    } catch {}
+
+    return state;
+  } catch (err) {
+    console.warn('[Supabase Sync] Error recuperando datos canónicos de Supabase:', err);
+    return currentState;
+  }
+}
+
+// Initialize seed on startup and hydrate directly from Supabase
 loadServerState(true);
 
 if (supabaseServerClient) {
-  (async () => {
-    try {
-      const { data, error } = await supabaseServerClient.from('app_state').select('data').eq('id', 'default_app_state').single();
-      if (!error && data?.data) {
-        console.log('[Supabase Startup Sync] ¡Estado descargado e hidratado desde Supabase!');
-        memoryServerState = data.data;
-        try {
-          fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(data.data, null, 2), 'utf-8');
-        } catch (e) {}
-      }
-    } catch (err: any) {
-      console.warn('[Supabase Startup Sync] Aviso:', err?.message || err);
-    }
-  })();
+  fetchAuthoritativeStateFromSupabase().then(() => {
+    console.log('[Supabase Startup Sync] ¡Tablas y datos relacionales descargados e hidratados con éxito!');
+  }).catch((err) => {
+    console.warn('[Supabase Startup Sync] Aviso:', err?.message || err);
+  });
 }
 
 // 0. Real-time Server-Sent Events stream for instant cross-session sync (< 50ms)
@@ -1226,6 +1472,8 @@ app.post('/api/supabase/push', async (_req, res) => {
       updated_at: new Date().toISOString()
     }, { onConflict: 'id' });
 
+    syncRelationalTablesToSupabase(state).catch(() => {});
+
     if (error) {
       if (error.code === 'PGRST205' || error.code === '42P01') {
         return res.json({
@@ -1247,32 +1495,26 @@ app.post('/api/supabase/pull', async (_req, res) => {
     return res.status(400).json({ success: false, message: 'Supabase no está configurado.' });
   }
   try {
-    const { data, error } = await supabaseServerClient
-      .from('app_state')
-      .select('data')
-      .eq('id', 'default_app_state')
-      .single();
-
-    if (error) {
-      return res.json({ success: false, message: error.message });
-    }
-    if (data?.data) {
-      saveServerState(data.data);
-      return res.json({ success: true, message: '¡Datos descargados desde Supabase e importados!' });
-    }
-    return res.json({ success: false, message: 'No se encontraron datos en Supabase.' });
+    const state = await fetchAuthoritativeStateFromSupabase();
+    broadcastSyncEvent('state_updated', { settings: state.settings, updatedAt: state.updatedAt });
+    return res.json({ success: true, message: '¡Datos descargados desde Supabase e importados exitosamente!', state });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 1. Get full App State (Canonical Cloud Truth)
-app.get('/api/app-state', (_req, res) => {
+// 1. Get full App State (Canonical Database Truth directly from Supabase)
+app.get('/api/app-state', async (_req, res) => {
   try {
+    if (supabaseServerClient) {
+      const data = await fetchAuthoritativeStateFromSupabase();
+      return res.json({ success: true, data, source: 'supabase_authoritative' });
+    }
     const data = loadServerState(true);
-    return res.json({ success: true, data });
+    return res.json({ success: true, data, source: 'disk_fallback' });
   } catch (err: unknown) {
-    return res.status(500).json({ success: false, error: 'Error leyendo estado en servidor' });
+    const data = loadServerState(true);
+    return res.json({ success: true, data, source: 'error_fallback' });
   }
 });
 
@@ -1346,8 +1588,34 @@ app.post('/api/app-state', (req, res) => {
 });
 
 // 2b. Dedicated Settings Endpoints (Canonical Cloud Database for Ajustes)
-app.get('/api/settings', (_req, res) => {
+app.get('/api/settings', async (_req, res) => {
   try {
+    if (supabaseServerClient) {
+      const { data, error } = await supabaseServerClient.from('settings').select('*').limit(1);
+      if (!error && Array.isArray(data) && data[0]) {
+        const s = data[0];
+        const state = loadServerState(true);
+        state.settings = {
+          ...state.settings,
+          houseName: s.house_name || state.settings?.houseName,
+          slogan: s.slogan || state.settings?.slogan,
+          cuitFideicomiso: s.cuit_fideicomiso || state.settings?.cuitFideicomiso,
+          titularCuenta: s.titular_cuenta || state.settings?.titularCuenta,
+          cbu: s.cbu || state.settings?.cbu,
+          aliasBancario: s.alias_bancario || state.settings?.aliasBancario,
+          bancoNombre: s.banco_nombre || state.settings?.bancoNombre,
+          location: s.location || state.settings?.location,
+          checkInTime: s.check_in_time || state.settings?.checkInTime,
+          checkOutTime: s.check_out_time || state.settings?.checkOutTime,
+          logoUrl: s.logo_url || state.settings?.logoUrl,
+          wifiSsid: s.wifi_ssid || state.settings?.wifiSsid,
+          wifiPassword: s.wifi_password || state.settings?.wifiPassword,
+          updatedAt: s.updated_at || new Date().toISOString(),
+        };
+        saveServerState(state);
+        return res.json({ success: true, settings: state.settings, source: 'supabase' });
+      }
+    }
     const state = loadServerState(true);
     return res.json({ success: true, settings: state.settings || {} });
   } catch (err: unknown) {
@@ -1370,6 +1638,31 @@ const handleSaveSettings = async (req: express.Request, res: express.Response) =
     };
 
     saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        const s = state.settings;
+        await supabaseServerClient.from('settings').upsert({
+          id: 'default',
+          house_name: s.houseName || 'Estancia El Desayuno',
+          slogan: s.slogan || 'Cuatro Partes, Un Mismo Objetivo',
+          cuit_fideicomiso: s.cuitFideicomiso || '',
+          titular_cuenta: s.titularCuenta || '',
+          cbu: s.cbu || '',
+          alias_bancario: s.aliasBancario || '',
+          banco_nombre: s.bancoNombre || '',
+          location: s.location || '',
+          check_in_time: s.checkInTime || '14:00',
+          check_out_time: s.checkOutTime || '11:00',
+          logo_url: s.logoUrl || '',
+          wifi_ssid: s.wifiSsid || '',
+          wifi_password: s.wifiPassword || '',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+      } catch (sbErr) {
+        console.error('Error guardando settings en Supabase:', sbErr);
+      }
+    }
 
     // Also push to Cloudflare D1 if configured
     const actId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -1424,8 +1717,39 @@ app.post('/api/settings', handleSaveSettings);
 app.put('/api/settings', handleSaveSettings);
 
 // 3. Get bookings from server
-app.get('/api/bookings', (_req, res) => {
+app.get('/api/bookings', async (_req, res) => {
   try {
+    if (supabaseServerClient) {
+      const { data, error } = await supabaseServerClient.from('bookings').select('*').order('check_in_date');
+      if (!error && Array.isArray(data)) {
+        const bookings = data.map((b: any) => ({
+          id: b.id,
+          userId: b.user_id,
+          userName: b.user_name,
+          userColor: b.user_color || '#16A34A',
+          partName: b.part_name || '',
+          checkInDate: b.check_in_date,
+          checkOutDate: b.check_out_date,
+          totalDays: b.total_days,
+          guestsCount: b.guests_count || 1,
+          status: b.status || 'confirmed',
+          arrivalTime: b.arrival_time || '14:00',
+          notes: b.notes || '',
+          cleaningFee: b.cleaning_fee || 0,
+          maintenanceFee: b.maintenance_fee || 0,
+          depositAmount: b.deposit_amount || 0,
+          sharePercentage: b.share_percentage,
+          cancellationReason: b.cancellation_reason || '',
+          cancelledAt: b.cancelled_at,
+          cancelledBy: b.cancelled_by,
+          createdAt: b.created_at,
+        }));
+        const state = loadServerState();
+        state.bookings = bookings;
+        saveServerState(state);
+        return res.json({ success: true, bookings, source: 'supabase' });
+      }
+    }
     const state = loadServerState();
     return res.json({ success: true, bookings: state.bookings || [] });
   } catch (err: unknown) {
@@ -1709,8 +2033,35 @@ app.post('/api/bookings/:id/cancel', (req, res) => {
 });
 
 // 6. Users endpoints
-app.get('/api/users', (_req, res) => {
+app.get('/api/users', async (_req, res) => {
   try {
+    if (supabaseServerClient) {
+      const { data, error } = await supabaseServerClient.from('users').select('*').order('name');
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const users = data.map((u: any) => ({
+          id: u.id,
+          name: u.name || '',
+          username: u.username || '',
+          email: u.email || '',
+          phone: u.phone || '',
+          role: u.role || 'owner',
+          cabezaNumber: u.cabeza_number || 0,
+          partName: u.part_name || '',
+          color: u.color || '#000000',
+          active: u.active ?? true,
+          annualQuotaDays: u.annual_quota_days || 30,
+          pendingDays: u.pending_days || 0,
+          usedDays: u.used_days || 0,
+          sharePercentage: typeof u.share_percentage === 'number' ? u.share_percentage : (parseFloat(u.share_percentage) || 0),
+          avatarInitials: u.avatar_initials || '',
+          createdAt: u.created_at,
+        }));
+        const state = loadServerState();
+        state.users = users;
+        saveServerState(state);
+        return res.json({ success: true, users, source: 'supabase' });
+      }
+    }
     const state = loadServerState();
     return res.json({ success: true, users: state.users || [] });
   } catch (err: unknown) {
@@ -1718,7 +2069,7 @@ app.get('/api/users', (_req, res) => {
   }
 });
 
-app.post('/api/users', (req, res) => {
+app.post('/api/users', async (req, res) => {
   try {
     const user = req.body;
     if (!user || !user.id) {
@@ -1734,9 +2085,57 @@ app.post('/api/users', (req, res) => {
     }
     state.users = users;
     saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('users').upsert({
+          id: user.id,
+          name: user.name || '',
+          username: user.username || '',
+          email: user.email || '',
+          phone: user.phone || '',
+          role: user.role || 'owner',
+          cabeza_number: user.cabezaNumber || 0,
+          part_name: user.partName || '',
+          color: user.color || '#000000',
+          active: user.active ?? true,
+          annual_quota_days: user.annualQuotaDays || 30,
+          pending_days: user.pendingDays || 0,
+          used_days: user.usedDays || 0,
+          share_percentage: typeof user.sharePercentage === 'number' ? user.sharePercentage : (parseFloat(user.sharePercentage) || 0),
+          avatar_initials: user.avatarInitials || '',
+          created_at: user.createdAt || new Date().toISOString(),
+        }, { onConflict: 'id' });
+      } catch (sbErr) {
+        console.error('Error guardando usuario en Supabase:', sbErr);
+      }
+    }
+
     return res.json({ success: true, user });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error guardando usuario' });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const state = loadServerState();
+    const users = Array.isArray(state.users) ? state.users : [];
+    state.users = users.filter((u: any) => u.id !== userId);
+    saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('users').delete().eq('id', userId);
+      } catch (e) {
+        console.error('Error eliminando usuario de Supabase:', e);
+      }
+    }
+
+    return res.json({ success: true, message: 'Usuario eliminado correctamente' });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando usuario' });
   }
 });
 
@@ -1893,12 +2292,15 @@ app.post('/api/blocks', (req, res) => {
   }
 });
 
-app.delete('/api/blocks/:id', (req, res) => {
+app.delete('/api/blocks/:id', async (req, res) => {
   try {
     const blockId = req.params.id;
     const state = loadServerState();
     state.blocks = (state.blocks || []).filter((b: any) => b.id !== blockId);
     saveServerState(state);
+    if (supabaseServerClient) {
+      try { await supabaseServerClient.from('blocks').delete().eq('id', blockId); } catch {}
+    }
     return res.json({ success: true });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error eliminando bloqueo' });
@@ -1937,12 +2339,15 @@ app.post('/api/rules', (req, res) => {
   }
 });
 
-app.delete('/api/rules/:id', (req, res) => {
+app.delete('/api/rules/:id', async (req, res) => {
   try {
     const ruleId = req.params.id;
     const state = loadServerState();
     state.rules = (state.rules || []).filter((r: any) => r.id !== ruleId);
     saveServerState(state);
+    if (supabaseServerClient) {
+      try { await supabaseServerClient.from('rules').delete().eq('id', ruleId); } catch {}
+    }
     return res.json({ success: true, rules: state.rules });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error eliminando regla' });
@@ -1981,12 +2386,15 @@ app.post('/api/contacts', (req, res) => {
   }
 });
 
-app.delete('/api/contacts/:id', (req, res) => {
+app.delete('/api/contacts/:id', async (req, res) => {
   try {
     const cntId = req.params.id;
     const state = loadServerState();
     state.contacts = (state.contacts || []).filter((c: any) => c.id !== cntId);
     saveServerState(state);
+    if (supabaseServerClient) {
+      try { await supabaseServerClient.from('contacts').delete().eq('id', cntId); } catch {}
+    }
     return res.json({ success: true, contacts: state.contacts });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error eliminando contacto' });
@@ -2025,12 +2433,15 @@ app.post('/api/documents', (req, res) => {
   }
 });
 
-app.delete('/api/documents/:id', (req, res) => {
+app.delete('/api/documents/:id', async (req, res) => {
   try {
     const docId = req.params.id;
     const state = loadServerState();
     state.documents = (state.documents || []).filter((d: any) => d.id !== docId);
     saveServerState(state);
+    if (supabaseServerClient) {
+      try { await supabaseServerClient.from('documents').delete().eq('id', docId); } catch {}
+    }
     return res.json({ success: true, documents: state.documents });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error eliminando documento' });
@@ -2069,12 +2480,15 @@ app.post('/api/inventory', (req, res) => {
   }
 });
 
-app.delete('/api/inventory/:id', (req, res) => {
+app.delete('/api/inventory/:id', async (req, res) => {
   try {
     const invId = req.params.id;
     const state = loadServerState();
     state.inventory = (state.inventory || []).filter((i: any) => i.id !== invId);
     saveServerState(state);
+    if (supabaseServerClient) {
+      try { await supabaseServerClient.from('inventory').delete().eq('id', invId); } catch {}
+    }
     return res.json({ success: true, inventory: state.inventory });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error eliminando inventario' });
@@ -2114,8 +2528,41 @@ app.post('/api/incidents', (req, res) => {
 });
 
 // 14. Fee Collections
-app.get('/api/fees', (_req, res) => {
+app.get('/api/fees', async (_req, res) => {
   try {
+    if (supabaseServerClient) {
+      const { data, error } = await supabaseServerClient
+        .from('fee_collections')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        const fees = data.map((f: any) => ({
+          id: f.id,
+          concept: f.concept || '',
+          category: f.category || 'expensas_ordinarias',
+          totalAmount: Number(f.total_amount) || 0,
+          currency: f.currency || 'ARS',
+          recurrence: f.recurrence || 'mensual',
+          issueDate: f.issue_date || null,
+          dueDate: f.due_date || null,
+          distributionMode: f.distribution_mode || 'share_percentage',
+          allocations: typeof f.allocations === 'string' ? JSON.parse(f.allocations) : (f.allocations || []),
+          shares: typeof f.shares === 'string' ? JSON.parse(f.shares) : (f.shares || []),
+          targetMonth: f.target_month || '',
+          status: f.status || 'active',
+          notes: f.notes || '',
+          installmentsCount: f.installments_count || 1,
+          installmentNumber: f.installment_number || 1,
+          originalExpenseId: f.original_expense_id || null,
+          createdBy: f.created_by || '',
+          createdAt: f.created_at,
+        }));
+        const state = loadServerState();
+        state.fees = fees;
+        saveServerState(state);
+        return res.json({ success: true, fees, source: 'supabase' });
+      }
+    }
     const state = loadServerState();
     return res.json({ success: true, fees: state.fees || [] });
   } catch (err: unknown) {
@@ -2123,7 +2570,7 @@ app.get('/api/fees', (_req, res) => {
   }
 });
 
-app.post('/api/fees', (req, res) => {
+app.post('/api/fees', async (req, res) => {
   try {
     const fee = req.body;
     if (!fee || !fee.id) {
@@ -2139,18 +2586,54 @@ app.post('/api/fees', (req, res) => {
     }
     state.fees = fees;
     saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('fee_collections').upsert({
+          id: fee.id,
+          concept: fee.concept || '',
+          category: fee.category || 'expensas_ordinarias',
+          total_amount: fee.totalAmount || 0,
+          currency: fee.currency || 'ARS',
+          recurrence: fee.recurrence || 'mensual',
+          issue_date: fee.issueDate || null,
+          due_date: fee.dueDate || null,
+          distribution_mode: fee.distributionMode || 'proporcional',
+          allocations: fee.allocations ? JSON.stringify(fee.allocations) : '[]',
+          status: fee.status || 'active',
+          created_by: fee.createdBy || '',
+          created_at: fee.createdAt || new Date().toISOString(),
+          notes: fee.notes || '',
+          installments_count: fee.installmentsCount || 1,
+          installment_number: fee.installmentNumber || 1,
+          original_expense_id: fee.originalExpenseId || null,
+        }, { onConflict: 'id' });
+      } catch (sbErr) {
+        console.error('Error upserting fee collection to Supabase:', sbErr);
+      }
+    }
+    broadcastSyncEvent('fees_updated', { fees: state.fees });
     return res.json({ success: true, fee });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error guardando cobranza' });
   }
 });
 
-app.delete('/api/fees/:id', (req, res) => {
+app.delete('/api/fees/:id', async (req, res) => {
   try {
     const feeId = req.params.id;
     const state = loadServerState();
     state.fees = (state.fees || []).filter((f: any) => f.id !== feeId);
     saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('fee_collections').delete().eq('id', feeId);
+      } catch (sbErr) {
+        console.error('Error deleting fee collection from Supabase:', sbErr);
+      }
+    }
+    broadcastSyncEvent('fees_updated', { fees: state.fees });
     return res.json({ success: true });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error eliminando cobranza' });
@@ -2158,8 +2641,36 @@ app.delete('/api/fees/:id', (req, res) => {
 });
 
 // 15. Expenses
-app.get('/api/expenses', (_req, res) => {
+app.get('/api/expenses', async (_req, res) => {
   try {
+    if (supabaseServerClient) {
+      const { data, error } = await supabaseServerClient
+        .from('expenses')
+        .select('*')
+        .order('date', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        const expenses = data.map((e: any) => ({
+          id: e.id,
+          date: e.date || '',
+          concept: e.concept || '',
+          amount: Number(e.amount) || 0,
+          currency: e.currency || 'ARS',
+          category: e.category || 'otro',
+          provider: e.provider || '',
+          status: e.status || 'paid',
+          createdBy: e.created_by || '',
+          receiptUrl: e.receipt_url || '',
+          paymentMethod: e.payment_method || 'transfer',
+          periodMonth: e.period_month || '',
+          notes: e.notes || '',
+          createdAt: e.created_at,
+        }));
+        const state = loadServerState();
+        state.expenses = expenses;
+        saveServerState(state);
+        return res.json({ success: true, expenses, source: 'supabase' });
+      }
+    }
     const state = loadServerState();
     return res.json({ success: true, expenses: state.expenses || [] });
   } catch (err: unknown) {
@@ -2167,7 +2678,7 @@ app.get('/api/expenses', (_req, res) => {
   }
 });
 
-app.post('/api/expenses', (req, res) => {
+app.post('/api/expenses', async (req, res) => {
   try {
     const expense = req.body;
     if (!expense || !expense.id) {
@@ -2183,21 +2694,159 @@ app.post('/api/expenses', (req, res) => {
     }
     state.expenses = expenses;
     saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('expenses').upsert({
+          id: expense.id,
+          date: expense.date || null,
+          concept: expense.concept || '',
+          amount: expense.amount || 0,
+          currency: expense.currency || 'ARS',
+          category: expense.category || 'otro',
+          provider: expense.provider || '',
+          status: expense.status || 'paid',
+          created_by: expense.createdBy || '',
+          receipt_url: expense.receiptUrl || '',
+          payment_method: expense.paymentMethod || 'cash',
+          period_month: expense.periodMonth || '',
+          notes: expense.notes || '',
+          created_at: expense.createdAt || new Date().toISOString(),
+        }, { onConflict: 'id' });
+      } catch (sbErr) {
+        console.error('Error upserting expense to Supabase:', sbErr);
+      }
+    }
+    broadcastSyncEvent('expenses_updated', { expenses: state.expenses });
     return res.json({ success: true, expense });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error guardando gasto' });
   }
 });
 
-app.delete('/api/expenses/:id', (req, res) => {
+app.delete('/api/expenses/:id', async (req, res) => {
   try {
     const expId = req.params.id;
     const state = loadServerState();
     state.expenses = (state.expenses || []).filter((e: any) => e.id !== expId);
     saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('expenses').delete().eq('id', expId);
+      } catch (sbErr) {
+        console.error('Error deleting expense from Supabase:', sbErr);
+      }
+    }
+    broadcastSyncEvent('expenses_updated', { expenses: state.expenses });
     return res.json({ success: true });
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error eliminando gasto' });
+  }
+});
+
+// 16. Cash Flow / Cajas y Cuentas
+app.get('/api/cash-flow', async (_req, res) => {
+  try {
+    if (supabaseServerClient) {
+      const { data, error } = await supabaseServerClient
+        .from('cash_flow')
+        .select('*')
+        .order('date', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        const transactions = data.map((cf: any) => ({
+          id: cf.id,
+          type: cf.type || 'ingreso',
+          category: cf.category || 'otro_ingreso',
+          concept: cf.concept || '',
+          amount: Number(cf.amount) || 0,
+          currency: cf.currency || 'ARS',
+          date: cf.date || '',
+          userId: cf.user_id || null,
+          userName: cf.user_name || '',
+          partName: cf.part_name || '',
+          expenseId: cf.expense_id || null,
+          notes: cf.notes || '',
+          createdBy: cf.created_by || '',
+          createdAt: cf.created_at,
+        }));
+        const state = loadServerState();
+        state.cashFlow = transactions;
+        saveServerState(state);
+        return res.json({ success: true, transactions, cashFlow: transactions, source: 'supabase' });
+      }
+    }
+    const state = loadServerState();
+    return res.json({ success: true, transactions: state.cashFlow || [], cashFlow: state.cashFlow || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error obteniendo movimientos de caja' });
+  }
+});
+
+app.post('/api/cash-flow', async (req, res) => {
+  try {
+    const tx = req.body;
+    if (!tx || !tx.id) {
+      return res.status(400).json({ success: false, error: 'Transacción no válida' });
+    }
+    const state = loadServerState();
+    const cashFlow = Array.isArray(state.cashFlow) ? state.cashFlow : [];
+    const idx = cashFlow.findIndex((c: any) => c.id === tx.id);
+    if (idx >= 0) {
+      cashFlow[idx] = tx;
+    } else {
+      cashFlow.unshift(tx);
+    }
+    state.cashFlow = cashFlow;
+    saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('cash_flow').upsert({
+          id: tx.id,
+          type: tx.type || 'ingreso',
+          category: tx.category || 'otro_ingreso',
+          concept: tx.concept || '',
+          amount: tx.amount || 0,
+          currency: tx.currency || 'ARS',
+          date: tx.date || null,
+          user_id: tx.userId || null,
+          user_name: tx.userName || '',
+          part_name: tx.partName || '',
+          expense_id: tx.expenseId || null,
+          notes: tx.notes || '',
+          created_by: tx.createdBy || '',
+          created_at: tx.createdAt || new Date().toISOString(),
+        }, { onConflict: 'id' });
+      } catch (sbErr) {
+        console.error('Error upserting cash flow to Supabase:', sbErr);
+      }
+    }
+    broadcastSyncEvent('cash_flow_updated', { cashFlow: state.cashFlow });
+    return res.json({ success: true, tx });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando transacción de caja' });
+  }
+});
+
+app.delete('/api/cash-flow/:id', async (req, res) => {
+  try {
+    const txId = req.params.id;
+    const state = loadServerState();
+    state.cashFlow = (state.cashFlow || []).filter((c: any) => c.id !== txId);
+    saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('cash_flow').delete().eq('id', txId);
+      } catch (sbErr) {
+        console.error('Error deleting cash flow transaction from Supabase:', sbErr);
+      }
+    }
+    broadcastSyncEvent('cash_flow_updated', { cashFlow: state.cashFlow });
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando transacción de caja' });
   }
 });
 async function bootstrap() {

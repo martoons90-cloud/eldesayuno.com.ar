@@ -269,6 +269,50 @@ class SupabaseService {
       return { success: false, message: `Error descargando de Supabase: ${err.message}` };
     }
   }
+
+  public async deleteUser(userId: string): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      await this.client.from('users').delete().eq('id', userId);
+      return true;
+    } catch (err) {
+      console.error('Error eliminando usuario de Supabase:', err);
+      return false;
+    }
+  }
+
+  public async deleteExpense(expenseId: string): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      await this.client.from('expenses').delete().eq('id', expenseId);
+      return true;
+    } catch (err) {
+      console.error('Error eliminando gasto de Supabase:', err);
+      return false;
+    }
+  }
+
+  public async deleteCashFlowTransaction(txId: string): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      await this.client.from('cash_flow').delete().eq('id', txId);
+      return true;
+    } catch (err) {
+      console.error('Error eliminando transacción de caja de Supabase:', err);
+      return false;
+    }
+  }
+
+  public async deleteFeeCollection(feeId: string): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      await this.client.from('fee_collections').delete().eq('id', feeId);
+      return true;
+    } catch (err) {
+      console.error('Error eliminando cobranza de Supabase:', err);
+      return false;
+    }
+  }
 }
 
 export const supabaseService = new SupabaseService();

@@ -247,6 +247,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   };
 
+  const handleDeleteUserConfirm = (user: User) => {
+    if (user.id === currentUser.id) {
+      alert('No puede eliminar su propio usuario administrador.');
+      return;
+    }
+    if (window.confirm(`¿Está seguro de que desea eliminar a "${user.name}"? Esta acción eliminará al copropietario del sistema y de Supabase.`)) {
+      storageService.deleteUser(user.id);
+    }
+  };
+
   // Handle Date Block Save
   const handleSaveBlock = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1244,17 +1254,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           {u.role !== 'admin' && (
-                            <button
-                              onClick={() => handleToggleUserActive(u)}
-                              className={`p-1 text-[10px] font-semibold cursor-pointer ${
-                                u.active
-                                  ? 'text-amber-700 hover:text-amber-900'
-                                  : 'text-emerald-700 hover:text-emerald-900'
-                              }`}
-                              title={u.active ? 'Desactivar acceso' : 'Habilitar acceso'}
-                            >
-                              {u.active ? 'Deshabilitar' : 'Activar'}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleToggleUserActive(u)}
+                                className={`p-1 text-[10px] font-semibold cursor-pointer ${
+                                  u.active
+                                    ? 'text-amber-700 hover:text-amber-900'
+                                    : 'text-emerald-700 hover:text-emerald-900'
+                                }`}
+                                title={u.active ? 'Desactivar acceso' : 'Habilitar acceso'}
+                              >
+                                {u.active ? 'Deshabilitar' : 'Activar'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUserConfirm(u)}
+                                className="p-1 text-red-600 hover:text-red-800 cursor-pointer"
+                                title="Eliminar copropietario"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>

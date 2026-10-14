@@ -131,6 +131,9 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
   useEffect(() => {
     loadCollections();
+    storageService.fetchFeesFromDatabase().then((fresh) => {
+      if (fresh && Array.isArray(fresh)) setFeeCollections(fresh);
+    });
     const unsub = storageService.subscribe(loadCollections);
     return () => unsub();
   }, []);

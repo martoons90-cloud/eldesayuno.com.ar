@@ -343,6 +343,14 @@ class StorageService {
             hasChanges = true;
           }
         }
+        if (data.data.cashFlow && Array.isArray(data.data.cashFlow)) {
+          const currentCFRaw = localStorage.getItem(CASH_FLOW_KEY) || '[]';
+          const serverCFRaw = JSON.stringify(data.data.cashFlow);
+          if (currentCFRaw !== serverCFRaw) {
+            localStorage.setItem(CASH_FLOW_KEY, serverCFRaw);
+            hasChanges = true;
+          }
+        }
         if (data.data.settings && typeof data.data.settings === 'object') {
           const currentSettings = this.getSettings();
           const serverNormalized = normalizeSettings(data.data.settings);
@@ -695,15 +703,27 @@ class StorageService {
 
   public saveUser(user: User) {
     const users = this.getUsers();
-    const index = users.findIndex(
-      (u) => u.id === user.id || u.email === user.email || (u.username && user.username && u.username === user.username)
-    );
+    const index = users.findIndex((u) => {
+      if (user.id && u.id === user.id) return true;
+      if (!user.id) {
+        if (user.email && user.email.trim() !== '' && u.email && u.email.trim().toLowerCase() === user.email.trim().toLowerCase()) return true;
+        if (user.username && user.username.trim() !== '' && u.username && u.username.trim().toLowerCase() === user.username.trim().toLowerCase()) return true;
+      }
+      return false;
+    });
+
     let updated: User[];
+    const targetUser = { ...user };
     if (index >= 0) {
       updated = [...users];
-      updated[index] = { ...users[index], ...user };
+      const targetId = targetUser.id || users[index].id;
+      targetUser.id = targetId;
+      updated[index] = { ...users[index], ...targetUser };
     } else {
-      updated = [...users, user];
+      if (!targetUser.id) {
+        targetUser.id = 'user-' + Date.now();
+      }
+      updated = [...users, targetUser];
     }
     localStorage.setItem(USERS_KEY, JSON.stringify(updated));
     this.notify(false);
@@ -711,7 +731,7 @@ class StorageService {
     fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user),
+      body: JSON.stringify(targetUser),
     }).catch((err) => console.error('Error guardando usuario en servidor:', err));
   }
 
@@ -785,6 +805,14 @@ class StorageService {
     const users = this.getUsers().filter((u) => u.id !== userId);
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
     this.notify(false);
+
+    fetch(`/api/users/${userId}`, {
+      method: 'DELETE',
+    }).catch((err) => console.error('Error eliminando usuario en servidor:', err));
+
+    if (supabaseService.isConnected()) {
+      supabaseService.deleteUser(userId);
+    }
   }
 
   // Transfer Administrator role to another user
@@ -1576,6 +1604,8 @@ class StorageService {
     fetch(`/api/fees/${collectionId}`, {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando cobranza en servidor:', err));
+
+    supabaseService.deleteFeeCollection(collectionId).catch(() => {});
   }
 
   // Notifications
@@ -1678,6 +1708,8 @@ class StorageService {
     fetch(`/api/expenses/${expenseId}`, {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando gasto en servidor:', err));
+
+    supabaseService.deleteExpense(expenseId).catch(() => {});
   }
 
   // Cash Flow & Account Ledger
@@ -1709,6 +1741,63 @@ class StorageService {
     fetch(`/api/cash-flow/${txId}`, {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando transacción de caja:', err));
+
+    supabaseService.deleteCashFlowTransaction(txId).catch(() => {});
+  }
+
+  public async fetchExpensesFromDatabase(): Promise<ExpenseItem[]> {
+    if (typeof window === 'undefined') return this.getExpenses();
+    try {
+      const res = await fetch(`/api/expenses?_t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.expenses)) {
+          localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
+          this.notify(false);
+          return data.expenses;
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching expenses from database:', err);
+    }
+    return this.getExpenses();
+  }
+
+  public async fetchCashFlowFromDatabase(): Promise<CashFlowTransaction[]> {
+    if (typeof window === 'undefined') return this.getCashFlows();
+    try {
+      const res = await fetch(`/api/cash-flow?_t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.transactions || data.cashFlow;
+        if (data.success && Array.isArray(list)) {
+          localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(list));
+          this.notify(false);
+          return list;
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching cash flow from database:', err);
+    }
+    return this.getCashFlows();
+  }
+
+  public async fetchFeesFromDatabase(): Promise<FeeCollection[]> {
+    if (typeof window === 'undefined') return this.getFeeCollections();
+    try {
+      const res = await fetch(`/api/fees?_t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.fees)) {
+          localStorage.setItem(FEES_KEY, JSON.stringify(data.fees));
+          this.notify(false);
+          return data.fees;
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching fees from database:', err);
+    }
+    return this.getFeeCollections();
   }
 
   // Get complete package of local data for D1 push & backup
