@@ -359,7 +359,14 @@ class StorageService {
           let isDifferent = false;
           for (const key of Object.keys(serverNormalized) as (keyof TrustSettings)[]) {
             if (key === 'updatedAt') continue;
-            if (currentSettings[key] !== serverNormalized[key]) {
+            const val1 = currentSettings[key];
+            const val2 = serverNormalized[key];
+            if (Array.isArray(val1) && Array.isArray(val2)) {
+              if (JSON.stringify(val1) !== JSON.stringify(val2)) {
+                isDifferent = true;
+                break;
+              }
+            } else if (val1 !== val2) {
               isDifferent = true;
               break;
             }
@@ -1208,11 +1215,31 @@ class StorageService {
         const data = await res.json();
         if (data.success && data.settings && typeof data.settings === 'object') {
           const normalized = normalizeSettings(data.settings);
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
-          if (normalized.logoUrl) {
-            localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
+          const currentSettings = this.getSettings();
+
+          let isDifferent = false;
+          for (const key of Object.keys(normalized) as (keyof TrustSettings)[]) {
+            if (key === 'updatedAt') continue;
+            const val1 = currentSettings[key];
+            const val2 = normalized[key];
+            if (Array.isArray(val1) && Array.isArray(val2)) {
+              if (JSON.stringify(val1) !== JSON.stringify(val2)) {
+                isDifferent = true;
+                break;
+              }
+            } else if (val1 !== val2) {
+              isDifferent = true;
+              break;
+            }
           }
-          this.notify(false, true);
+
+          if (isDifferent) {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
+            if (normalized.logoUrl) {
+              localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
+            }
+            this.notify(false, true);
+          }
           return normalized;
         }
       }
