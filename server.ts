@@ -3,10 +3,26 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/supabase-js';
 
 import fs from 'fs';
 
 dotenv.config();
+
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zzfmsxrqhshmoiaysjtr.supabase.co';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6Zm1zeHJxaHNobW9pYXlzanRyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTg3OTgzMCwiZXhwIjoyMTA3NTU1ODMwfQ.KId3yfr-2Ss2ZaACtKegE3s0th1ykCKJEG1pHPzHp3g';
+
+let supabaseServerClient: SupabaseClient | null = null;
+if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  try {
+    supabaseServerClient = createSupabaseClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    });
+    console.log('[Supabase Server] Cliente inicializado correctamente para:', SUPABASE_URL);
+  } catch (err) {
+    console.error('[Supabase Server] Error inicializando cliente:', err);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -878,6 +894,26 @@ function broadcastSyncEvent(eventType: string, payload?: any): void {
   }
 }
 
+async function syncStateToSupabase(state: Record<string, any>): Promise<boolean> {
+  if (!supabaseServerClient) return false;
+  try {
+    const { error } = await supabaseServerClient.from('app_state').upsert({
+      id: 'default_app_state',
+      data: state,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+    if (error) {
+      console.warn('[Supabase Server Sync] Warning:', error.message);
+      return false;
+    }
+    console.log('[Supabase Server Sync] Estado sincronizado exitosamente con Supabase.');
+    return true;
+  } catch (err: any) {
+    console.warn('[Supabase Server Sync] Exception:', err.message);
+    return false;
+  }
+}
+
 function saveServerState(state: Record<string, any>): void {
   try {
     state.updatedAt = new Date().toISOString();
@@ -886,13 +922,33 @@ function saveServerState(state: Record<string, any>): void {
     fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), 'utf-8');
     fs.renameSync(tempPath, STATE_FILE_PATH);
     broadcastSyncEvent('state_updated', { settings: state.settings, updatedAt: state.updatedAt });
+    
+    // Background push to Supabase
+    syncStateToSupabase(state).catch(() => {});
   } catch (err) {
     console.error('[Server State] Error escribiendo STATE_FILE_PATH:', err);
   }
 }
 
-// Initialize seed on startup
+// Initialize seed on startup and try hydrating from Supabase
 loadServerState(true);
+
+if (supabaseServerClient) {
+  (async () => {
+    try {
+      const { data, error } = await supabaseServerClient.from('app_state').select('data').eq('id', 'default_app_state').single();
+      if (!error && data?.data) {
+        console.log('[Supabase Startup Sync] ¡Estado descargado e hidratado desde Supabase!');
+        memoryServerState = data.data;
+        try {
+          fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(data.data, null, 2), 'utf-8');
+        } catch (e) {}
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Startup Sync] Aviso:', err?.message || err);
+    }
+  })();
+}
 
 // 0. Real-time Server-Sent Events stream for instant cross-session sync (< 50ms)
 app.get('/api/sync/events', (req, res) => {
@@ -918,6 +974,89 @@ app.get('/api/sync/events', (req, res) => {
     clearInterval(keepAlive);
     sseClients.delete(res);
   });
+});
+
+// Supabase Integration Server Endpoints
+app.get('/api/supabase/status', async (_req, res) => {
+  if (!supabaseServerClient) {
+    return res.json({ connected: false, message: 'Cliente Supabase no configurado' });
+  }
+  const startTime = Date.now();
+  try {
+    const { data, error } = await supabaseServerClient.from('app_state').select('id, updated_at').limit(1);
+    const latencyMs = Date.now() - startTime;
+    if (!error) {
+      return res.json({
+        connected: true,
+        tableExists: true,
+        latencyMs,
+        message: `Conectado exitosamente a Supabase (Latencia: ${latencyMs}ms). Tabla "app_state" lista.`,
+      });
+    }
+    if (error.code === 'PGRST205' || error.code === '42P01') {
+      return res.json({
+        connected: true,
+        tableExists: false,
+        latencyMs,
+        message: 'Conectado a Supabase pero la tabla "app_state" aún no fue creada. Ejecutá el script SQL provisto.',
+      });
+    }
+    return res.json({ connected: false, message: `Error de Supabase: ${error.message}` });
+  } catch (err: any) {
+    return res.status(500).json({ connected: false, message: err.message });
+  }
+});
+
+app.post('/api/supabase/push', async (_req, res) => {
+  if (!supabaseServerClient) {
+    return res.status(400).json({ success: false, message: 'Supabase no está configurado.' });
+  }
+  try {
+    const state = loadServerState(true);
+    const { error } = await supabaseServerClient.from('app_state').upsert({
+      id: 'default_app_state',
+      data: state,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+
+    if (error) {
+      if (error.code === 'PGRST205' || error.code === '42P01') {
+        return res.json({
+          success: false,
+          needsTable: true,
+          message: 'La tabla "app_state" no existe en Supabase. Ejecutá la consulta de inicialización en el SQL Editor.'
+        });
+      }
+      return res.json({ success: false, message: error.message });
+    }
+    return res.json({ success: true, message: '¡Sincronizado exitosamente a Supabase!' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/supabase/pull', async (_req, res) => {
+  if (!supabaseServerClient) {
+    return res.status(400).json({ success: false, message: 'Supabase no está configurado.' });
+  }
+  try {
+    const { data, error } = await supabaseServerClient
+      .from('app_state')
+      .select('data')
+      .eq('id', 'default_app_state')
+      .single();
+
+    if (error) {
+      return res.json({ success: false, message: error.message });
+    }
+    if (data?.data) {
+      saveServerState(data.data);
+      return res.json({ success: true, message: '¡Datos descargados desde Supabase e importados!' });
+    }
+    return res.json({ success: false, message: 'No se encontraron datos en Supabase.' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // 1. Get full App State (Canonical Cloud Truth)

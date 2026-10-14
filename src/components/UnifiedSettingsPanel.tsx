@@ -3,6 +3,7 @@ import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulCon
 import { storageService } from '../services/storageService';
 import { d1Service, D1Config } from '../services/d1Service';
 import { r2Service, R2Config } from '../services/r2Service';
+import { supabaseService, SupabaseConfig } from '../services/supabaseService';
 import { BrandLogo } from './BrandLogo';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { TransferAdminModal } from './TransferAdminModal';
@@ -616,6 +617,83 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   const [r2ConfigForm, setR2ConfigForm] = useState<R2Config>(r2Service.getConfig());
   const [r2Status, setR2Status] = useState<{ configured: boolean; connected: boolean; message?: string } | null>(null);
 
+  // Supabase State
+  const [supabaseConfigForm, setSupabaseConfigForm] = useState<SupabaseConfig>(supabaseService.getConfig());
+  const [supabaseLoading, setSupabaseLoading] = useState(false);
+  const [supabaseStatusMsg, setSupabaseStatusMsg] = useState('');
+
+  const handleTestSupabaseConnection = async () => {
+    setSupabaseLoading(true);
+    setSupabaseStatusMsg('Probrando conexión con Supabase...');
+    const res = await supabaseService.testConnection(supabaseConfigForm.url, supabaseConfigForm.anonKey);
+    setSupabaseStatusMsg(res.message);
+    setSupabaseLoading(false);
+  };
+
+  const handleSaveSupabaseConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    supabaseService.saveConfig(supabaseConfigForm);
+    showSuccess('Credenciales de Supabase guardadas correctamente.');
+  };
+
+  const handlePushDataToSupabase = async () => {
+    setDialogState({
+      isOpen: true,
+      title: 'Migrar / Guardar Datos en Supabase',
+      message: '¿Desea enviar y sincronizar todos los socios, gastos y datos actuales del fideicomiso a Supabase?',
+      type: 'confirm',
+      confirmText: 'Sí, Sincronizar',
+      cancelText: 'Cancelar',
+      onConfirm: async () => {
+        setSupabaseLoading(true);
+        const payload = storageService.getAllDataPackage();
+        const res = await supabaseService.pushDataToSupabase(payload);
+        setSupabaseLoading(false);
+        if (res.success) {
+          showSuccess(res.message);
+        } else {
+          setDialogState({
+            isOpen: true,
+            title: 'Atención Supabase',
+            message: res.message,
+            type: 'alert',
+            confirmText: 'Entendido',
+            onConfirm: () => {},
+          });
+        }
+      },
+    });
+  };
+
+  const handlePullDataFromSupabase = async () => {
+    setDialogState({
+      isOpen: true,
+      title: 'Descargar Datos desde Supabase',
+      message: '¿Descargar e importar los datos desde Supabase hacia la aplicación?',
+      type: 'confirm',
+      confirmText: 'Sí, Descargar',
+      cancelText: 'Cancelar',
+      onConfirm: async () => {
+        setSupabaseLoading(true);
+        const res = await supabaseService.pullDataFromSupabase();
+        setSupabaseLoading(false);
+        if (res.success && res.data) {
+          storageService.importBackupJSON(JSON.stringify(res.data));
+          showSuccess('¡Datos sincronizados exitosamente desde Supabase!');
+        } else {
+          setDialogState({
+            isOpen: true,
+            title: 'Error Supabase',
+            message: res.message,
+            type: 'alert',
+            confirmText: 'Entendido',
+            onConfirm: () => {},
+          });
+        }
+      },
+    });
+  };
+
   useEffect(() => {
     d1Service.checkServerStatus().then((info) => setD1StatusInfo(info));
     r2Service.checkServerStatus().then((info) => setR2Status(info));
@@ -895,10 +973,10 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     },
     {
       id: 'database',
-      label: 'Cloudflare D1 & Backup',
-      description: 'Conexión SQLite serverless, SQL y respaldos',
+      label: 'Supabase, D1 & Backup',
+      description: 'Conexión PostgreSQL Supabase, Cloudflare D1 y respaldos',
       icon: Database,
-      badge: d1Service.isConnected() ? '● D1' : '○ Local',
+      badge: supabaseService.isConnected() ? '⚡ Supabase' : d1Service.isConnected() ? '● D1' : '○ Local',
     },
   ];
 
@@ -2471,6 +2549,145 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           {/* ========================================================= */}
           {activeTab === 'database' && (
             <div className="space-y-6">
+              {/* ⚡ SUPABASE INTEGRATION CARD */}
+              <div className="p-5 bg-gradient-to-br from-[#122E1E] to-[#1B3B2B] text-white border border-[#2B543D] shadow-lg space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-800/60 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold">
+                      ⚡
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <span>Sincronización y Base de Datos Supabase</span>
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded">
+                          Recomendado
+                        </span>
+                      </h3>
+                      <p className="text-xs text-emerald-200/80">
+                        Base de datos PostgreSQL en la nube con soporte en tiempo real y sin límites de lecturas diarias.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded border ${
+                      supabaseService.isConnected()
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50'
+                        : 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        supabaseService.isConnected() ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                      }`}
+                    />
+                    <span>{supabaseService.isConnected() ? 'Supabase Conectado' : 'Supabase No Configurado'}</span>
+                  </span>
+                </div>
+
+                <form onSubmit={handleSaveSupabaseConfig} className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                  <div>
+                    <label className="block font-bold text-emerald-200 mb-1">
+                      🌐 URL del Proyecto Supabase (Project URL) *
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      value={supabaseConfigForm.url}
+                      onChange={(e) => setSupabaseConfigForm({ ...supabaseConfigForm, url: e.target.value.trim() })}
+                      placeholder="https://xyzcompany.supabase.co"
+                      className="w-full p-2.5 bg-black/30 border border-emerald-600/50 text-white font-mono text-xs focus:outline-none focus:border-emerald-400 rounded"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-emerald-200 mb-1">
+                      🔑 Clave de API Pública / Anon Key *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={supabaseConfigForm.anonKey}
+                      onChange={(e) => setSupabaseConfigForm({ ...supabaseConfigForm, anonKey: e.target.value.trim() })}
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      className="w-full p-2.5 bg-black/30 border border-emerald-600/50 text-white font-mono text-xs focus:outline-none focus:border-emerald-400 rounded"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2 pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t border-emerald-800/50">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTestSupabaseConnection}
+                        disabled={supabaseLoading}
+                        className="px-4 py-2 bg-emerald-800/60 hover:bg-emerald-700/80 border border-emerald-500/50 text-white font-semibold uppercase tracking-wider text-xs flex items-center gap-2 cursor-pointer rounded transition-colors"
+                      >
+                        {supabaseLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Server className="w-3.5 h-3.5 text-emerald-300" />}
+                        <span>Probar Conexión</span>
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-[#0E2417] font-bold uppercase tracking-wider text-xs cursor-pointer rounded transition-colors shadow-sm"
+                      >
+                        Guardar Credenciales
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePushDataToSupabase}
+                        disabled={supabaseLoading || !supabaseService.isConnected()}
+                        className="px-3 py-1.5 bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border border-emerald-600/60 text-xs font-semibold cursor-pointer rounded disabled:opacity-50"
+                      >
+                        📤 Migrar Datos a Supabase
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handlePullDataFromSupabase}
+                        disabled={supabaseLoading || !supabaseService.isConnected()}
+                        className="px-3 py-1.5 bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border border-emerald-600/60 text-xs font-semibold cursor-pointer rounded disabled:opacity-50"
+                      >
+                        📥 Descargar de Supabase
+                      </button>
+                    </div>
+                  </div>
+
+                  {supabaseStatusMsg && (
+                    <div className="md:col-span-2 p-2.5 bg-emerald-950/80 border border-emerald-700/50 text-emerald-200 text-xs rounded flex items-center gap-2">
+                      <span>{supabaseStatusMsg}</span>
+                    </div>
+                  )}
+                </form>
+
+                {/* SQL Helper instructions for creating app_state table in Supabase */}
+                <div className="p-3 bg-black/40 border border-emerald-800/60 text-[11px] font-mono text-emerald-300/90 rounded space-y-1">
+                  <p className="font-bold text-white uppercase text-[10px] tracking-wider">
+                    📋 Consulta para crear la tabla en el SQL Editor de Supabase (Copiar y Ejecutar):
+                  </p>
+                  <pre className="p-2.5 bg-black/60 border border-emerald-900 overflow-x-auto text-[10px] text-emerald-400 select-all font-mono leading-relaxed">
+                    {`-- Copiá y ejecutá este código en el SQL Editor de tu proyecto Supabase:
+CREATE TABLE IF NOT EXISTS public.app_state (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso total a app_state" ON public.app_state;
+
+CREATE POLICY "Acceso total a app_state"
+ON public.app_state
+FOR ALL
+USING (true)
+WITH CHECK (true);`}
+                  </pre>
+                </div>
+              </div>
+
               <div className="pb-4 border-b border-[#EFEAE0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
