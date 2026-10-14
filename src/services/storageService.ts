@@ -1869,38 +1869,42 @@ class StorageService {
 
   public getExpenseCategories(): CustomCategory[] {
     const s = this.getSettings();
-    return s.expenseCategories && s.expenseCategories.length > 0 ? s.expenseCategories : DEFAULT_EXPENSE_CATEGORIES;
+    return Array.isArray(s.expenseCategories) ? s.expenseCategories : DEFAULT_EXPENSE_CATEGORIES;
   }
   public saveExpenseCategories(cats: CustomCategory[]) {
     const s = this.getSettings();
     s.expenseCategories = cats;
+    s.updatedAt = new Date().toISOString();
     this.saveSettings(s);
   }
   public getCashFlowCategories(): CustomCategory[] {
     const s = this.getSettings();
-    return s.cashFlowCategories && s.cashFlowCategories.length > 0 ? s.cashFlowCategories : DEFAULT_CASHFLOW_CATEGORIES;
+    return Array.isArray(s.cashFlowCategories) ? s.cashFlowCategories : DEFAULT_CASHFLOW_CATEGORIES;
   }
   public saveCashFlowCategories(cats: CustomCategory[]) {
     const s = this.getSettings();
     s.cashFlowCategories = cats;
+    s.updatedAt = new Date().toISOString();
     this.saveSettings(s);
   }
   public getFeeCategories(): CustomCategory[] {
     const s = this.getSettings();
-    return s.feeCategories && s.feeCategories.length > 0 ? s.feeCategories : DEFAULT_FEE_CATEGORIES;
+    return Array.isArray(s.feeCategories) ? s.feeCategories : DEFAULT_FEE_CATEGORIES;
   }
   public saveFeeCategories(cats: CustomCategory[]) {
     const s = this.getSettings();
     s.feeCategories = cats;
+    s.updatedAt = new Date().toISOString();
     this.saveSettings(s);
   }
   public getInventoryCategories(): CustomCategory[] {
     const s = this.getSettings();
-    return s.inventoryCategories && s.inventoryCategories.length > 0 ? s.inventoryCategories : DEFAULT_INVENTORY_CATEGORIES;
+    return Array.isArray(s.inventoryCategories) ? s.inventoryCategories : DEFAULT_INVENTORY_CATEGORIES;
   }
   public saveInventoryCategories(cats: CustomCategory[]) {
     const s = this.getSettings();
     s.inventoryCategories = cats;
+    s.updatedAt = new Date().toISOString();
     this.saveSettings(s);
   }
 }
