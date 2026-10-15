@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, RecurrenceType, PaymentStatus } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
@@ -48,6 +48,10 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 }) => {
   const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
   const collectionsRequestRef = useRef(0);
+  const currentDate = new Date();
+  const currentMonthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(currentMonthKey);
+  const [showScheduleBreakdown, setShowScheduleBreakdown] = useState<boolean>(true);
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'active' | 'completed' | 'my_pending'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -349,32 +353,130 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const currentDate = new Date();
-  const currentMonthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-  const isDueThisMonth = (collection: FeeCollection) => collection.dueDate?.slice(0, 7) === currentMonthKey;
-  const myCollectionsThisMonth = feeCollections.filter((collection) =>
-    isDueThisMonth(collection) && collection.allocations.some((allocation) => allocation.userId === currentUser.id)
-  );
-  const collectionsInScope = isAdmin ? feeCollections : myCollectionsThisMonth;
+  // Lista de 7 meses: Mes actual + Próximos 6 meses siguientes
+  const upcomingMonths = useMemo(() => {
+    const list: Array<{
+      key: string;
+      label: string;
+      monthName: string;
+      year: number;
+      isCurrent: boolean;
+      userAmount: number;
+      userPending: number;
+      userPaid: number;
+      hasCollection: boolean;
+      collectionsCount: number;
+      items: Array<{ collection: FeeCollection; allocation?: OwnerFeeAllocation }>;
+    }> = [];
 
-  // Los copropietarios solo ven su cuota vigente del mes, nunca cuotas futuras de otros perfiles.
+    const now = new Date();
+    const curY = now.getFullYear();
+    const curM = now.getMonth();
+    const monthNames = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(curY, curM + i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+      const isCurrent = i === 0;
+
+      const monthCols = feeCollections.filter((c) => {
+        const mKey = c.dueDate ? c.dueDate.slice(0, 7) : c.issueDate.slice(0, 7);
+        return mKey === key;
+      });
+
+      let userAmount = 0;
+      let userPending = 0;
+      let userPaid = 0;
+      const items: Array<{ collection: FeeCollection; allocation?: OwnerFeeAllocation }> = [];
+
+      monthCols.forEach((col) => {
+        const alloc = col.allocations.find((a) => a.userId === currentUser.id);
+        if (alloc) {
+          userAmount += alloc.assignedAmount;
+          userPaid += alloc.paidAmount || 0;
+          if (alloc.status !== 'paid') {
+            userPending += (alloc.assignedAmount - (alloc.paidAmount || 0));
+          }
+          items.push({ collection: col, allocation: alloc });
+        } else if (isAdmin) {
+          items.push({ collection: col });
+        }
+      });
+
+      list.push({
+        key,
+        label: `${monthNames[m]} ${y}`,
+        monthName: monthNames[m],
+        year: y,
+        isCurrent,
+        userAmount: isAdmin ? monthCols.reduce((s, c) => s + c.totalAmount, 0) : userAmount,
+        userPending: isAdmin
+          ? monthCols.reduce(
+              (s, c) =>
+                s +
+                (c.totalAmount -
+                  c.allocations.reduce((pa, a) => pa + (a.paidAmount || 0), 0)),
+              0
+            )
+          : userPending,
+        userPaid: isAdmin
+          ? monthCols.reduce(
+              (s, c) => s + c.allocations.reduce((pa, a) => pa + (a.paidAmount || 0), 0),
+              0
+            )
+          : userPaid,
+        hasCollection: monthCols.length > 0,
+        collectionsCount: monthCols.length,
+        items,
+      });
+    }
+    return list;
+  }, [feeCollections, currentUser.id, isAdmin]);
+
+  // Datos del mes actual
+  const currentMonthData = upcomingMonths[0];
+  const myCurrentMonthPending = currentMonthData ? currentMonthData.userPending : 0;
+  const myCurrentMonthAllocations = currentMonthData ? currentMonthData.items.filter((it) => it.allocation) : [];
+  const futureMonthsData = upcomingMonths.slice(1);
+  const myFuture6MonthsPending = futureMonthsData.reduce((s, m) => s + m.userPending, 0);
+
+  // Colecciones al alcance según rol (copropietarios ven todas las que les corresponden)
+  const myCollections = feeCollections.filter((collection) =>
+    collection.allocations.some((allocation) => allocation.userId === currentUser.id)
+  );
+  const collectionsInScope = isAdmin ? feeCollections : myCollections;
+
+  // Filtrado de cobranzas para la lista principal
   const filteredCollections = collectionsInScope.filter((c) => {
-    // Search
+    // Filtro por mes seleccionado
+    if (selectedMonthKey !== 'all') {
+      const cMonthKey = c.dueDate ? c.dueDate.slice(0, 7) : c.issueDate.slice(0, 7);
+      if (cMonthKey !== selectedMonthKey) return false;
+    }
+
+    // Búsqueda
     const matchesSearch =
       c.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.allocations.some((a) => a.userName.toLowerCase().includes(searchTerm.toLowerCase()));
 
     if (!matchesSearch) return false;
 
-    // Category
+    // Categoría
     if (categoryFilter !== 'all' && c.category !== categoryFilter) return false;
 
-    // Active Tab Filter
+    // Filtro por pestaña de estado
     if (activeTabFilter === 'active') return c.status === 'active';
     if (activeTabFilter === 'completed') return c.status === 'completed';
     if (activeTabFilter === 'my_pending') {
       return c.allocations.some(
-        (a) => a.userId === currentUser.id && (a.status === 'pending' || a.status === 'overdue' || a.status === 'partial')
+        (a) =>
+          a.userId === currentUser.id &&
+          (a.status === 'pending' || a.status === 'overdue' || a.status === 'partial')
       );
     }
 
@@ -397,8 +499,8 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     ? Math.round((totalCollectedAmount / totalCollectionsAmount) * 100)
     : 100;
 
-  // My pending fees summary
-  const myPendingAllocations = myCollectionsThisMonth.flatMap((c) =>
+  // Mis cuotas pendientes (del mes o general)
+  const myPendingAllocations = collectionsInScope.flatMap((c) =>
     c.allocations
       .filter((a) => a.userId === currentUser.id && a.status !== 'paid')
       .map((a) => ({ collection: c, allocation: a }))
@@ -518,72 +620,477 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
         </div>
       </div>
 
-      {/* KPI Financial Overview Cards */}
+      {/* ========================================================= */}
+      {/* HERO: LO QUE TENGO QUE PAGAR ESTE MES (VISTA COPROPIETARIO) */}
+      {/* ========================================================= */}
+      {!isAdmin ? (
+        <div className="bg-gradient-to-br from-[#1B3B2B] via-[#163323] to-[#0E1E15] text-white p-5 sm:p-6 rounded-lg shadow-md border border-[#BFA270]/40 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-80 h-full bg-gradient-to-l from-[#BFA270]/15 to-transparent pointer-events-none" />
+
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+            <div className="space-y-3 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-0.5 bg-[#BFA270] text-[#1B3B2B] font-extrabold text-[10px] uppercase tracking-wider rounded">
+                  Mes Actual: {upcomingMonths[0]?.label || 'Octubre 2026'}
+                </span>
+                {myCurrentMonthPending > 0 ? (
+                  <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[10px] font-bold uppercase tracking-wider rounded flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Pendiente de Pago
+                  </span>
+                ) : myCurrentMonthAllocations.length > 0 ? (
+                  <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold uppercase tracking-wider rounded flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    ¡Estás al Día con este mes!
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 bg-white/10 text-white/80 text-[10px] font-bold uppercase tracking-wider rounded">
+                    Sin Cuotas este mes
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wider text-emerald-200/90 font-semibold">
+                  Monto a pagar este mes:
+                </p>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-3xl sm:text-4xl font-extrabold font-mono text-white tracking-tight">
+                    ${myCurrentMonthPending.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-sm font-sans font-semibold text-emerald-200">ARS</span>
+                </div>
+              </div>
+
+              {myCurrentMonthAllocations.length > 0 ? (
+                <div className="text-xs text-white/90 space-y-1">
+                  {myCurrentMonthAllocations.map(({ collection, allocation }) => (
+                    <div key={collection.id} className="flex flex-wrap items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#BFA270]" />
+                      <strong className="text-white">{collection.concept}</strong>
+                      <span className="text-emerald-300 font-medium">
+                        • Vence el {collection.dueDate || 'fin de mes'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-white/70 italic">
+                  No tenés pagos pendientes emitidos para {upcomingMonths[0]?.label}.
+                </p>
+              )}
+            </div>
+
+            {/* Acciones principales y datos para transferir */}
+            <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-3 shrink-0">
+              {myCurrentMonthAllocations.some((item) => item.allocation?.status !== 'paid') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstPending = myCurrentMonthAllocations.find((item) => item.allocation?.status !== 'paid');
+                    if (firstPending && firstPending.allocation) {
+                      handleOpenRecordPayment(firstPending.collection.id, firstPending.allocation);
+                    }
+                  }}
+                  className="w-full sm:w-auto px-5 py-3 bg-[#BFA270] hover:bg-[#D4AF37] text-[#1B3B2B] text-xs font-black uppercase tracking-wider rounded shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer transform hover:-translate-y-0.5"
+                >
+                  <CreditCard className="w-4 h-4 text-[#1B3B2B]" />
+                  <span>Informar Mi Pago (${myCurrentMonthPending.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                </button>
+              )}
+
+              {/* Botones de copia rápida CBU y Alias */}
+              <div className="bg-black/35 backdrop-blur-xs border border-white/10 rounded px-3 py-2 text-xs flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <span className="text-white/70 text-[11px]">Transferir a:</span>
+                {settings.aliasBancario && (
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(settings.aliasBancario!, 'hero-alias')}
+                    className="px-2 py-0.5 bg-white/10 hover:bg-white/20 rounded font-mono font-bold text-amber-200 flex items-center gap-1 transition-colors cursor-pointer text-xs"
+                    title="Copiar Alias"
+                  >
+                    {copiedField === 'hero-alias' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-[#BFA270]" />}
+                    <span>ALIAS: {settings.aliasBancario}</span>
+                  </button>
+                )}
+                {settings.cbu && (
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(settings.cbu!, 'hero-cbu')}
+                    className="px-2 py-0.5 bg-white/10 hover:bg-white/20 rounded font-mono text-white/90 flex items-center gap-1 transition-colors cursor-pointer text-xs"
+                    title="Copiar CBU"
+                  >
+                    {copiedField === 'hero-cbu' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-[#BFA270]" />}
+                    <span>CBU: {settings.cbu}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* HERO ADMINISTRADOR */
+        <div className="bg-[#1B3B2B] text-white p-5 rounded-lg shadow-sm border border-[#DDD5BF] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <span className="px-2 py-0.5 bg-[#BFA270] text-[#1B3B2B] text-[10px] font-bold uppercase rounded">
+              Panel Administrativo • Mes Actual: {upcomingMonths[0]?.label}
+            </span>
+            <h2 className="text-xl font-bold font-serif text-white mt-1">
+              Control General de Cobranzas del Fideicomiso
+            </h2>
+            <p className="text-xs text-[#A3B899] mt-0.5">
+              Gestión de emisión de expensas, padrón de pagos de 16 copropietarios y control de vencimientos.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setEditingCollection(null);
+              setIsCreateModalOpen(true);
+            }}
+            className="px-4 py-2 bg-[#BFA270] hover:bg-[#D4AF37] text-[#1B3B2B] text-xs font-bold uppercase tracking-wider rounded flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Nueva Emisión de Cobranza</span>
+          </button>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* SELECTOR DE MESES: MES ACTUAL + PRÓXIMOS 6 MESES           */}
+      {/* ========================================================= */}
+      <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E3DFC8] pb-2">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-[#BFA270]" />
+            <span className="text-xs font-bold text-[#163323] uppercase tracking-wider">
+              Mes Actual y Próximos 6 Meses Posteriores
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowScheduleBreakdown(!showScheduleBreakdown)}
+            className="text-[11px] text-[#2563EB] hover:underline font-semibold flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+          >
+            <span>{showScheduleBreakdown ? 'Ocultar cronograma detallado' : 'Ver cronograma detallado de cuotas'}</span>
+            {showScheduleBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+
+        {/* 7 Meses + Ver Todos Buttons */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+          {upcomingMonths.map((m) => {
+            const isSelected = selectedMonthKey === m.key;
+            return (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setSelectedMonthKey(m.key)}
+                className={`p-2.5 rounded border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  isSelected
+                    ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white shadow-sm ring-2 ring-[#BFA270]'
+                    : 'bg-[#FAF8F5] border-[#DDD5BF] hover:border-[#1B3B2B] hover:bg-[#F4EFE6] text-[#163323]'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-1">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-[#D4AF37]' : 'text-[#7A8E7E]'}`}>
+                    {m.isCurrent ? '● Este Mes' : m.monthName}
+                  </span>
+                  <span className={`text-[9px] font-mono ${isSelected ? 'text-white/70' : 'text-[#7A8E7E]'}`}>
+                    {m.year}
+                  </span>
+                </div>
+
+                <div className="mt-1">
+                  <div className={`text-sm sm:text-base font-extrabold font-mono ${
+                    isSelected ? 'text-white' : m.userAmount > 0 ? 'text-[#163323]' : 'text-neutral-400'
+                  }`}>
+                    {m.userAmount > 0
+                      ? `$${m.userAmount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                      : '$0'}
+                  </div>
+                  <div className={`text-[10px] mt-0.5 truncate ${
+                    isSelected
+                      ? 'text-white/80'
+                      : m.userPending > 0
+                      ? 'text-amber-700 font-semibold'
+                      : m.hasCollection
+                      ? 'text-emerald-700 font-medium'
+                      : 'text-neutral-400 italic'
+                  }`}>
+                    {m.userPending > 0
+                      ? `${m.items.length} cuota pendiente`
+                      : m.hasCollection
+                      ? 'Al día'
+                      : 'Sin cuotas'}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+
+          {/* Opción Ver Todas */}
+          <button
+            type="button"
+            onClick={() => setSelectedMonthKey('all')}
+            className={`p-2.5 rounded border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+              selectedMonthKey === 'all'
+                ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white shadow-sm ring-2 ring-[#BFA270]'
+                : 'bg-[#FAF8F5] border-[#DDD5BF] hover:border-[#1B3B2B] hover:bg-[#F4EFE6] text-[#163323]'
+            }`}
+          >
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedMonthKey === 'all' ? 'text-[#D4AF37]' : 'text-[#7A8E7E]'}`}>
+              Histórico
+            </span>
+            <span className="text-xs font-extrabold mt-1">Ver Todas</span>
+            <span className={`text-[10px] ${selectedMonthKey === 'all' ? 'text-white/80' : 'text-[#7A8E7E]'}`}>
+              ({collectionsInScope.length})
+            </span>
+          </button>
+        </div>
+
+        {/* Desglose de Cronograma de los Próximos 6 Meses */}
+        {showScheduleBreakdown && (
+          <div className="mt-3 pt-3 border-t border-[#E3DFC8] animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+              <p className="text-xs font-bold text-[#163323]">
+                Cronograma Proyectado de Pagos ({upcomingMonths[0]?.label} y 6 Meses Posteriores):
+              </p>
+              {!isAdmin && (
+                <div className="text-xs text-[#56685B]">
+                  Total a pagar próximos 6 meses: <strong className="text-[#163323] font-mono">${myFuture6MonthsPending.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
+                </div>
+              )}
+            </div>
+
+            <div className="overflow-x-auto border border-[#E3DFC8] rounded bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#FAF8F5] text-[#163323] border-b border-[#E3DFC8] font-bold text-[11px]">
+                  <tr>
+                    <th className="py-2 px-3">Período</th>
+                    <th className="py-2 px-3">Concepto / Cuota</th>
+                    <th className="py-2 px-3">Vencimiento</th>
+                    <th className="py-2 px-3 text-right">{isAdmin ? 'Total Emisión' : 'Mi Cuota'}</th>
+                    <th className="py-2 px-3 text-center">Estado</th>
+                    <th className="py-2 px-3 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E3DFC8]">
+                  {upcomingMonths.map((m) => {
+                    const firstItem = m.items[0];
+                    const isSelected = selectedMonthKey === m.key;
+
+                    return (
+                      <tr
+                        key={m.key}
+                        className={`hover:bg-[#FAF8F5] transition-colors ${
+                          isSelected ? 'bg-amber-50/70 font-medium' : m.isCurrent ? 'bg-emerald-50/40' : ''
+                        }`}
+                      >
+                        <td className="py-2.5 px-3 font-semibold text-[#163323]">
+                          <span className="flex items-center gap-1.5">
+                            {m.isCurrent && (
+                              <span className="px-1.5 py-0.2 bg-[#1B3B2B] text-white text-[9px] font-bold uppercase rounded">
+                                Actual
+                              </span>
+                            )}
+                            <span>{m.label}</span>
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-[#56685B]">
+                          {firstItem?.collection?.concept || (
+                            <span className="text-neutral-400 italic">Sin cuotas programadas</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[#637568]">
+                          {firstItem?.collection?.dueDate || '-'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
+                          {m.userAmount > 0
+                            ? `$${m.userAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                            : '$0.00'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {m.userAmount === 0 ? (
+                            <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-[10px] font-medium rounded-full">
+                              Al día
+                            </span>
+                          ) : m.userPending === 0 ? (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-full">
+                              Pagado
+                            </span>
+                          ) : m.isCurrent ? (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider rounded-full">
+                              Pendiente
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold uppercase rounded-full">
+                              Próximo
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          {m.isCurrent && m.userPending > 0 && firstItem?.allocation ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRecordPayment(firstItem.collection.id, firstItem.allocation!)}
+                              className="px-2.5 py-1 bg-[#2563EB] hover:bg-blue-700 text-white text-[11px] font-bold uppercase rounded transition-colors cursor-pointer"
+                            >
+                              Pagar
+                            </button>
+                          ) : m.hasCollection ? (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMonthKey(m.key)}
+                              className="px-2.5 py-1 bg-[#FAF8F5] hover:bg-[#EFE9DB] border border-[#DDD5BF] text-[11px] font-semibold text-[#163323] rounded transition-colors cursor-pointer"
+                            >
+                              Ver mes
+                            </button>
+                          ) : (
+                            <span className="text-neutral-300">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================= */}
+      {/* TARJETAS RESUMEN KPI (ADAPTADAS POR ROL)                   */}
+      {/* ========================================================= */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#637568] font-semibold uppercase tracking-wider mb-2">
-            <span>{isAdmin ? 'Total Emitido' : 'Mi cuota del mes'}</span>
-            <DollarSign className="w-4 h-4 text-[#163323]" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
-            ${totalCollectionsAmount.toLocaleString()} <span className="text-xs font-sans text-[#7A8E7E]">ARS</span>
-          </div>
-          <p className="text-[11px] text-[#7A8E7E] mt-1">
-            {isAdmin
-              ? `${feeCollections.length} cobranzas registradas`
-              : `${collectionsInScope.length} cuota(s) vigente(s) en ${currentMonthKey}`}
-          </p>
-        </div>
+        {!isAdmin ? (
+          <>
+            {/* KPI 1 Copropietario: A pagar este mes */}
+            <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-[#637568] font-semibold uppercase tracking-wider mb-2">
+                <span>A Pagar Este Mes ({upcomingMonths[0]?.monthName})</span>
+                <DollarSign className="w-4 h-4 text-[#163323]" />
+              </div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
+                ${myCurrentMonthPending.toLocaleString('es-AR', { minimumFractionDigits: 2 })} <span className="text-xs font-sans text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#7A8E7E] mt-1">
+                {myCurrentMonthPending > 0 ? 'Cuota vigente de expensas' : '¡Estás al día con este mes!'}
+              </p>
+            </div>
 
-        <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-emerald-800 font-semibold uppercase tracking-wider mb-2">
-            <span>{isAdmin ? 'Recaudado / Cobrado' : 'Mis pagos registrados'}</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-700">
-            ${totalCollectedAmount.toLocaleString()} <span className="text-xs font-sans text-emerald-600">ARS</span>
-          </div>
-          <div className="w-full bg-neutral-100 h-1.5 rounded-full overflow-hidden mt-2">
-            <div
-              className="bg-emerald-600 h-full transition-all duration-500"
-              style={{ width: `${overallCollectionProgress}%` }}
-            />
-          </div>
-        </div>
+            {/* KPI 2 Copropietario: Próximos 6 meses */}
+            <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-blue-900 font-semibold uppercase tracking-wider mb-2">
+                <span>Próximos 6 Meses Posteriores</span>
+                <Calendar className="w-4 h-4 text-[#2563EB]" />
+              </div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-[#2563EB]">
+                ${myFuture6MonthsPending.toLocaleString('es-AR', { minimumFractionDigits: 2 })} <span className="text-xs font-sans text-blue-800">ARS</span>
+              </div>
+              <p className="text-[11px] text-blue-700 mt-1">
+                Compromiso programado a futuro
+              </p>
+            </div>
 
-        <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-amber-800 font-semibold uppercase tracking-wider mb-2">
-            <span>{isAdmin ? 'Pendiente de Cobro' : 'Pendiente este mes'}</span>
-            <Clock className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-amber-700">
-            ${totalPendingAmount.toLocaleString()} <span className="text-xs font-sans text-amber-600">ARS</span>
-          </div>
-          <p className="text-[11px] text-amber-700 mt-1 font-medium">
-            {isAdmin ? `${100 - overallCollectionProgress}% por cobrar` : `${100 - overallCollectionProgress}% de mi cuota mensual`}
-          </p>
-        </div>
+            {/* KPI 3 Copropietario: Mis pagos registrados */}
+            <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-emerald-800 font-semibold uppercase tracking-wider mb-2">
+                <span>Mis Pagos Registrados</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-700">
+                ${totalCollectedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })} <span className="text-xs font-sans text-emerald-600">ARS</span>
+              </div>
+              <p className="text-[11px] text-emerald-700 mt-1">
+                Pagos confirmados en la plataforma
+              </p>
+            </div>
 
-        <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
-            <span>{isAdmin ? 'Mi Estado Personal' : 'Mi próxima obligación'}</span>
-            <Users className="w-4 h-4 text-[#BFA270]" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
-            {myTotalPending > 0 ? (
-              <span className="text-amber-700">${myTotalPending.toLocaleString()} ARS</span>
-            ) : (
-              <span className="text-emerald-700 flex items-center gap-1">
-                <Check className="w-5 h-5 text-emerald-600" /> $0 (Al día)
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-[#637568] mt-1">
-            {myPendingAllocations.length > 0
-              ? `${myPendingAllocations.length} cuota(s) pendiente(s) este mes`
-              : 'Sin cuotas pendientes este mes'}
-          </p>
-        </div>
+            {/* KPI 4 Copropietario: Próximo Vencimiento */}
+            <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
+                <span>Próximo Vencimiento</span>
+                <Clock className="w-4 h-4 text-[#BFA270]" />
+              </div>
+              <div className="text-base sm:text-lg font-bold font-mono text-[#163323]">
+                {currentMonthData?.items[0]?.collection?.dueDate || '30 de Octubre 2026'}
+              </div>
+              <p className="text-[11px] text-[#637568] mt-1 truncate">
+                {currentMonthData?.items[0]?.collection?.concept || 'Expensas ordinarias'}
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* KPI 1 Admin: Total emitido */}
+            <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-[#637568] font-semibold uppercase tracking-wider mb-2">
+                <span>Total Emitido ({selectedMonthKey === 'all' ? 'Todas' : selectedMonthKey})</span>
+                <DollarSign className="w-4 h-4 text-[#163323]" />
+              </div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
+                ${totalCollectionsAmount.toLocaleString()} <span className="text-xs font-sans text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#7A8E7E] mt-1">
+                {filteredCollections.length} cobranza(s) en este período
+              </p>
+            </div>
+
+            {/* KPI 2 Admin: Recaudado */}
+            <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-emerald-800 font-semibold uppercase tracking-wider mb-2">
+                <span>Recaudado / Cobrado</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-700">
+                ${totalCollectedAmount.toLocaleString()} <span className="text-xs font-sans text-emerald-600">ARS</span>
+              </div>
+              <div className="w-full bg-neutral-100 h-1.5 rounded-full overflow-hidden mt-2">
+                <div
+                  className="bg-emerald-600 h-full transition-all duration-500"
+                  style={{ width: `${overallCollectionProgress}%` }}
+                />
+              </div>
+            </div>
+
+            {/* KPI 3 Admin: Pendiente */}
+            <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-amber-800 font-semibold uppercase tracking-wider mb-2">
+                <span>Pendiente de Cobro</span>
+                <Clock className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-amber-700">
+                ${totalPendingAmount.toLocaleString()} <span className="text-xs font-sans text-amber-600">ARS</span>
+              </div>
+              <p className="text-[11px] text-amber-700 mt-1 font-medium">
+                {100 - overallCollectionProgress}% por cobrar
+              </p>
+            </div>
+
+            {/* KPI 4 Admin: Mi estado personal */}
+            <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
+                <span>Mi Estado Personal</span>
+                <Users className="w-4 h-4 text-[#BFA270]" />
+              </div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
+                {myTotalPending > 0 ? (
+                  <span className="text-amber-700">${myTotalPending.toLocaleString()} ARS</span>
+                ) : (
+                  <span className="text-emerald-700 flex items-center gap-1">
+                    <Check className="w-5 h-5 text-emerald-600" /> $0 (Al día)
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-[#637568] mt-1">
+                {myPendingAllocations.length > 0
+                  ? `${myPendingAllocations.length} cuota(s) pendiente(s)`
+                  : 'Sin cuotas pendientes'}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Main Filter & Search Toolbar */}
@@ -763,54 +1270,102 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                     <div className="flex flex-wrap items-center gap-4 text-xs text-[#637568]">
                       <span>Emisión: <strong className="text-[#163323] font-mono">{collection.issueDate}</strong></span>
                       <span>Vencimiento: <strong className="text-[#163323] font-mono">{collection.dueDate}</strong></span>
-                      {collection.notes && <span className="italic text-[#7A8E7E]">"{collection.notes}"</span>}
+                      {isAdmin && collection.notes && <span className="italic text-[#7A8E7E]">"{collection.notes}"</span>}
                     </div>
                   </div>
 
-                  {/* Financial Breakdown Summary */}
-                  <div className="flex flex-wrap lg:flex-nowrap items-center gap-6 border-t lg:border-t-0 pt-3 lg:pt-0 border-[#E3DFC8]">
-                    <div className="text-right">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">{isAdmin ? 'Monto Total' : 'Mi cuota'}</div>
-                      <div className="text-lg font-bold font-mono text-[#163323]">
-                        ${displayedAmount.toLocaleString()} {collection.currency}
+                  {/* Financial Breakdown Summary & Actions */}
+                  {!isAdmin ? (
+                    /* Copropietario Clean Summary */
+                    <div className="flex flex-wrap items-center gap-4 border-t lg:border-t-0 pt-3 lg:pt-0 border-[#E3DFC8]">
+                      <div className="text-right">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-[#7A8E7E]">
+                          Tu Cuota a Pagar
+                        </div>
+                        <div className="text-xl font-extrabold font-mono text-[#163323]">
+                          ${myAlloc ? myAlloc.assignedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'} ARS
+                        </div>
+                        <div className="text-[11px] font-semibold">
+                          {myAlloc?.status === 'paid' ? (
+                            <span className="text-emerald-700">✓ Pagado al 100%</span>
+                          ) : (
+                            <span className="text-amber-700">
+                              ${(myAlloc ? myAlloc.assignedAmount - (myAlloc.paidAmount || 0) : 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })} pendiente
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-emerald-700 font-medium">
-                        ${displayedCollected.toLocaleString()} {isAdmin ? 'cobrados' : 'pagados por mí'}
-                      </div>
-                    </div>
 
-                    <div className="text-right">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">{isAdmin ? 'Copropietarios' : 'Mi porcentaje'}</div>
-                      <div className="text-sm font-bold text-[#163323]">
-                        {isAdmin ? `${paidCount} / ${collection.allocations.length} al día` : `${(myAlloc?.percentage || 0).toFixed(4)}%`}
-                      </div>
-                      <div className="text-[11px] text-amber-700 font-medium">
-                        {isAdmin ? `${collection.allocations.length - paidCount} pendientes` : `$${Math.max(0, displayedAmount - displayedCollected).toLocaleString()} pendiente`}
-                      </div>
-                    </div>
+                      {/* Action Buttons Copropietario */}
+                      <div className="flex items-center gap-2">
+                        {myAlloc && myAlloc.status !== 'paid' && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRecordPayment(collection.id, myAlloc)}
+                            className="px-4 py-2 bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider rounded transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            <span>Informar Mi Pago (${(myAlloc.assignedAmount - (myAlloc.paidAmount || 0)).toLocaleString('es-AR', { minimumFractionDigits: 2 })})</span>
+                          </button>
+                        )}
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2">
-                      {myAlloc && myAlloc.status !== 'paid' && (
                         <button
-                          onClick={() => handleOpenRecordPayment(collection.id, myAlloc)}
-                          className="px-3 py-1.5 bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-1"
+                          type="button"
+                          onClick={() => setExpandedCollectionId(isExpanded ? null : collection.id)}
+                          className="px-3 py-2 bg-[#F4EFE6] hover:bg-[#EFE9DB] border border-[#DDD5BF] text-xs font-bold text-[#163323] rounded transition-colors cursor-pointer flex items-center gap-1"
                         >
-                          <CreditCard className="w-3.5 h-3.5" />
-                          <span>Informar Mi Pago (${(myAlloc.assignedAmount - myAlloc.paidAmount).toLocaleString()})</span>
+                          <span>{isExpanded ? 'Ocultar' : 'Ver Detalle'}</span>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
-                      )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Admin Financial Breakdown Summary */
+                    <div className="flex flex-wrap lg:flex-nowrap items-center gap-6 border-t lg:border-t-0 pt-3 lg:pt-0 border-[#E3DFC8]">
+                      <div className="text-right">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">Monto Total</div>
+                        <div className="text-lg font-bold font-mono text-[#163323]">
+                          ${collection.totalAmount.toLocaleString()} {collection.currency}
+                        </div>
+                        <div className="text-[11px] text-emerald-700 font-medium">
+                          ${collectedAmount.toLocaleString()} cobrados
+                        </div>
+                      </div>
 
-                      <button
-                        onClick={() => setExpandedCollectionId(isExpanded ? null : collection.id)}
-                        className="px-3 py-1.5 bg-[#F4EFE6] hover:bg-[#EFE9DB] border border-[#DDD5BF] text-xs font-bold text-[#163323] transition-colors cursor-pointer flex items-center gap-1"
-                      >
-                        <span>{isExpanded ? 'Ocultar Detalle' : isAdmin ? 'Ver Padrón Completo' : 'Ver mi detalle'}</span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </button>
+                      <div className="text-right">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">Copropietarios</div>
+                        <div className="text-sm font-bold text-[#163323]">
+                          {paidCount} / {collection.allocations.length} al día
+                        </div>
+                        <div className="text-[11px] text-amber-700 font-medium">
+                          {collection.allocations.length - paidCount} pendientes
+                        </div>
+                      </div>
 
-                      {isAdmin && (
+                      {/* Action Buttons Admin */}
+                      <div className="flex items-center gap-2">
+                        {myAlloc && myAlloc.status !== 'paid' && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRecordPayment(collection.id, myAlloc)}
+                            className="px-3 py-1.5 bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-1"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            <span>Informar Mi Pago (${(myAlloc.assignedAmount - (myAlloc.paidAmount || 0)).toLocaleString()})</span>
+                          </button>
+                        )}
+
                         <button
+                          type="button"
+                          onClick={() => setExpandedCollectionId(isExpanded ? null : collection.id)}
+                          className="px-3 py-1.5 bg-[#F4EFE6] hover:bg-[#EFE9DB] border border-[#DDD5BF] text-xs font-bold text-[#163323] transition-colors cursor-pointer flex items-center gap-1"
+                        >
+                          <span>{isExpanded ? 'Ocultar Detalle' : 'Ver Padrón Completo'}</span>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => {
                             setDialog({
                               isOpen: true,
@@ -840,9 +1395,9 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                      )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Progress bar */}

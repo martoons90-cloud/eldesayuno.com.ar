@@ -512,7 +512,7 @@ export default function App() {
           <ExpensesView
             currentUser={currentUser}
             settings={settings}
-            isAdmin={hasFinancialAccess(currentUser)}
+            isAdmin={hasFinancialAccess(currentUser) && adminViewMode !== 'owner'}
             onNavigateToCobranzas={() => setActiveTab('cobranzas')}
           />
         )}
@@ -523,7 +523,7 @@ export default function App() {
             currentUser={currentUser}
             users={users}
             settings={settings}
-            isAdmin={hasFinancialAccess(currentUser)}
+            isAdmin={hasFinancialAccess(currentUser) && adminViewMode !== 'owner'}
           />
         )}
 
