@@ -237,6 +237,7 @@ class SupabaseService {
           share_percentage: typeof u.sharePercentage === 'number' ? u.sharePercentage : (parseFloat(u.sharePercentage) || 0),
           avatar_initials: u.avatarInitials || '',
           created_at: u.createdAt || new Date().toISOString(),
+          password: u.password !== undefined ? u.password : '',
         }));
         try { await this.client.from('users').upsert(userRows, { onConflict: 'id' }); } catch {}
       }
@@ -537,6 +538,7 @@ class SupabaseService {
           sharePercentage: Number(u.share_percentage) || 0,
           avatarInitials: u.avatar_initials || '',
           createdAt: u.created_at || '',
+          password: u.password || '',
         }));
       }
       if (!expensesRes.error && Array.isArray(expensesRes.data)) {
@@ -783,6 +785,7 @@ class SupabaseService {
       share_percentage: Number(user.sharePercentage) || 0,
       avatar_initials: user.avatarInitials || '',
       created_at: user.createdAt || new Date().toISOString(),
+      password: user.password !== undefined ? user.password : '',
     });
   }
 

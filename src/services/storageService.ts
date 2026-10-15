@@ -485,6 +485,9 @@ class StorageService {
       updated = [...users];
       const targetId = targetUser.id || users[index].id;
       targetUser.id = targetId;
+      if (targetUser.password === undefined && users[index].password !== undefined) {
+        targetUser.password = users[index].password;
+      }
       updated[index] = { ...users[index], ...targetUser };
     } else {
       if (!targetUser.id) {
@@ -631,7 +634,7 @@ class StorageService {
   }
 
   // Update 6-character alphanumeric password for a user
-  public updateUserPassword(userId: string, newPasswordRaw: string): { success: boolean; message: string } {
+  public async updateUserPassword(userId: string, newPasswordRaw: string): Promise<{ success: boolean; message: string }> {
     const code = newPasswordRaw.trim().toUpperCase();
     if (code.length !== 6) {
       return {
@@ -645,7 +648,19 @@ class StorageService {
       return { success: false, message: 'Usuario no encontrado.' };
     }
 
-    const updated = users.map((u) => (u.id === userId ? { ...u, password: code } : u));
+    const updatedUser: User = { ...user, password: code };
+
+    // Guardar primero mediante supabaseService.saveUser y esperar confirmación
+    const saved = await supabaseService.saveUser(updatedUser);
+    if (!saved) {
+      return {
+        success: false,
+        message: 'Error al confirmar el guardado en la base de datos Supabase. No se actualizó la contraseña.',
+      };
+    }
+
+    // Solo tras confirmación de Supabase actualizamos el estado local
+    const updated = users.map((u) => (u.id === userId ? updatedUser : u));
     localStorage.setItem(USERS_KEY, JSON.stringify(updated));
 
     const current = this.getCurrentUser();

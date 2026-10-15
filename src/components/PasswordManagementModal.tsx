@@ -22,6 +22,7 @@ export const PasswordManagementModal: React.FC<PasswordManagementModalProps> = (
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
@@ -44,7 +45,7 @@ export const PasswordManagementModal: React.FC<PasswordManagementModalProps> = (
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const clean = newPassword.trim().toUpperCase();
@@ -54,16 +55,23 @@ export const PasswordManagementModal: React.FC<PasswordManagementModalProps> = (
       return;
     }
 
-    const res = storageService.updateUserPassword(targetUser.id, clean);
-    if (res.success) {
-      setSuccessMsg(`Contraseña actualizada a "${clean}" correctamente.`);
-      if (onSuccess) onSuccess(clean);
-      setTimeout(() => {
-        setSuccessMsg(null);
-        onClose();
-      }, 1200);
-    } else {
-      setError(res.message);
+    setSaving(true);
+    try {
+      const res = await storageService.updateUserPassword(targetUser.id, clean);
+      if (res.success) {
+        setSuccessMsg(`Contraseña actualizada a "${clean}" correctamente.`);
+        if (onSuccess) onSuccess(clean);
+        setTimeout(() => {
+          setSuccessMsg(null);
+          onClose();
+        }, 1200);
+      } else {
+        setError(res.message);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Error al actualizar la contraseña en Supabase.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -179,16 +187,18 @@ export const PasswordManagementModal: React.FC<PasswordManagementModalProps> = (
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] text-[#163323] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+              disabled={saving}
+              className="px-3.5 py-2 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] text-[#163323] font-semibold uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+              disabled={saving}
+              className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
             >
               <Lock className="w-3.5 h-3.5 text-[#BFA270]" />
-              <span>Guardar Contraseña</span>
+              <span>{saving ? 'Guardando en Supabase...' : 'Guardar Contraseña'}</span>
             </button>
           </div>
         </form>
