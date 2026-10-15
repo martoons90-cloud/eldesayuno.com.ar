@@ -527,14 +527,31 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                         alt={selectedDoc.title}
                         className="max-h-96 w-auto object-contain border border-[#E5DEC9] shadow-sm rounded-2xs"
                       />
-                      <a
-                        href={selectedDoc.photoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 text-[11px] font-semibold text-[#1B3B2B] hover:underline inline-flex items-center gap-1"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = selectedDoc.photoUrl!;
+                          if (url.startsWith('data:')) {
+                            const parts = url.split(';base64,');
+                            if (parts.length >= 2) {
+                              const contentType = parts[0].split(':')[1] || 'image/jpeg';
+                              const raw = window.atob(parts[1]);
+                              const uInt8Array = new Uint8Array(raw.length);
+                              for (let i = 0; i < raw.length; ++i) {
+                                uInt8Array[i] = raw.charCodeAt(i);
+                              }
+                              const blob = new Blob([uInt8Array], { type: contentType });
+                              const blobUrl = URL.createObjectURL(blob);
+                              window.open(blobUrl, '_blank');
+                              return;
+                            }
+                          }
+                          window.open(url, '_blank');
+                        }}
+                        className="mt-2 text-[11px] font-semibold text-[#1B3B2B] hover:underline inline-flex items-center gap-1 cursor-pointer"
                       >
                         <ExternalLink className="w-3.5 h-3.5" /> Abrir Imagen en Tamaño Completo
-                      </a>
+                      </button>
                     </div>
                   </div>
                 )}

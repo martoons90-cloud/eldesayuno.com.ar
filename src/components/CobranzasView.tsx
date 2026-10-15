@@ -3,6 +3,7 @@ import { User, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMod
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import { CustomDialogModal } from './CustomDialogModal';
+import { ReceiptPreviewModal, ReceiptPreviewData } from './ReceiptPreviewModal';
 import {
   DollarSign,
   CreditCard,
@@ -58,6 +59,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<FeeCollection | null>(null);
+  const [previewReceipt, setPreviewReceipt] = useState<ReceiptPreviewData | null>(null);
   const [dialog, setDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -945,15 +947,23 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                                 </td>
                                 <td className="py-2 px-3 text-center">
                                   {alloc.receiptUrl ? (
-                                    <a
-                                      href={alloc.receiptUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-[#2563EB] hover:underline font-semibold flex items-center justify-center gap-1"
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPreviewReceipt({
+                                          url: alloc.receiptUrl!,
+                                          title: 'Comprobante de Pago',
+                                          subtitle: `${alloc.userName} • ${collection.concept}`,
+                                          amount: alloc.paidAmount || alloc.assignedAmount,
+                                          date: alloc.paidAt,
+                                          notes: alloc.notes,
+                                        })
+                                      }
+                                      className="text-xs text-[#2563EB] hover:text-[#1d4ed8] hover:underline font-semibold flex items-center justify-center gap-1 mx-auto cursor-pointer"
                                     >
                                       <FileText className="w-3.5 h-3.5" />
                                       <span>Ver</span>
-                                    </a>
+                                    </button>
                                   ) : (
                                     <span className="text-neutral-300">-</span>
                                   )}
@@ -1168,9 +1178,28 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                   </label>
                 </div>
                 {receiptUrl && (
-                  <p className="text-[11px] text-emerald-700 font-medium mt-1 truncate">
-                    ✓ Comprobante cargado correctamente
-                  </p>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-[11px] text-emerald-700 font-medium truncate">
+                      ✓ Comprobante cargado correctamente
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreviewReceipt({
+                          url: receiptUrl,
+                          title: 'Comprobante de Pago',
+                          subtitle: recordPaymentState.userAllocation?.userName,
+                          amount: recordPaymentState.userAllocation?.assignedAmount,
+                          date: paidAtDate,
+                          notes: paymentNotes,
+                        })
+                      }
+                      className="text-[11px] text-[#2563EB] hover:underline font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <FileText className="w-3 h-3" />
+                      <span>Ver adjunto</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1304,6 +1333,10 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           </div>
         </div>
       )}
+      <ReceiptPreviewModal
+        receipt={previewReceipt}
+        onClose={() => setPreviewReceipt(null)}
+      />
       <CustomDialogModal
         isOpen={dialog.isOpen}
         title={dialog.title}

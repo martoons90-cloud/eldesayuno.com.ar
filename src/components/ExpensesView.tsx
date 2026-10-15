@@ -3,6 +3,7 @@ import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, Owner
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import { CustomDialogModal } from './CustomDialogModal';
+import { ReceiptPreviewModal, ReceiptPreviewData } from './ReceiptPreviewModal';
 import {
   DollarSign,
   Plus,
@@ -79,6 +80,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [isNewExpenseModalOpen, setIsNewExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [previewReceipt, setPreviewReceipt] = useState<ReceiptPreviewData | null>(null);
   const [dialog, setDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -965,15 +967,23 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     </td>
                     <td className="py-3 px-3 text-center whitespace-nowrap">
                       {exp.receiptUrl ? (
-                        <a
-                          href={exp.receiptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-[#2563EB] hover:underline font-semibold flex items-center justify-center gap-1"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPreviewReceipt({
+                              url: exp.receiptUrl!,
+                              title: exp.concept,
+                              provider: exp.provider,
+                              amount: exp.amount,
+                              date: exp.date,
+                              notes: exp.notes,
+                            })
+                          }
+                          className="text-xs text-[#2563EB] hover:text-[#1d4ed8] hover:underline font-semibold flex items-center justify-center gap-1 mx-auto cursor-pointer"
                         >
                           <FileText className="w-3.5 h-3.5" />
                           <span>Ver Factura</span>
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-neutral-400 italic text-[11px]">Sin adjunto</span>
                       )}
@@ -1217,9 +1227,28 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   </label>
                 </div>
                 {expenseForm.receiptUrl && (
-                  <p className="text-[11px] text-emerald-700 font-medium mt-1 truncate">
-                    ✓ Adjunto guardado correctamente
-                  </p>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-[11px] text-emerald-700 font-medium truncate">
+                      ✓ Adjunto guardado correctamente
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreviewReceipt({
+                          url: expenseForm.receiptUrl,
+                          title: expenseForm.concept || 'Factura adjunta',
+                          provider: expenseForm.provider,
+                          amount: Number(expenseForm.amount) || undefined,
+                          date: expenseForm.date,
+                          notes: expenseForm.notes,
+                        })
+                      }
+                      className="text-[11px] text-[#2563EB] hover:underline font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Ver adjunto</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1805,6 +1834,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
         </div>
       )}
+      <ReceiptPreviewModal
+        receipt={previewReceipt}
+        onClose={() => setPreviewReceipt(null)}
+      />
       <CustomDialogModal
         isOpen={dialog.isOpen}
         title={dialog.title}
