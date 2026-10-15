@@ -17,7 +17,7 @@ export interface User {
   color: string; // Hex color for calendar
   avatarInitials: string;
   phone: string;
-  password?: string; // 6-character non-predictable alphanumeric password (e.g. G93TO5)
+  password?: string; // 6-character alphanumeric password
   active: boolean;
   createdAt: string;
 }

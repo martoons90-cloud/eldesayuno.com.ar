@@ -17,7 +17,6 @@ import {
   CustomCategory,
 } from '../types';
 import { pushService } from './notificationService';
-import { supabaseService } from './supabaseService';
 
 const USERS_KEY = 'el_desayuno_users_v3';
 const BOOKINGS_KEY = 'el_desayuno_bookings_v3';
@@ -34,73 +33,28 @@ const EXPENSES_KEY = 'el_desayuno_expenses_v1';
 const CASH_FLOW_KEY = 'el_desayuno_cashflow_v1';
 const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
 
-import {
-  SEED_USERS,
-  SEED_SETTINGS,
-  SEED_BOOKINGS,
-  SEED_BLOCKS,
-  SEED_HOUSE_RULES,
-  SEED_CONTACTS,
-  SEED_DOCUMENTS,
-  SEED_INVENTORY,
-  SEED_INCIDENTS,
-  SEED_NOTIFICATIONS,
-  SEED_FEE_COLLECTIONS,
-  SEED_EXPENSES,
-  SEED_CASH_FLOW,
-} from './defaultSeedData';
-import { d1Service } from './d1Service';
+/** Estado vacío: la interfaz nunca inventa información si la base no la devuelve. */
+export const DEFAULT_USERS: User[] = [];
+export const DEFAULT_SETTINGS: TrustSettings = {
+  houseName: '', location: '', wifiSsid: '', wifiPassword: '', checkInTime: '', checkOutTime: '',
+  autoCleaningBufferHours: 0, cancellationMinDays: 0, maxGuestsLimit: 0, emergencyAddress: '',
+  expenseCategories: [], cashFlowCategories: [], feeCategories: [], inventoryCategories: [],
+};
+export const DEFAULT_BOOKINGS: Booking[] = [];
+export const DEFAULT_BLOCKS: DateBlock[] = [];
+export const DEFAULT_HOUSE_RULES: HouseRule[] = [];
+export const DEFAULT_CONTACTS: UsefulContact[] = [];
+export const DEFAULT_DOCUMENTS: DocumentItem[] = [];
+export const DEFAULT_INVENTORY: InventoryItem[] = [];
+export const DEFAULT_INCIDENTS: IncidentReport[] = [];
+export const DEFAULT_NOTIFICATIONS: NotificationPush[] = [];
+export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = [];
+export const DEFAULT_EXPENSES: ExpenseItem[] = [];
 
-export const DEFAULT_USERS: User[] = SEED_USERS;
-export const DEFAULT_SETTINGS: TrustSettings = SEED_SETTINGS;
-export const DEFAULT_BOOKINGS: Booking[] = SEED_BOOKINGS;
-export const DEFAULT_BLOCKS: DateBlock[] = SEED_BLOCKS;
-export const DEFAULT_HOUSE_RULES: HouseRule[] = SEED_HOUSE_RULES;
-export const DEFAULT_CONTACTS: UsefulContact[] = SEED_CONTACTS;
-export const DEFAULT_DOCUMENTS: DocumentItem[] = SEED_DOCUMENTS;
-export const DEFAULT_INVENTORY: InventoryItem[] = SEED_INVENTORY;
-export const DEFAULT_INCIDENTS: IncidentReport[] = SEED_INCIDENTS;
-export const DEFAULT_NOTIFICATIONS: NotificationPush[] = SEED_NOTIFICATIONS;
-export const DEFAULT_FEE_COLLECTIONS: FeeCollection[] = SEED_FEE_COLLECTIONS;
-export const DEFAULT_EXPENSES: ExpenseItem[] = SEED_EXPENSES;
-
-export const DEFAULT_EXPENSE_CATEGORIES: CustomCategory[] = [
-  { id: 'servicios', name: 'Servicios (Luz, Agua, Gas, WiFi)' },
-  { id: 'personal_casero', name: 'Personal / Casero / Limpieza' },
-  { id: 'mantenimiento', name: 'Mantenimiento & Reparaciones' },
-  { id: 'impuestos', name: 'Impuestos & Tasas' },
-  { id: 'insumos', name: 'Insumos & Varios' },
-  { id: 'otro', name: 'Otro' },
-];
-
-export const DEFAULT_CASHFLOW_CATEGORIES: CustomCategory[] = [
-  { id: 'aporte_socio', name: 'Aporte de Socio' },
-  { id: 'pago_expensas', name: 'Pago de Expensas / Tasas' },
-  { id: 'pago_proveedor', name: 'Pago a Proveedor' },
-  { id: 'reintegro_gasto', name: 'Reintegro de Gasto a Socio' },
-  { id: 'fondo_reserva', name: 'Fondo de Reserva' },
-  { id: 'otro_ingreso', name: 'Otro Ingreso' },
-  { id: 'otro_egreso', name: 'Otro Egreso' },
-];
-
-export const DEFAULT_FEE_CATEGORIES: CustomCategory[] = [
-  { id: 'expensas_ordinarias', name: 'Expensas Ordinarias' },
-  { id: 'obras_extraordinarias', name: 'Obras & Mejoras Extraordinarias' },
-  { id: 'servicios', name: 'Servicios' },
-  { id: 'mantenimiento', name: 'Mantenimiento' },
-  { id: 'impuestos', name: 'Impuestos' },
-  { id: 'otro', name: 'Otro' },
-];
-
-export const DEFAULT_INVENTORY_CATEGORIES: CustomCategory[] = [
-  { id: 'living_galeria', name: 'Living & Galería' },
-  { id: 'cocina_vajilla', name: 'Cocina & Vajilla' },
-  { id: 'suites_dormitorios', name: 'Suites & Dormitorios' },
-  { id: 'quincho_asador', name: 'Quincho & Asador' },
-  { id: 'piscina_parque', name: 'Piscina & Parque' },
-  { id: 'blanqueria_ropa', name: 'Blanquería & Ropa' },
-  { id: 'equipamiento_tecnico', name: 'Equipamiento Técnico' },
-];
+export const DEFAULT_EXPENSE_CATEGORIES: CustomCategory[] = [];
+export const DEFAULT_CASHFLOW_CATEGORIES: CustomCategory[] = [];
+export const DEFAULT_FEE_CATEGORIES: CustomCategory[] = [];
+export const DEFAULT_INVENTORY_CATEGORIES: CustomCategory[] = [];
 
 export function normalizeSettings(s: any): TrustSettings {
   if (!s || typeof s !== 'object') return DEFAULT_SETTINGS;
@@ -178,53 +132,16 @@ class StorageService {
       window.addEventListener('storage', () => {
         this.notify(false, false);
       });
-      // Initial background hydration from Cloudflare D1
-      this.hydrateFromD1Async();
     }
   }
 
   private init() {
     if (typeof window === 'undefined') return;
 
-    if (!localStorage.getItem(USERS_KEY)) {
-      localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
-    }
-    if (!localStorage.getItem(BOOKINGS_KEY)) {
-      localStorage.setItem(BOOKINGS_KEY, JSON.stringify(DEFAULT_BOOKINGS));
-    }
-    if (!localStorage.getItem(BLOCKS_KEY)) {
-      localStorage.setItem(BLOCKS_KEY, JSON.stringify(DEFAULT_BLOCKS));
-    }
-    if (!localStorage.getItem(SETTINGS_KEY)) {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
-    }
-    if (!localStorage.getItem(NOTIFICATIONS_KEY)) {
-      localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(DEFAULT_NOTIFICATIONS));
-    }
-    if (!localStorage.getItem(INVENTORY_KEY) || localStorage.getItem(INVENTORY_KEY)?.includes('inv-1')) {
-      localStorage.setItem(INVENTORY_KEY, JSON.stringify(DEFAULT_INVENTORY));
-    }
-    if (!localStorage.getItem(INCIDENTS_KEY)) {
-      localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
-    }
-    if (!localStorage.getItem(EXPENSES_KEY)) {
-      localStorage.setItem(EXPENSES_KEY, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(CASH_FLOW_KEY)) {
-      localStorage.setItem(CASH_FLOW_KEY, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(FEES_KEY)) {
-      localStorage.setItem(FEES_KEY, JSON.stringify([]));
-    }
-    // Ensure Efraín Rodríguez has intendente role
-    let users = this.getUsers();
-    const efrainIdx = users.findIndex((u) => u.id === 'user-c4-efrain' || u.name.includes('Efraín'));
-    if (efrainIdx >= 0 && users[efrainIdx].role !== 'intendente') {
-      users[efrainIdx].role = 'intendente';
-    }
-    const bookings = this.getBookings();
-    const updatedUsers = recalculateUsersUsedDays(users, bookings);
-    localStorage.setItem(USERS_KEY, JSON.stringify(updatedUsers));
+    // No reutilizamos el caché anterior: la base es la única fuente de verdad.
+    [USERS_KEY, BOOKINGS_KEY, BLOCKS_KEY, SETTINGS_KEY, RULES_KEY, CONTACTS_KEY,
+      DOCUMENTS_KEY, INVENTORY_KEY, INCIDENTS_KEY, NOTIFICATIONS_KEY, FEES_KEY,
+      EXPENSES_KEY, CASH_FLOW_KEY].forEach((key) => localStorage.setItem(key, key === SETTINGS_KEY ? JSON.stringify(DEFAULT_SETTINGS) : '[]'));
 
     // Hydrate server state and settings directly from database for cross-browser synchronization
     this.fetchLatestSettingsFromDatabase();
@@ -309,16 +226,12 @@ class StorageService {
 
         const currentUsersRaw = localStorage.getItem(USERS_KEY) || '[]';
         const serverUsersRaw = JSON.stringify(data.data.users || []);
-        if (
-          currentUsersRaw !== serverUsersRaw &&
-          Array.isArray(data.data.users) &&
-          data.data.users.length > 0
-        ) {
+        if (currentUsersRaw !== serverUsersRaw && Array.isArray(data.data.users)) {
           localStorage.setItem(USERS_KEY, serverUsersRaw);
           hasChanges = true;
         }
 
-        if (data.data.blocks && Array.isArray(data.data.blocks)) {
+        if (Array.isArray(data.data.blocks)) {
           const currentBlocksRaw = localStorage.getItem(BLOCKS_KEY) || '[]';
           const serverBlocksRaw = JSON.stringify(data.data.blocks);
           if (currentBlocksRaw !== serverBlocksRaw) {
@@ -327,7 +240,7 @@ class StorageService {
           }
         }
 
-        if (data.data.fees && Array.isArray(data.data.fees)) {
+        if (Array.isArray(data.data.fees)) {
           const currentFeesRaw = localStorage.getItem(FEES_KEY) || '[]';
           const serverFeesRaw = JSON.stringify(data.data.fees);
           if (currentFeesRaw !== serverFeesRaw) {
@@ -335,7 +248,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.expenses && Array.isArray(data.data.expenses)) {
+        if (Array.isArray(data.data.expenses)) {
           const currentExpensesRaw = localStorage.getItem(EXPENSES_KEY) || '[]';
           const serverExpensesRaw = JSON.stringify(data.data.expenses);
           if (currentExpensesRaw !== serverExpensesRaw) {
@@ -343,7 +256,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.cashFlow && Array.isArray(data.data.cashFlow)) {
+        if (Array.isArray(data.data.cashFlow)) {
           const currentCFRaw = localStorage.getItem(CASH_FLOW_KEY) || '[]';
           const serverCFRaw = JSON.stringify(data.data.cashFlow);
           if (currentCFRaw !== serverCFRaw) {
@@ -380,7 +293,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.rules && Array.isArray(data.data.rules)) {
+        if (Array.isArray(data.data.rules)) {
           const currentRulesRaw = localStorage.getItem(RULES_KEY) || '[]';
           const serverRulesRaw = JSON.stringify(data.data.rules);
           if (currentRulesRaw !== serverRulesRaw) {
@@ -388,7 +301,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.contacts && Array.isArray(data.data.contacts)) {
+        if (Array.isArray(data.data.contacts)) {
           const currentContactsRaw = localStorage.getItem(CONTACTS_KEY) || '[]';
           const serverContactsRaw = JSON.stringify(data.data.contacts);
           if (currentContactsRaw !== serverContactsRaw) {
@@ -396,7 +309,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.documents && Array.isArray(data.data.documents)) {
+        if (Array.isArray(data.data.documents)) {
           const currentDocsRaw = localStorage.getItem(DOCUMENTS_KEY) || '[]';
           const serverDocsRaw = JSON.stringify(data.data.documents);
           if (currentDocsRaw !== serverDocsRaw) {
@@ -404,7 +317,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.inventory && Array.isArray(data.data.inventory)) {
+        if (Array.isArray(data.data.inventory)) {
           const currentInvRaw = localStorage.getItem(INVENTORY_KEY) || '[]';
           const serverInvRaw = JSON.stringify(data.data.inventory);
           if (currentInvRaw !== serverInvRaw) {
@@ -412,7 +325,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.incidents && Array.isArray(data.data.incidents)) {
+        if (Array.isArray(data.data.incidents)) {
           const currentIncRaw = localStorage.getItem(INCIDENTS_KEY) || '[]';
           const serverIncRaw = JSON.stringify(data.data.incidents);
           if (currentIncRaw !== serverIncRaw) {
@@ -420,7 +333,7 @@ class StorageService {
             hasChanges = true;
           }
         }
-        if (data.data.notifications && Array.isArray(data.data.notifications)) {
+        if (Array.isArray(data.data.notifications)) {
           const currentNotifRaw = localStorage.getItem(NOTIFICATIONS_KEY) || '[]';
           const serverNotifRaw = JSON.stringify(data.data.notifications);
           if (currentNotifRaw !== serverNotifRaw) {
@@ -438,80 +351,6 @@ class StorageService {
     }
   }
 
-  // Asynchronous background hydration from live Cloudflare D1
-  public async hydrateFromD1Async() {
-    if (typeof window === 'undefined') return;
-    try {
-      const res = await fetch('/api/d1/sync-pull', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (data.success && data.data) {
-        if (data.data.users && data.data.users.length > 0) {
-          localStorage.setItem(USERS_KEY, JSON.stringify(data.data.users));
-        }
-        if (data.data.bookings && data.data.bookings.length > 0) {
-          localStorage.setItem(BOOKINGS_KEY, JSON.stringify(data.data.bookings));
-        }
-        if (data.data.blocks && data.data.blocks.length > 0) {
-          localStorage.setItem(BLOCKS_KEY, JSON.stringify(data.data.blocks));
-        }
-        if (data.data.settings) {
-          const normalized = normalizeSettings(data.data.settings);
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
-          if (normalized.logoUrl) {
-            localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
-          }
-        }
-        if (data.data.inventory && data.data.inventory.length > 0) {
-          localStorage.setItem(INVENTORY_KEY, JSON.stringify(data.data.inventory));
-        }
-        if (data.data.incidents && data.data.incidents.length > 0) {
-          localStorage.setItem(INCIDENTS_KEY, JSON.stringify(data.data.incidents));
-        }
-        this.notify(false, true);
-      }
-    } catch {
-      // Offline fallback to local storage
-    }
-  }
-
-  // Push local modifications automatically to Cloudflare D1
-  private async syncToD1Async() {
-    if (typeof window === 'undefined') return;
-    try {
-      await fetch('/api/d1/sync-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          users: this.getUsers(),
-          bookings: this.getBookings(),
-          blocks: this.getBlocks(),
-          settings: this.getSettings(),
-          inventory: this.getInventory(),
-          incidents: this.getIncidents(),
-          notifications: this.getNotifications(),
-        }),
-      });
-    } catch {
-      // Local fallback preserves state safely
-    }
-  }
-
-  private async syncToSupabaseAsync() {
-    if (typeof window === 'undefined') return;
-    try {
-      if (supabaseService.isConnected()) {
-        const payload = this.getAllDataPackage();
-        await supabaseService.pushDataToSupabase(payload);
-      }
-    } catch (err) {
-      console.warn('[StorageService] Supabase background push notice:', err);
-    }
-  }
-
   public subscribe(cb: () => void): () => void {
     this.listeners.push(cb);
     return () => {
@@ -519,7 +358,7 @@ class StorageService {
     };
   }
 
-  private notify(syncD1: boolean = true, broadcast: boolean = true) {
+  private notify(_syncDatabase: boolean = true, broadcast: boolean = true) {
     this.listeners.forEach((cb) => {
       try {
         cb();
@@ -537,10 +376,6 @@ class StorageService {
         console.warn('BroadcastChannel post error:', err);
       }
     }
-    if (syncD1) {
-      this.syncToD1Async();
-    }
-    this.syncToSupabaseAsync();
   }
 
   // Current User / Auth
@@ -603,32 +438,19 @@ class StorageService {
       };
     }
 
-    // Force active state if undefined or disabled by mistake
-    found.active = true;
-
-    // If password provided and not placeholder, verify against user password
-    if (password && password !== 'demo' && password !== '••••••••••••') {
-      const inputPass = password.trim().toUpperCase();
-      const userPass = (found.password || '').trim().toUpperCase();
-      const isEfrain =
-        found.id === 'user-c4-efrain' ||
-        normalizeStr(found.email || '').includes('efrain') ||
-        normalizeStr(found.username || '').includes('efrain');
-
-      const isValidPass =
-        inputPass === userPass || (isEfrain && (inputPass === '123456' || inputPass === 'G93TO5'));
-
-      if (!isValidPass) {
-        return {
-          success: false,
-          error: `Contraseña incorrecta para ${found.name}. Ingrese el código alfanumérico de 6 dígitos asignado (${found.password || '123456'}).`,
-        };
-      }
+    if (!found.active) {
+      return { success: false, error: 'Este usuario no está activo en la base de datos.' };
     }
 
-    // Always ensure Efrain retains intendente role
-    if (found.id === 'user-c4-efrain' || found.email === 'efrain.rodriguez@eldesayuno.com' || normalizeStr(found.name).includes('efrain')) {
-      found.role = 'intendente';
+    if (password) {
+      const inputPass = password.trim().toUpperCase();
+      const userPass = (found.password || '').trim().toUpperCase();
+      if (!userPass || inputPass !== userPass) {
+        return {
+          success: false,
+          error: 'Contraseña incorrecta.',
+        };
+      }
     }
 
     this.setCurrentUser(found);
@@ -641,70 +463,14 @@ class StorageService {
 
   // Users
   public getUsers(): User[] {
-    if (typeof window === 'undefined') return DEFAULT_USERS;
+    if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(USERS_KEY);
-    if (!raw) return DEFAULT_USERS;
+    if (!raw) return [];
     try {
       const parsed: User[] = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return DEFAULT_USERS;
-
-      // 1. Merge DEFAULT_USERS with stored updates
-      const defaultMerged = DEFAULT_USERS.map((defUser) => {
-        const found = parsed.find(
-          (p) => p.id === defUser.id || p.email === defUser.email || (p.username && p.username === defUser.username)
-        );
-        if (!found) return defUser;
-        const cleanPartName = found.partName && !found.partName.includes('%') ? found.partName : defUser.partName;
-        const effectiveShare = typeof found.sharePercentage === 'number' && !isNaN(found.sharePercentage)
-          ? found.sharePercentage
-          : (defUser.sharePercentage ?? 6.25);
-
-        return {
-          ...defUser,
-          ...found,
-          partName: cleanPartName,
-          sharePercentage: effectiveShare,
-          active: found.active !== undefined ? found.active : true,
-          role: defUser.id === 'user-c4-efrain' ? ('intendente' as const) : (found.role || defUser.role),
-          isFiduciante: found.isFiduciante !== undefined ? found.isFiduciante : defUser.isFiduciante,
-          isCabezaDeEquipo: found.isCabezaDeEquipo !== undefined ? found.isCabezaDeEquipo : defUser.isCabezaDeEquipo,
-        };
-      });
-
-      // 2. Preserve all newly created custom users not present in DEFAULT_USERS
-      const customUsers = parsed.filter(
-        (p) =>
-          p.id !== 'user-fiduciante' &&
-          p.id !== 'user-intendente' &&
-          p.email !== 'fiduciante@eldesayuno.com.ar' &&
-          p.email !== 'intendente@eldesayuno.com.ar' &&
-          !DEFAULT_USERS.some(
-            (def) => def.id === p.id || def.email === p.email || (def.username && p.username && def.username === p.username)
-          )
-      ).map((cu) => ({
-        ...cu,
-        sharePercentage: typeof cu.sharePercentage === 'number' && !isNaN(cu.sharePercentage)
-          ? cu.sharePercentage
-          : Math.round((100 / Math.max(1, parsed.length)) * 10000) / 10000,
-      }));
-
-      const finalUsers = [...defaultMerged, ...customUsers].filter(
-        (u) =>
-          u.id !== 'user-fiduciante' &&
-          u.id !== 'user-intendente' &&
-          u.email !== 'fiduciante@eldesayuno.com.ar' &&
-          u.email !== 'intendente@eldesayuno.com.ar'
-      );
-
-      return finalUsers;
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return DEFAULT_USERS.filter(
-        (u) =>
-          u.id !== 'user-fiduciante' &&
-          u.id !== 'user-intendente' &&
-          u.email !== 'fiduciante@eldesayuno.com.ar' &&
-          u.email !== 'intendente@eldesayuno.com.ar'
-      );
+      return [];
     }
   }
 
@@ -782,7 +548,7 @@ class StorageService {
     const target = users.find((u) => u.id === userId);
     if (!target) return;
     const newStatus = !target.isFiduciante;
-    const updatedRole = newStatus ? ('fiduciante' as const) : (target.id === 'user-c4-efrain' ? ('intendente' as const) : ('owner' as const));
+    const updatedRole = newStatus ? ('fiduciante' as const) : ('owner' as const);
     const updatedUser = { ...target, isFiduciante: newStatus, role: updatedRole };
     this.saveUser(updatedUser);
   }
@@ -817,9 +583,6 @@ class StorageService {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando usuario en servidor:', err));
 
-    if (supabaseService.isConnected()) {
-      supabaseService.deleteUser(userId);
-    }
   }
 
   // Transfer Administrator role to another user
@@ -1247,35 +1010,12 @@ class StorageService {
       console.warn('Error fetching latest settings from DB:', e);
     }
 
-    // Direct Cloudflare D1 query fallback if /api/settings is unavailable (e.g. running on Cloudflare Pages static CDN)
-    if (d1Service.isConnected()) {
-      try {
-        const d1Res = await d1Service.executeQuery("SELECT * FROM trust_settings WHERE id = 'default_settings' LIMIT 1");
-        if (d1Res.success && d1Res.results && d1Res.results[0]) {
-          const normalized = normalizeSettings(d1Res.results[0]);
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
-          if (normalized.logoUrl) {
-            localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
-          }
-          this.notify(false, true);
-          return normalized;
-        }
-      } catch (err) {
-        console.warn('D1 direct fallback error:', err);
-      }
-    }
-
     return this.getSettings();
   }
 
   public async saveSettingsAsync(settings: Partial<TrustSettings>): Promise<TrustSettings> {
     const current = this.getSettings();
     const mergedToSave = { ...current, ...settings, updatedAt: new Date().toISOString() };
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedToSave));
-    if (mergedToSave.logoUrl) {
-      localStorage.setItem('el_desayuno_custom_logo', mergedToSave.logoUrl);
-    }
-    this.notify(false, true);
 
     try {
       const res = await fetch(`/api/settings?_t=${Date.now()}`, {
@@ -1288,7 +1028,7 @@ class StorageService {
         body: JSON.stringify(mergedToSave),
       });
       const data = await res.json();
-      if (data.success && data.settings) {
+      if (res.ok && data.success && data.settings) {
         const finalNormalized = normalizeSettings(data.settings);
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(finalNormalized));
         if (finalNormalized.logoUrl) {
@@ -1298,46 +1038,10 @@ class StorageService {
         return finalNormalized;
       }
     } catch (err) {
-      console.warn('Error guardando ajustes en /api/settings:', err);
+      throw new Error(err instanceof Error ? err.message : 'No se pudieron guardar los ajustes en la base de datos.');
     }
 
-    // Direct Cloudflare D1 write fallback if running on Cloudflare Pages
-    if (d1Service.isConnected()) {
-      try {
-        const s = mergedToSave;
-        await d1Service.executeQuery(
-          `INSERT OR REPLACE INTO trust_settings (id, house_name, location, wifi_ssid, wifi_password, check_in_time, check_out_time, auto_cleaning_buffer_hours, cancellation_min_days, max_guests_limit, emergency_address, logo_url, cbu, alias_bancario, cuit_fideicomiso, banco_nombre, titular_cuenta, wifi_coverage_notes, slogan, updated_at)
-           VALUES ('default_settings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            s.houseName || 'Estancia El Desayuno',
-            s.location || '',
-            s.wifiSsid || '',
-            s.wifiPassword || '',
-            s.checkInTime || '14:00',
-            s.checkOutTime || '11:00',
-            s.autoCleaningBufferHours || 24,
-            s.cancellationMinDays || 7,
-            s.maxGuestsLimit || 12,
-            s.emergencyAddress || '',
-            s.logoUrl || '',
-            s.cbu || '',
-            s.aliasBancario || '',
-            s.cuitFideicomiso || '',
-            s.bancoNombre || '',
-            s.titularCuenta || '',
-            s.wifiCoverageNotes || '',
-            s.slogan || 'Cuatro Partes, Un Mismo Objetivo',
-            new Date().toISOString(),
-          ]
-        );
-      } catch (err) {
-        console.warn('Error persistiendo en D1:', err);
-      }
-    }
-
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedToSave));
-    this.notify(false, true);
-    return mergedToSave;
+    throw new Error('La base de datos no confirmó los ajustes.');
   }
 
   public saveSettings(settings: Partial<TrustSettings>) {
@@ -1638,7 +1342,6 @@ class StorageService {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando cobranza en servidor:', err));
 
-    supabaseService.deleteFeeCollection(collectionId).catch(() => {});
   }
 
   // Notifications
@@ -1742,14 +1445,13 @@ class StorageService {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando gasto en servidor:', err));
 
-    supabaseService.deleteExpense(expenseId).catch(() => {});
   }
 
   // Cash Flow & Account Ledger
   public getCashFlows(): CashFlowTransaction[] {
-    if (typeof window === 'undefined') return SEED_CASH_FLOW;
+    if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(CASH_FLOW_KEY);
-    return raw ? JSON.parse(raw) : SEED_CASH_FLOW;
+    return raw ? JSON.parse(raw) : [];
   }
 
   public saveCashFlowTransaction(tx: CashFlowTransaction) {
@@ -1775,7 +1477,6 @@ class StorageService {
       method: 'DELETE',
     }).catch((err) => console.error('Error eliminando transacción de caja:', err));
 
-    supabaseService.deleteCashFlowTransaction(txId).catch(() => {});
   }
 
   public async fetchExpensesFromDatabase(): Promise<ExpenseItem[]> {

@@ -35,20 +35,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     }, 350);
   };
 
-  const handleSelectDemoUser = (user: User) => {
-    setEmail(user.email);
-    setPassword('••••••••••••');
-    setError(null);
-    setLoading(true);
-    setTimeout(() => {
-      const res = storageService.login(user.email, 'demo');
-      setLoading(false);
-      if (res.success && res.user) {
-        onLoginSuccess(res.user);
-      }
-    }, 200);
-  };
-
   return (
     <div className="min-h-screen w-full flex flex-col justify-between bg-[#F8F5EE] text-[#19231A]">
       {/* Decorative top border strip with trust green */}

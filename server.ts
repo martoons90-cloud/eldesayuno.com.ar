@@ -849,10 +849,13 @@ app.get('/api/r2/file', async (req, res) => {
 // -------------------------------------------------------------
 // SERVER-SIDE SHARED STATE PERSISTENCE & CLOUD LOCKING
 // -------------------------------------------------------------
-import { getFullSeedState } from './src/services/defaultSeedData';
-
 const STATE_FILE_PATH = path.resolve(process.cwd(), 'app-server-state.json');
 let memoryServerState: Record<string, any> | null = null;
+
+const EMPTY_SERVER_STATE = () => ({
+  users: [], bookings: [], blocks: [], settings: {}, rules: [], contacts: [], documents: [],
+  inventory: [], incidents: [], notifications: [], fees: [], expenses: [], cashFlow: [],
+});
 
 function loadServerState(forceDisk = false): Record<string, any> {
   if (memoryServerState && !forceDisk) {
@@ -868,16 +871,16 @@ function loadServerState(forceDisk = false): Record<string, any> {
       }
     }
   } catch (err) {
-    console.error('[Server State] Error leyendo STATE_FILE_PATH, re-inicializando semilla:', err);
+    console.error('[Server State] Error leyendo STATE_FILE_PATH:', err);
   }
-  const seed = getFullSeedState();
-  memoryServerState = seed;
+  const emptyState = EMPTY_SERVER_STATE();
+  memoryServerState = emptyState;
   try {
-    fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(seed, null, 2), 'utf-8');
+    fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(emptyState, null, 2), 'utf-8');
   } catch (writeErr) {
-    console.error('[Server State] Error escribiendo semilla inicial:', writeErr);
+    console.error('[Server State] Error escribiendo estado vacío:', writeErr);
   }
-  return seed;
+  return emptyState;
 }
 
 // Real-time synchronization event bus across all client sessions
@@ -1202,10 +1205,6 @@ function saveServerState(state: Record<string, any>): void {
   }
 }
 
-const DEFAULT_EXPENSE_CATEGORIES = [{ id: 'mantenimiento', name: 'Mantenimiento' }, { id: 'servicios', name: 'Servicios' }, { id: 'impuestos', name: 'Impuestos' }, { id: 'reparaciones', name: 'Reparaciones' }, { id: 'otro', name: 'Otro' }];
-const DEFAULT_CASHFLOW_CATEGORIES = [{ id: 'ingreso_cuota', name: 'Ingreso Cuota' }, { id: 'pago_gasto', name: 'Pago de Gasto' }, { id: 'otro_ingreso', name: 'Otro Ingreso' }];
-const DEFAULT_FEE_CATEGORIES = [{ id: 'expensas_ordinarias', name: 'Expensas Ordinarias' }, { id: 'expensas_extraordinarias', name: 'Expensas Extraordinarias' }, { id: 'fondo_reserva', name: 'Fondo de Reserva' }];
-const DEFAULT_INVENTORY_CATEGORIES = [{ id: 'general', name: 'General' }, { id: 'cocina', name: 'Cocina' }, { id: 'limpieza', name: 'Limpieza' }, { id: 'herramientas', name: 'Herramientas' }];
 
 async function safeSupabaseQuery(queryPromise: any) {
   try {
@@ -1217,8 +1216,8 @@ async function safeSupabaseQuery(queryPromise: any) {
 
 // Authoritative Real-Time Data Hydration from Supabase Relational Tables
 async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any>> {
-  const currentState = loadServerState();
-  if (!supabaseServerClient) return currentState;
+  const currentState = EMPTY_SERVER_STATE();
+  if (!supabaseServerClient) throw new Error('Supabase no está configurado.');
 
   try {
     const [
@@ -1261,9 +1260,9 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       safeSupabaseQuery(supabaseServerClient.from('rules').select('*')),
     ]);
 
-    const state: Record<string, any> = { ...currentState };
+    const state: Record<string, any> = { ...EMPTY_SERVER_STATE() };
 
-    if (!usersRes.error && Array.isArray(usersRes.data) && usersRes.data.length > 0) {
+    if (!usersRes.error && Array.isArray(usersRes.data)) {
       state.users = usersRes.data.map((u: any) => ({
         id: u.id,
         name: u.name || '',
@@ -1501,10 +1500,10 @@ async function fetchAuthoritativeStateFromSupabase(): Promise<Record<string, any
       });
     }
 
-    state.settings.expenseCategories = expCats.length > 0 ? expCats : (currentState.settings?.expenseCategories || DEFAULT_EXPENSE_CATEGORIES);
-    state.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : (currentState.settings?.cashFlowCategories || DEFAULT_CASHFLOW_CATEGORIES);
-    state.settings.feeCategories = feeCats.length > 0 ? feeCats : (currentState.settings?.feeCategories || DEFAULT_FEE_CATEGORIES);
-    state.settings.inventoryCategories = invCats.length > 0 ? invCats : (currentState.settings?.inventoryCategories || DEFAULT_INVENTORY_CATEGORIES);
+    state.settings.expenseCategories = expCats;
+    state.settings.cashFlowCategories = cfCats;
+    state.settings.feeCategories = feeCats;
+    state.settings.inventoryCategories = invCats;
 
     if (!blocksRes?.error && Array.isArray(blocksRes?.data)) {
       state.blocks = blocksRes.data.map((b: any) => ({
@@ -1641,15 +1640,10 @@ app.post('/api/supabase/pull', async (_req, res) => {
 // 1. Get full App State (Canonical Database Truth directly from Supabase)
 app.get('/api/app-state', async (_req, res) => {
   try {
-    if (supabaseServerClient) {
-      const data = await fetchAuthoritativeStateFromSupabase();
-      return res.json({ success: true, data, source: 'supabase_authoritative' });
-    }
-    const data = loadServerState(true);
-    return res.json({ success: true, data, source: 'disk_fallback' });
+    const data = await fetchAuthoritativeStateFromSupabase();
+    return res.json({ success: true, data, source: 'supabase_authoritative' });
   } catch (err: unknown) {
-    const data = loadServerState(true);
-    return res.json({ success: true, data, source: 'error_fallback' });
+    return res.status(503).json({ success: false, error: 'La base de datos no está disponible.' });
   }
 });
 
@@ -1725,34 +1719,20 @@ app.post('/api/app-state', (req, res) => {
 // 2b. Dedicated Settings Endpoints (Canonical Cloud Database for Ajustes)
 app.get('/api/settings', async (_req, res) => {
   try {
-    if (supabaseServerClient) {
-      const { data, error } = await supabaseServerClient.from('settings').select('*').limit(1);
-      if (!error && Array.isArray(data) && data[0]) {
-        const s = data[0];
-        const state = loadServerState(true);
-        state.settings = {
-          ...state.settings,
-          houseName: s.house_name || state.settings?.houseName,
-          slogan: s.slogan || state.settings?.slogan,
-          cuitFideicomiso: s.cuit_fideicomiso || state.settings?.cuitFideicomiso,
-          titularCuenta: s.titular_cuenta || state.settings?.titularCuenta,
-          cbu: s.cbu || state.settings?.cbu,
-          aliasBancario: s.alias_bancario || state.settings?.aliasBancario,
-          bancoNombre: s.banco_nombre || state.settings?.bancoNombre,
-          location: s.location || state.settings?.location,
-          checkInTime: s.check_in_time || state.settings?.checkInTime,
-          checkOutTime: s.check_out_time || state.settings?.checkOutTime,
-          logoUrl: s.logo_url || state.settings?.logoUrl,
-          wifiSsid: s.wifi_ssid || state.settings?.wifiSsid,
-          wifiPassword: s.wifi_password || state.settings?.wifiPassword,
-          updatedAt: s.updated_at || new Date().toISOString(),
-        };
-        saveServerState(state);
-        return res.json({ success: true, settings: state.settings, source: 'supabase' });
-      }
+    if (!supabaseServerClient) {
+      return res.status(503).json({ success: false, error: 'La base de datos no está disponible.' });
     }
-    const state = loadServerState(true);
-    return res.json({ success: true, settings: state.settings || {} });
+    const { data, error } = await supabaseServerClient.from('settings').select('*').limit(1);
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    if (!data?.[0]) return res.json({ success: true, settings: {}, source: 'supabase' });
+    const s = data[0];
+    return res.json({ success: true, source: 'supabase', settings: {
+      houseName: s.house_name, slogan: s.slogan, cuitFideicomiso: s.cuit_fideicomiso,
+      titularCuenta: s.titular_cuenta, cbu: s.cbu, aliasBancario: s.alias_bancario,
+      bancoNombre: s.banco_nombre, location: s.location, checkInTime: s.check_in_time,
+      checkOutTime: s.check_out_time, logoUrl: s.logo_url, wifiSsid: s.wifi_ssid,
+      wifiPassword: s.wifi_password, updatedAt: s.updated_at,
+    }});
   } catch (err: unknown) {
     return res.status(500).json({ success: false, error: 'Error obteniendo ajustes del servidor' });
   }

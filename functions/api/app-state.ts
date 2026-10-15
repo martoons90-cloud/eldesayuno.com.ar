@@ -23,23 +23,9 @@ const CORS_HEADERS = {
 };
 
 const DEFAULT_SETTINGS = {
-  houseName: 'Estancia El Desayuno',
-  slogan: 'Cuatro Partes, Un Mismo Objetivo',
-  location: 'Ruta Provincial 41, Km 82, San Antonio de Areco / Mercedes, Bs. As.',
-  wifiSsid: 'ElDesayuno_WiFi_2026',
-  wifiPassword: 'CampoTranquilo2026',
-  checkInTime: '14:00',
-  checkOutTime: '11:00',
-  autoCleaningBufferHours: 24,
-  cancellationMinDays: 7,
-  maxGuestsLimit: 12,
-  emergencyAddress: 'Estancia El Desayuno, Acceso Principal Tranquera Verde, Coordenadas: -34.4820, -59.4120',
-  cbu: '422609619031812',
-  aliasBancario: 'F.ELDESAYUNO',
-  cuitFideicomiso: '30-71957079-4',
-  bancoNombre: 'Banco Macro S.A.',
-  titularCuenta: 'EL DESAYUNO FIDEICOMISO',
-  wifiCoverageNotes: 'La red cuenta con repetidores mesh cubriendo la Casa Principal, Quincho, Solárium y Galerías Exteriores. Velocidad simétrica por enlace de fibra rural.',
+  houseName: '', slogan: '', location: '', wifiSsid: '', wifiPassword: '', checkInTime: '', checkOutTime: '',
+  autoCleaningBufferHours: 0, cancellationMinDays: 0, maxGuestsLimit: 0, emergencyAddress: '',
+  cbu: '', aliasBancario: '', cuitFideicomiso: '', bancoNombre: '', titularCuenta: '', wifiCoverageNotes: '',
   logoUrl: '',
 };
 
