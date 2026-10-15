@@ -98,7 +98,16 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
     return () => unsub();
   }, []);
 
-  // Compute total balance in cash (Ingresos - Egresos)
+  // 1. Transactions filtered by role (Admin/Intendente sees all; Copropietario sees only their own)
+  const isUserTx = (t: CashFlowTransaction) => {
+    if (t.userId && t.userId === currentUser.id) return true;
+    if (t.userName && currentUser.name && t.userName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true;
+    return false;
+  };
+
+  const visibleCashFlows = fullAdmin ? cashFlows : cashFlows.filter(isUserTx);
+
+  // Global cash totals (for Admin / Intendente)
   const totalIngresos = cashFlows
     .filter((t) => t.type === 'ingreso')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -109,25 +118,38 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
 
   const cajaBalance = totalIngresos - totalEgresos;
 
+  // Personal cash totals (for Copropietario)
+  const myIngresos = visibleCashFlows
+    .filter((t) => t.type === 'ingreso')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const myEgresos = visibleCashFlows
+    .filter((t) => t.type === 'egreso')
+    .reduce((sum, t) => sum + t.amount, 0);
+
   // Compute Copropietarios Account Balances (Current Accounts / Cuentas Corrientes)
-  // Each owner can spend out of pocket (approved expenses). The trust owes them this amount until reimbursed.
-  const ownerAccountBalances = users
+  const allAccountBalances = users
     .filter((u) => u.role !== 'intendente' && u.role !== 'fiduciante')
     .map((u) => {
       // Expenses submitted by this user that are approved
       const userApprovedExpenses = expenses.filter(
-        (e) => e.userId === u.id && (e.approvalStatus === 'approved' || e.status === 'paid')
+        (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
+               (e.approvalStatus === 'approved' || e.status === 'paid')
       );
       const totalAdvanced = userApprovedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
       // Reimbursements issued to this user from cash flow
       const userReimbursements = cashFlows.filter(
-        (t) => t.userId === u.id && t.category === 'reintegro_gasto'
+        (t) => (t.userId === u.id || (t.userName && t.userName.toLowerCase() === u.name.toLowerCase())) &&
+               t.category === 'reintegro_gasto'
       );
       const totalReimbursed = userReimbursements.reduce((sum, t) => sum + t.amount, 0);
 
       const balanceDue = Math.max(0, totalAdvanced - totalReimbursed);
-      const pendingExpensesCount = expenses.filter((e) => e.userId === u.id && e.approvalStatus === 'pending').length;
+      const pendingExpensesCount = expenses.filter(
+        (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
+               e.approvalStatus === 'pending'
+      ).length;
 
       return {
         userId: u.id,
@@ -140,6 +162,55 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
         pendingExpensesCount,
       };
     });
+
+  // For copropietarios, show ONLY their own account ("su parte")
+  let visibleAccountBalances = fullAdmin
+    ? allAccountBalances
+    : allAccountBalances.filter(
+        (acc) =>
+          acc.userId === currentUser.id ||
+          (currentUser.name && acc.userName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      );
+
+  // Fallback if currentUser is not in allAccountBalances
+  if (!fullAdmin && visibleAccountBalances.length === 0) {
+    const userApprovedExpenses = expenses.filter(
+      (e) => (e.userId === currentUser.id || (e.userName && e.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+             (e.approvalStatus === 'approved' || e.status === 'paid')
+    );
+    const totalAdvanced = userApprovedExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+    const userReimbursements = cashFlows.filter(
+      (t) => (t.userId === currentUser.id || (t.userName && t.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+             t.category === 'reintegro_gasto'
+    );
+    const totalReimbursed = userReimbursements.reduce((sum, t) => sum + t.amount, 0);
+    const balanceDue = Math.max(0, totalAdvanced - totalReimbursed);
+    const pendingExpensesCount = expenses.filter(
+      (e) => (e.userId === currentUser.id || (e.userName && e.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+             e.approvalStatus === 'pending'
+    ).length;
+
+    visibleAccountBalances = [
+      {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        partName: currentUser.partName || 'Copropietario',
+        userColor: currentUser.color || '#1B3B2B',
+        totalAdvanced,
+        totalReimbursed,
+        balanceDue,
+        pendingExpensesCount,
+      },
+    ];
+  }
+
+  const myAccount = visibleAccountBalances[0] || {
+    totalAdvanced: 0,
+    totalReimbursed: 0,
+    balanceDue: 0,
+    pendingExpensesCount: 0,
+  };
 
   // Pending expenses submitted for admin/intendente approval
   const pendingExpenses = expenses.filter((e) => !e.approvalStatus || e.approvalStatus === 'pending');
@@ -319,7 +390,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
     alert(`Reintegro de $${reimburseAmount.toLocaleString()} registrado correctamente. Se descontó de la caja común.`);
   };
 
-  const filteredCashFlows = cashFlows.filter((t) => {
+  const filteredCashFlows = visibleCashFlows.filter((t) => {
     const matchesType = typeFilter === 'all' || t.type === typeFilter;
     const matchesSearch =
       t.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -336,17 +407,19 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
           <div className="flex items-center gap-2 text-xs text-[#7A8E7E] pb-1">
             <span className="font-serif font-bold text-[#163323]">Fideicomiso El Desayuno</span>
             <span>·</span>
-            <span>Gestión de Caja, Ingresos y Cuentas Corrientes</span>
+            <span>{fullAdmin ? 'Gestión de Caja, Ingresos y Cuentas Corrientes' : 'Mi Cuenta, Ingresos y Reintegros'}</span>
           </div>
           <h2
             className="text-xl sm:text-2xl font-serif font-bold text-[#163323] tracking-wide flex items-center gap-2.5"
             style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}
           >
             <Wallet className="w-6 h-6 text-[#BFA270]" />
-            <span>Caja Común, Ingresos, Egresos y Reintegros</span>
+            <span>{fullAdmin ? 'Caja Común, Ingresos, Egresos y Reintegros' : 'Mi Estado de Cuenta y Movimientos de Caja'}</span>
           </h2>
           <p className="text-xs text-[#526657] mt-1 max-w-3xl leading-relaxed">
-            Control de caja en tiempo real, cuentas corrientes individuales por copropietario, carga de facturas sujetas a aprobación y devoluciones escalonadas de adelantos.
+            {fullAdmin
+              ? 'Control de caja en tiempo real, cuentas corrientes individuales por copropietario, carga de facturas sujetas a aprobación y devoluciones escalonadas de adelantos.'
+              : 'Consultá tus aportes e ingresos registrados, los gastos que adelantaste de tu bolsillo y el estado de reintegros de tu cuenta corriente.'}
           </p>
         </div>
 
@@ -376,42 +449,85 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
 
       {/* KPI Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-            Saldo Disponible en Caja
-          </span>
-          <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
-            ${cajaBalance.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-          </div>
-          <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-            <span>Ingresos totales menos egresos ejecutados</span>
-          </p>
-        </div>
+        {fullAdmin ? (
+          <>
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Saldo Disponible en Caja
+              </span>
+              <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
+                ${cajaBalance.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                <span>Ingresos totales menos egresos ejecutados</span>
+              </p>
+            </div>
 
-        <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-emerald-700">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-            Total Ingresos Comunes
-          </span>
-          <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">
-            ${totalIngresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-          </div>
-          <p className="text-[11px] text-[#526657] mt-1">
-            Aportes de socios y fondos de reserva
-          </p>
-        </div>
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-emerald-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Total Ingresos Comunes
+              </span>
+              <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">
+                ${totalIngresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Aportes de socios y fondos de reserva
+              </p>
+            </div>
 
-        <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-amber-700">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-            Total Egresos & Proveedores
-          </span>
-          <div className="text-2xl font-bold font-mono text-amber-900 mt-1">
-            ${totalEgresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-          </div>
-          <p className="text-[11px] text-[#526657] mt-1">
-            Gastos operativos, servicios y reintegros
-          </p>
-        </div>
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-amber-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Total Egresos & Proveedores
+              </span>
+              <div className="text-2xl font-bold font-mono text-amber-900 mt-1">
+                ${totalEgresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Gastos operativos, servicios y reintegros
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Mi Saldo a Favor (Adelantos)
+              </span>
+              <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
+                ${myAccount.balanceDue.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${myAccount.balanceDue > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-600'}`} />
+                <span>{myAccount.balanceDue > 0 ? 'Monto a reintegrar por la administración' : 'Cuenta al día (sin saldo adeudado)'}</span>
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-emerald-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Mis Ingresos / Aportes Registrados
+              </span>
+              <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">
+                ${myIngresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Aportes y pagos registrados a tu nombre
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-amber-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Mis Reintegros / Devoluciones Cobradas
+              </span>
+              <div className="text-2xl font-bold font-mono text-amber-900 mt-1">
+                ${myEgresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Reintegros cobrados por gastos adelantados
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Sub-Tab Navigation */}
@@ -425,7 +541,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
           }`}
         >
           <Coins className="w-4 h-4 text-[#BFA270]" />
-          <span>Libro Diario de Caja ({cashFlows.length})</span>
+          <span>{fullAdmin ? `Libro Diario de Caja (${cashFlows.length})` : `Mis Movimientos de Caja (${visibleCashFlows.length})`}</span>
         </button>
 
         <button
@@ -437,7 +553,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
           }`}
         >
           <Wallet className="w-4 h-4 text-[#BFA270]" />
-          <span>Cuentas Corrientes & Reintegros Escalonados</span>
+          <span>{fullAdmin ? 'Cuentas Corrientes & Reintegros Escalonados' : `Mi Cuenta Corriente (${currentUser.partName || 'Mi Parte'})`}</span>
         </button>
 
         {fullAdmin && (
@@ -508,58 +624,78 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEAE0]">
-                {filteredCashFlows.map((tx) => {
-                  const isIngreso = tx.type === 'ingreso';
-                  return (
-                    <tr key={tx.id} className="hover:bg-[#FAF8F5] transition-colors">
-                      <td className="py-3.5 px-4 font-mono text-[#637568]">{tx.date}</td>
-                      <td className="py-3.5 px-3">
-                        <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
-                            isIngreso
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-amber-100 text-amber-900 border border-amber-300'
-                          }`}
-                        >
-                          {isIngreso ? <TrendingUp className="w-3 h-3 text-emerald-700" /> : <TrendingDown className="w-3 h-3 text-amber-700" />}
-                          <span>{tx.type}</span>
+                {filteredCashFlows.length === 0 ? (
+                  <tr>
+                    <td colSpan={fullAdmin ? 7 : 6} className="py-12 text-center text-xs text-[#7A8E7E]">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Coins className="w-8 h-8 text-[#DDD5BF]" />
+                        <span className="font-semibold text-sm text-[#163323]">
+                          {fullAdmin
+                            ? 'No se encontraron movimientos de caja con los filtros seleccionados.'
+                            : 'No tenés movimientos de ingresos ni egresos registrados a tu nombre aún.'}
                         </span>
-                      </td>
-                      <td className="py-3.5 px-3 font-medium uppercase text-[10px] text-[#526657]">
-                        {tx.category.replace('_', ' ')}
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-[#163323]">
-                        <span>{tx.concept}</span>
-                        {tx.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal">{tx.notes}</span>}
-                      </td>
-                      <td className="py-3.5 px-3">
-                        {tx.userName ? (
-                          <span className="font-medium text-[#163323]">{tx.userName} ({tx.partName})</span>
-                        ) : (
-                          <span className="text-neutral-400">—</span>
-                        )}
-                      </td>
-                      <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isIngreso ? 'text-emerald-700' : 'text-amber-900'}`}>
-                        {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
-                      </td>
-                      {fullAdmin && (
-                        <td className="py-3.5 px-3 text-right">
-                          <button
-                            onClick={() => {
-                              if (confirm('¿Eliminar este movimiento de caja?')) {
-                                storageService.deleteCashFlowTransaction(tx.id);
-                              }
-                            }}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
-                            title="Eliminar movimiento"
+                        <p className="text-[11px] text-[#7A8E7E] max-w-md">
+                          {fullAdmin
+                            ? 'Podés registrar nuevos movimientos de caja con el botón superior.'
+                            : 'Tus aportes de expensas, fondos y reintegros cobrados se listarán en esta sección una vez asentados por la administración.'}
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCashFlows.map((tx) => {
+                    const isIngreso = tx.type === 'ingreso';
+                    return (
+                      <tr key={tx.id} className="hover:bg-[#FAF8F5] transition-colors">
+                        <td className="py-3.5 px-4 font-mono text-[#637568]">{tx.date}</td>
+                        <td className="py-3.5 px-3">
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
+                              isIngreso
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            {isIngreso ? <TrendingUp className="w-3 h-3 text-emerald-700" /> : <TrendingDown className="w-3 h-3 text-amber-700" />}
+                            <span>{tx.type}</span>
+                          </span>
                         </td>
-                      )}
-                    </tr>
-                  );
-                })}
+                        <td className="py-3.5 px-3 font-medium uppercase text-[10px] text-[#526657]">
+                          {tx.category.replace('_', ' ')}
+                        </td>
+                        <td className="py-3.5 px-4 font-semibold text-[#163323]">
+                          <span>{tx.concept}</span>
+                          {tx.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal">{tx.notes}</span>}
+                        </td>
+                        <td className="py-3.5 px-3">
+                          {tx.userName ? (
+                            <span className="font-medium text-[#163323]">{tx.userName} ({tx.partName})</span>
+                          ) : (
+                            <span className="text-neutral-400">—</span>
+                          )}
+                        </td>
+                        <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isIngreso ? 'text-emerald-700' : 'text-amber-900'}`}>
+                          {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
+                        </td>
+                        {fullAdmin && (
+                          <td className="py-3.5 px-3 text-right">
+                            <button
+                              onClick={() => {
+                                if (confirm('¿Eliminar este movimiento de caja?')) {
+                                  storageService.deleteCashFlowTransaction(tx.id);
+                                }
+                              }}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
+                              title="Eliminar movimiento"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -574,15 +710,17 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
           <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4.5 space-y-2">
             <h3 className="text-sm font-bold text-[#163323] flex items-center gap-2">
               <Wallet className="w-4 h-4 text-[#BFA270]" />
-              <span>Cuenta Corriente & Devoluciones Escalonadas de Adelantos</span>
+              <span>{fullAdmin ? 'Cuenta Corriente & Devoluciones Escalonadas de Adelantos' : `Mi Cuenta Corriente (${currentUser.partName || 'Mi Parte'})`}</span>
             </h3>
             <p className="text-xs text-[#526657] leading-relaxed">
-              Cada perfil acumula los gastos que pagó de su bolsillo por cuenta del fideicomiso. Si la división de expensas o la caja no permite devolver todo junto, el Administrador o Intendente puede realizar <strong>reintegros parciales escalonados</strong>, descontándose de la caja común de forma transparente.
+              {fullAdmin
+                ? 'Cada perfil acumula los gastos que pagó de su bolsillo por cuenta del fideicomiso. Si la división de expensas o la caja no permite devolver todo junto, el Administrador o Intendente puede realizar reintegros parciales escalonados, descontándose de la caja común de forma transparente.'
+                : 'Acá podés consultar los gastos que adelantaste de tu bolsillo por cuenta del fideicomiso, los reintegros que ya te fueron transferidos y el saldo pendiente de devolución por parte de la administración.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {ownerAccountBalances.map((acc) => {
+          <div className={`grid grid-cols-1 ${fullAdmin ? 'md:grid-cols-2' : 'max-w-2xl'} gap-4`}>
+            {visibleAccountBalances.map((acc) => {
               const hasBalance = acc.balanceDue > 0;
               return (
                 <div key={acc.userId} className="bg-white border border-[#E3DFC8] p-5 shadow-xs space-y-4 flex flex-col justify-between">
@@ -935,18 +1073,24 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
               <div className="grid grid-cols-2 gap-3 bg-[#FAF8F5] p-2.5 border border-[#DCD4C0]">
                 <div>
                   <label className="block font-semibold uppercase text-[#35483A] mb-1">👤 ¿Quién realizó / pagó el gasto?</label>
-                  <select
-                    value={expPayerUserId}
-                    onChange={(e) => setExpPayerUserId(e.target.value)}
-                    className="w-full p-2 bg-white border border-[#DCD4C0] font-semibold text-xs focus:outline-none"
-                  >
-                    <option value="">{currentUser.name} ({currentUser.partName}) [Tú]</option>
-                    {users.filter((u) => u.id !== currentUser.id).map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.partName})
-                      </option>
-                    ))}
-                  </select>
+                  {fullAdmin ? (
+                    <select
+                      value={expPayerUserId}
+                      onChange={(e) => setExpPayerUserId(e.target.value)}
+                      className="w-full p-2 bg-white border border-[#DCD4C0] font-semibold text-xs focus:outline-none"
+                    >
+                      <option value="">{currentUser.name} ({currentUser.partName}) [Tú]</option>
+                      {users.filter((u) => u.id !== currentUser.id).map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.partName})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="w-full p-2 bg-white border border-[#DCD4C0] font-semibold text-xs text-[#163323] truncate">
+                      {currentUser.name} ({currentUser.partName})
+                    </div>
+                  )}
                 </div>
 
                 <div>
