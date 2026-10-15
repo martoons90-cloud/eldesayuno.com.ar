@@ -41,10 +41,16 @@ import {
 interface CashFlowViewProps {
   currentUser: User;
   settings: TrustSettings;
+  isAdmin?: boolean;
   onNavigateToCobranzas?: () => void;
 }
 
-export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, settings, onNavigateToCobranzas }) => {
+export const CashFlowView: React.FC<CashFlowViewProps> = ({
+  currentUser,
+  settings,
+  isAdmin,
+  onNavigateToCobranzas,
+}) => {
   const [cashFlows, setCashFlows] = useState<CashFlowTransaction[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -80,7 +86,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
   const [reimburseAmount, setReimburseAmount] = useState<number>(0);
   const [reimburseNotes, setReimburseNotes] = useState('');
 
-  const fullAdmin = hasFinancialAccess(currentUser);
+  const fullAdmin = isAdmin !== undefined ? isAdmin : hasFinancialAccess(currentUser);
   const canUpload = canUploadExpenses(currentUser);
 
   useEffect(() => {
@@ -127,85 +133,56 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({ currentUser, setting
     .filter((t) => t.type === 'egreso')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  // Compute Copropietarios Account Balances (Current Accounts / Cuentas Corrientes)
-  const allAccountBalances = users
-    .filter((u) => u.role !== 'intendente' && u.role !== 'fiduciante')
-    .map((u) => {
-      // Expenses submitted by this user that are approved
-      const userApprovedExpenses = expenses.filter(
-        (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
-               (e.approvalStatus === 'approved' || e.status === 'paid')
-      );
-      const totalAdvanced = userApprovedExpenses.reduce((sum, e) => sum + e.amount, 0);
-
-      // Reimbursements issued to this user from cash flow
-      const userReimbursements = cashFlows.filter(
-        (t) => (t.userId === u.id || (t.userName && t.userName.toLowerCase() === u.name.toLowerCase())) &&
-               t.category === 'reintegro_gasto'
-      );
-      const totalReimbursed = userReimbursements.reduce((sum, t) => sum + t.amount, 0);
-
-      const balanceDue = Math.max(0, totalAdvanced - totalReimbursed);
-      const pendingExpensesCount = expenses.filter(
-        (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
-               e.approvalStatus === 'pending'
-      ).length;
-
-      return {
-        userId: u.id,
-        userName: u.name,
-        partName: u.partName,
-        userColor: u.color,
-        totalAdvanced,
-        totalReimbursed,
-        balanceDue,
-        pendingExpensesCount,
-      };
-    });
-
-  // For copropietarios, show ONLY their own account ("su parte")
-  let visibleAccountBalances = fullAdmin
-    ? allAccountBalances
-    : allAccountBalances.filter(
-        (acc) =>
-          acc.userId === currentUser.id ||
-          (currentUser.name && acc.userName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+  // Eligible users for Cuentas Corrientes:
+  // Admin sees all owner accounts; Copropietario sees ONLY their own account ("su parte")
+  const targetUsers = fullAdmin
+    ? users.filter((u) => u.role !== 'intendente' && u.role !== 'fiduciante')
+    : users.filter(
+        (u) =>
+          u.id === currentUser.id ||
+          (currentUser.name && u.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
       );
 
-  // Fallback if currentUser is not in allAccountBalances
-  if (!fullAdmin && visibleAccountBalances.length === 0) {
+  const finalUsers = (!fullAdmin && targetUsers.length === 0) ? [currentUser] : targetUsers;
+
+  const visibleAccountBalances = finalUsers.map((u) => {
+    // Expenses submitted by this user that are approved
     const userApprovedExpenses = expenses.filter(
-      (e) => (e.userId === currentUser.id || (e.userName && e.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+      (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
              (e.approvalStatus === 'approved' || e.status === 'paid')
     );
     const totalAdvanced = userApprovedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
+    // Reimbursements issued to this user from cash flow
     const userReimbursements = cashFlows.filter(
-      (t) => (t.userId === currentUser.id || (t.userName && t.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+      (t) => (t.userId === u.id || (t.userName && t.userName.toLowerCase() === u.name.toLowerCase())) &&
              t.category === 'reintegro_gasto'
     );
     const totalReimbursed = userReimbursements.reduce((sum, t) => sum + t.amount, 0);
+
     const balanceDue = Math.max(0, totalAdvanced - totalReimbursed);
     const pendingExpensesCount = expenses.filter(
-      (e) => (e.userId === currentUser.id || (e.userName && e.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+      (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
              e.approvalStatus === 'pending'
     ).length;
 
-    visibleAccountBalances = [
-      {
-        userId: currentUser.id,
-        userName: currentUser.name,
-        partName: currentUser.partName || 'Copropietario',
-        userColor: currentUser.color || '#1B3B2B',
-        totalAdvanced,
-        totalReimbursed,
-        balanceDue,
-        pendingExpensesCount,
-      },
-    ];
-  }
+    return {
+      userId: u.id,
+      userName: u.name,
+      partName: u.partName,
+      userColor: u.color,
+      totalAdvanced,
+      totalReimbursed,
+      balanceDue,
+      pendingExpensesCount,
+    };
+  });
 
-  const myAccount = visibleAccountBalances[0] || {
+  const myAccount = visibleAccountBalances.find(
+    (acc) =>
+      acc.userId === currentUser.id ||
+      (currentUser.name && acc.userName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+  ) || visibleAccountBalances[0] || {
     totalAdvanced: 0,
     totalReimbursed: 0,
     balanceDue: 0,

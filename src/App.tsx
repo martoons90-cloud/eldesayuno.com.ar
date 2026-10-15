@@ -532,6 +532,7 @@ export default function App() {
           <CashFlowView
             currentUser={currentUser}
             settings={settings}
+            isAdmin={hasFinancialAccess(currentUser) && adminViewMode !== 'owner'}
             onNavigateToCobranzas={() => setActiveTab('cobranzas')}
           />
         )}
