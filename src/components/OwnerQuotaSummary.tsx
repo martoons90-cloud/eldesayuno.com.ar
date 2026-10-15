@@ -390,7 +390,7 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
             </span>
             <span>Piscina habilitada</span>
             <span>Wi-Fi Fibra 300MB</span>
-            <span>Casero permanente (Don Raúl)</span>
+            <span>Casero / Personal permanente</span>
           </div>
         </div>
 

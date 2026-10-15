@@ -1472,7 +1472,7 @@ class StorageService {
     } catch (err) {
       console.warn('Error fetching expenses from database:', err);
     }
-    return DEFAULT_EXPENSES;
+    return [];
   }
 
   public async fetchCashFlowFromDatabase(): Promise<CashFlowTransaction[]> {
@@ -1502,7 +1502,7 @@ class StorageService {
     } catch (err) {
       console.warn('Error fetching fees from database:', err);
     }
-    return DEFAULT_FEE_COLLECTIONS;
+    return [];
   }
 
   // Get complete package of local data for D1 push & backup

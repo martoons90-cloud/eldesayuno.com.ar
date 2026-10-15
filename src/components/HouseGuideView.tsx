@@ -100,7 +100,7 @@ DISPOSICIONES PRINCIPALES:
 4. Mantenimiento del orden edilicio, piscina, quincho y parque.
 5. Vigencia del período 2026.
 
-Fiduciario Administrador: Martín Benítez
+Fiduciario / Administración: El Desayuno
 Estancia El Desayuno - San Antonio de Areco / Mercedes
 =====================================================`;
 
@@ -209,7 +209,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
               <p className="mt-1 leading-relaxed">
                 El cuidado de la infraestructura, los muebles coloniales, la vajilla y las
                 instalaciones es responsabilidad compartida. Ante cualquier desperfecto surgido
-                durante su estadía, favor de avisar inmediatamente a Don Raúl (Casero) para su
+                durante su estadía, favor de avisar inmediatamente a la administración / personal encargado para su
                 reparación sin demoras para el próximo turno.
               </p>
             </div>
@@ -516,7 +516,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                 <p className="font-bold text-[#163323] pt-2">3. Mantenimiento y Responsabilidad:</p>
                 <p className="text-[#4E6152]">
                   Cualquier intervención edilicia o gasto extraordinario será evaluado y administrado
-                  por el Fiduciario Martín Benítez con rendición semestral a los cuatro fiduciantes.
+                  por la Administración con rendición semestral a los cuatro fiduciantes.
                 </p>
               </div>
             </div>
