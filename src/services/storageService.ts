@@ -17,6 +17,7 @@ import {
   CustomCategory,
 } from '../types';
 import { pushService } from './notificationService';
+import { supabaseService } from './supabaseService';
 
 const USERS_KEY = 'el_desayuno_users_v3';
 const BOOKINGS_KEY = 'el_desayuno_bookings_v3';
@@ -205,16 +206,9 @@ class StorageService {
   public async hydrateFromAppStateAsync() {
     if (typeof window === 'undefined') return;
     try {
-      const res = await fetch(`/api/app-state?_t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-        },
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.success && data.data) {
+      const result = await supabaseService.pullDataFromSupabase();
+      if (result.success && result.data) {
+        const data = { success: true, data: result.data };
         let hasChanges = false;
 
         const currentBookingsRaw = localStorage.getItem(BOOKINGS_KEY) || '[]';
@@ -967,44 +961,13 @@ class StorageService {
   public async fetchLatestSettingsFromDatabase(): Promise<TrustSettings> {
     if (typeof window === 'undefined') return DEFAULT_SETTINGS;
     try {
-      const res = await fetch(`/api/settings?_t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-        },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.settings && typeof data.settings === 'object') {
-          const normalized = normalizeSettings(data.settings);
-          const currentSettings = this.getSettings();
-
-          let isDifferent = false;
-          for (const key of Object.keys(normalized) as (keyof TrustSettings)[]) {
-            if (key === 'updatedAt') continue;
-            const val1 = currentSettings[key];
-            const val2 = normalized[key];
-            if (Array.isArray(val1) && Array.isArray(val2)) {
-              if (JSON.stringify(val1) !== JSON.stringify(val2)) {
-                isDifferent = true;
-                break;
-              }
-            } else if (val1 !== val2) {
-              isDifferent = true;
-              break;
-            }
-          }
-
-          if (isDifferent) {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
-            if (normalized.logoUrl) {
-              localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
-            }
-            this.notify(false, true);
-          }
-          return normalized;
-        }
+      const settings = await supabaseService.getSettingsFromSupabase();
+      if (settings) {
+        const normalized = normalizeSettings(settings);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
+        if (normalized.logoUrl) localStorage.setItem('el_desayuno_custom_logo', normalized.logoUrl);
+        this.notify(false, true);
+        return normalized;
       }
     } catch (e) {
       console.warn('Error fetching latest settings from DB:', e);
@@ -1018,30 +981,15 @@ class StorageService {
     const mergedToSave = { ...current, ...settings, updatedAt: new Date().toISOString() };
 
     try {
-      const res = await fetch(`/api/settings?_t=${Date.now()}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-        },
-        body: JSON.stringify(mergedToSave),
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.settings) {
-        const finalNormalized = normalizeSettings(data.settings);
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(finalNormalized));
-        if (finalNormalized.logoUrl) {
-          localStorage.setItem('el_desayuno_custom_logo', finalNormalized.logoUrl);
-        }
-        this.notify(false, true);
-        return finalNormalized;
-      }
+      const saved = await supabaseService.saveSettingsToSupabase(mergedToSave);
+      const finalNormalized = normalizeSettings(saved);
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(finalNormalized));
+      if (finalNormalized.logoUrl) localStorage.setItem('el_desayuno_custom_logo', finalNormalized.logoUrl);
+      this.notify(false, true);
+      return finalNormalized;
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'No se pudieron guardar los ajustes en la base de datos.');
     }
-
-    throw new Error('La base de datos no confirmó los ajustes.');
   }
 
   public saveSettings(settings: Partial<TrustSettings>) {

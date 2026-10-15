@@ -79,6 +79,47 @@ class SupabaseService {
     return this.client;
   }
 
+  public async getSettingsFromSupabase(): Promise<Record<string, any> | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from('settings').select('*').limit(1);
+    if (error || !data?.[0]) return null;
+    const settings = data[0] as any;
+    return {
+      houseName: settings.house_name,
+      slogan: settings.slogan,
+      cuitFideicomiso: settings.cuit_fideicomiso,
+      titularCuenta: settings.titular_cuenta,
+      cbu: settings.cbu,
+      aliasBancario: settings.alias_bancario,
+      bancoNombre: settings.banco_nombre,
+      location: settings.location,
+      checkInTime: settings.check_in_time,
+      checkOutTime: settings.check_out_time,
+      logoUrl: settings.logo_url,
+      wifiSsid: settings.wifi_ssid,
+      wifiPassword: settings.wifi_password,
+      updatedAt: settings.updated_at,
+    };
+  }
+
+  public async saveSettingsToSupabase(settings: Record<string, any>): Promise<Record<string, any>> {
+    if (!this.client) throw new Error('Supabase no está configurado.');
+    const { data, error } = await this.client
+      .from('settings')
+      .upsert({
+        id: 'default', house_name: settings.houseName || '', slogan: settings.slogan || '',
+        cuit_fideicomiso: settings.cuitFideicomiso || '', titular_cuenta: settings.titularCuenta || '',
+        cbu: settings.cbu || '', alias_bancario: settings.aliasBancario || '', banco_nombre: settings.bancoNombre || '',
+        location: settings.location || '', check_in_time: settings.checkInTime || '', check_out_time: settings.checkOutTime || '',
+        logo_url: settings.logoUrl || '', wifi_ssid: settings.wifiSsid || '', wifi_password: settings.wifiPassword || '',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' })
+      .select()
+      .single();
+    if (error || !data) throw new Error(error?.message || 'La base de datos no confirmó los ajustes.');
+    return (await this.getSettingsFromSupabase()) || {};
+  }
+
   public async testConnection(customUrl?: string, customKey?: string): Promise<{
     success: boolean;
     message: string;
@@ -403,6 +444,9 @@ class SupabaseService {
         opCatsRes,
         blocksRes,
         rulesRes,
+        contactsRes,
+        documentsRes,
+        notificationsRes,
       ] = await Promise.all([
         this.client.from('users').select('*'),
         this.client.from('expenses').select('*'),
@@ -419,11 +463,36 @@ class SupabaseService {
         this.client.from('operational_categories').select('*'),
         this.client.from('blocks').select('*'),
         this.client.from('rules').select('*'),
+        this.client.from('contacts').select('*'),
+        this.client.from('documents').select('*'),
+        this.client.from('notifications').select('*'),
       ]);
 
-      const data: Record<string, any> = {};
+      const data: Record<string, any> = {
+        users: [], bookings: [], blocks: [], settings: {}, rules: [], contacts: [], documents: [],
+        inventory: [], incidents: [], notifications: [], fees: [], expenses: [], cashFlow: [],
+      };
 
-      if (!usersRes.error && Array.isArray(usersRes.data)) data.users = usersRes.data;
+      if (!usersRes.error && Array.isArray(usersRes.data)) {
+        data.users = usersRes.data.map((u: any) => ({
+          id: u.id,
+          name: u.name || '',
+          username: u.username || '',
+          email: u.email || '',
+          phone: u.phone || '',
+          role: u.role || 'owner',
+          cabezaNumber: Number(u.cabeza_number) || 0,
+          partName: u.part_name || '',
+          color: u.color || '',
+          active: u.active ?? false,
+          annualQuotaDays: Number(u.annual_quota_days) || 0,
+          pendingDays: Number(u.pending_days) || 0,
+          usedDays: Number(u.used_days) || 0,
+          sharePercentage: Number(u.share_percentage) || 0,
+          avatarInitials: u.avatar_initials || '',
+          createdAt: u.created_at || '',
+        }));
+      }
       if (!expensesRes.error && Array.isArray(expensesRes.data)) {
         data.expenses = expensesRes.data.map((e: any) => ({
           id: e.id,
@@ -455,9 +524,37 @@ class SupabaseService {
       }
       if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) data.cashFlow = cashFlowRes.data;
       if (!feesRes.error && Array.isArray(feesRes.data)) data.fees = feesRes.data;
-      if (!bookingsRes.error && Array.isArray(bookingsRes.data)) data.bookings = bookingsRes.data;
-      if (!inventoryRes.error && Array.isArray(inventoryRes.data)) data.inventory = inventoryRes.data;
-      if (!incidentsRes.error && Array.isArray(incidentsRes.data)) data.incidents = incidentsRes.data;
+      if (!bookingsRes.error && Array.isArray(bookingsRes.data)) {
+        data.bookings = bookingsRes.data.map((b: any) => ({
+          id: b.id, userId: b.user_id, userName: b.user_name || '', userColor: b.user_color || '',
+          partName: b.part_name || '', checkInDate: b.check_in_date, checkOutDate: b.check_out_date,
+          totalDays: Number(b.total_days) || 0, guestsCount: Number(b.guests_count) || 0,
+          status: b.status, arrivalTime: b.arrival_time || '', notes: b.notes || '',
+          cleaningBufferApplied: Boolean(b.cleaning_buffer_applied), cleaningBufferEndDate: b.cleaning_buffer_end_date || undefined,
+          cancellationReason: b.cancellation_reason || undefined, cancelledAt: b.cancelled_at || undefined,
+          cancelledBy: b.cancelled_by || undefined, createdAt: b.created_at || '',
+        }));
+      }
+      if (!inventoryRes.error && Array.isArray(inventoryRes.data)) {
+        data.inventory = inventoryRes.data.map((item: any) => ({
+          id: item.id, name: item.name || '', category: item.category, locationRoom: item.location_room || '',
+          quantity: Number(item.quantity) || 0, unit: item.unit || '', condition: item.condition,
+          notes: item.notes || '', imageUrl: item.image_url || undefined, lastCheckedDate: item.last_checked_date || '',
+        }));
+      }
+      if (!incidentsRes.error && Array.isArray(incidentsRes.data)) {
+        const urgencyBySeverity: Record<string, string> = { low: 'baja', medium: 'media', high: 'alta', critical: 'urgente', urgent: 'urgente' };
+        const statusByDatabaseStatus: Record<string, string> = { open: 'pendiente', pending: 'pendiente', in_review: 'en_revision', in_progress: 'en_reparacion', resolved: 'resuelto', dismissed: 'desestimado' };
+        data.incidents = incidentsRes.data.map((incident: any) => ({
+          id: incident.id, bookingId: incident.booking_id || undefined, reporterUserId: incident.reporter_user_id || '',
+          reporterName: incident.reported_by || incident.reporter_name || '', reporterPartName: incident.reporter_part_name || '',
+          title: incident.title || '', description: incident.description || '', location: incident.location || '',
+          category: incident.category || 'otro', urgency: urgencyBySeverity[incident.severity] || incident.urgency || 'media',
+          status: statusByDatabaseStatus[incident.status] || incident.status || 'pendiente', photoUrl: incident.photo_url || undefined,
+          createdAt: incident.created_at || '', adminResponse: incident.admin_response || undefined,
+          resolvedAt: incident.resolved_at || undefined, resolvedBy: incident.resolved_by || undefined,
+        }));
+      }
 
       if (!settingsRes.error && Array.isArray(settingsRes.data) && settingsRes.data[0]) {
         const s = settingsRes.data[0];
@@ -515,8 +612,30 @@ class SupabaseService {
       data.settings.feeCategories = feeCats.length > 0 ? feeCats : (DEFAULT_FEE_CATEGORIES);
       data.settings.inventoryCategories = invCats.length > 0 ? invCats : (DEFAULT_INVENTORY_CATEGORIES);
 
-      if (!blocksRes.error && Array.isArray(blocksRes.data)) data.blocks = blocksRes.data;
-      if (!rulesRes.error && Array.isArray(rulesRes.data)) data.rules = rulesRes.data;
+      if (!blocksRes.error && Array.isArray(blocksRes.data)) {
+        data.blocks = blocksRes.data.map((block: any) => ({
+          id: block.id, startDate: block.start_date, endDate: block.end_date, totalDays: Number(block.total_days) || 0,
+          reason: block.reason, title: block.title || '', notes: block.notes || '', createdBy: block.created_by || '', createdAt: block.created_at || '',
+        }));
+      }
+      if (!rulesRes.error && Array.isArray(rulesRes.data)) {
+        data.rules = rulesRes.data.map((rule: any) => ({
+          id: rule.id, title: rule.title || '', description: rule.description || '', category: rule.category,
+          iconName: rule.icon || rule.icon_name || '',
+        }));
+      }
+      if (!contactsRes.error && Array.isArray(contactsRes.data)) {
+        data.contacts = contactsRes.data.map((contact: any) => ({
+          id: contact.id, name: contact.name || '', role: contact.role || '', phone: contact.phone || '',
+          category: contact.category, isEmergency: Boolean(contact.is_emergency), availableHours: contact.available_hours || '', notes: contact.notes || '',
+        }));
+      }
+      if (!documentsRes.error && Array.isArray(documentsRes.data)) data.documents = documentsRes.data;
+      if (!notificationsRes.error && Array.isArray(notificationsRes.data)) {
+        data.notifications = notificationsRes.data.map((notification: any) => ({
+          ...notification, timestamp: notification.created_at || notification.timestamp || '',
+        }));
+      }
 
       return {
         success: true,
