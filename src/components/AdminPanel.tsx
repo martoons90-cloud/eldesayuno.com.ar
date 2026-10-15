@@ -170,7 +170,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   }, [activeSection, settings]);
 
   // Handle User Edit / Save
-  const handleSaveUserFromModal = (userData: {
+  const handleSaveUserFromModal = async (userData: {
     id?: string;
     name: string;
     email: string;
@@ -184,11 +184,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     role?: UserRole;
     isCabezaDeEquipo?: boolean;
     isFiduciante?: boolean;
-  }) => {
+  }): Promise<boolean> => {
+    let saved = false;
     if (userData.id) {
       const existing = users.find((u) => u.id === userData.id);
       if (existing) {
-        storageService.saveUser({
+        saved = await storageService.saveUser({
           ...existing,
           name: userData.name,
           email: userData.email,
@@ -231,21 +232,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         active: true,
         createdAt: new Date().toISOString().split('T')[0],
       };
-      storageService.saveUser(newUser);
+      saved = await storageService.saveUser(newUser);
     }
+    if (!saved) return false;
     setEditingUser(null);
     setIsNewUserModalOpen(false);
+    return true;
   };
 
-  const handleToggleUserActive = (user: User) => {
+  const handleToggleUserActive = async (user: User) => {
     if (user.id === currentUser.id) {
       alert('No puede desactivar su propio usuario administrador.');
       return;
     }
-    storageService.saveUser({
+    const saved = await storageService.saveUser({
       ...user,
       active: !user.active,
     });
+    if (!saved) alert('La base de datos no confirmó el cambio de estado.');
   };
 
   const handleDeleteUserConfirm = (user: User) => {

@@ -127,9 +127,13 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     setIsSharesMatrixModalOpen(true);
   };
 
-  const handleSaveSharesMatrix = (e: React.FormEvent) => {
+  const handleSaveSharesMatrix = async (e: React.FormEvent) => {
     e.preventDefault();
-    storageService.updateBulkSharePercentages(sharesMatrixData);
+    const saved = await storageService.updateBulkSharePercentages(sharesMatrixData);
+    if (!saved) {
+      alert('La base de datos no confirmó la matriz de porcentajes.');
+      return;
+    }
     setIsSharesMatrixModalOpen(false);
     showSuccess('¡Matriz de porcentajes de acciones actualizada y guardada para todos los socios!');
   };
@@ -272,7 +276,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   });
   const [categoryNameInput, setCategoryNameInput] = useState('');
 
-  const handleSaveCategory = (e: React.FormEvent) => {
+  const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!categoryNameInput.trim()) return;
     const type = categoryModal.type;
@@ -281,6 +285,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     let targetId = editing ? editing.id : categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
     if (!targetId) targetId = `cat_${Date.now()}`;
     const targetObj = { id: targetId, name: categoryNameInput.trim() };
+
+    const saved = await supabaseService.saveCategoryToTable(type, targetObj);
+    if (!saved) {
+      alert('La base de datos no confirmó la categoría.');
+      return;
+    }
 
     if (type === 'expense') {
       let list = [...expenseCategoriesList];
@@ -320,8 +330,6 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       setInventoryCategoriesList(list);
     }
 
-    supabaseService.saveCategoryToTable(type, targetObj).catch(() => {});
-
     setCategoryModal({ isOpen: false, type: 'expense', itemToEdit: null });
     setCategoryNameInput('');
     showSuccess('✓ Categoría guardada exitosamente.');
@@ -351,7 +359,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       confirmText: 'Eliminar',
       cancelText: 'Cancelar',
       onConfirm: () => {
-        if (type === 'expense') {
+        void supabaseService.deleteCategoryFromTable(type, id).then((deleted) => {
+          if (!deleted) {
+            alert('La base de datos no confirmó la eliminación de la categoría.');
+            return;
+          }
+          if (type === 'expense') {
           const list = expenseCategoriesList.filter(c => c.id !== id);
           storageService.saveExpenseCategories(list);
           setExpenseCategoriesList(list);
@@ -367,9 +380,9 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           const list = inventoryCategoriesList.filter(c => c.id !== id);
           storageService.saveInventoryCategories(list);
           setInventoryCategoriesList(list);
-        }
-        supabaseService.deleteCategoryFromTable(type, id).catch(() => {});
-        showSuccess('Categoría eliminada.');
+          }
+          showSuccess('Categoría eliminada.');
+        });
       },
     });
   };
@@ -841,7 +854,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   // User Save/Edit Handlers
-  const handleSaveUserFromModal = (userData: {
+  const handleSaveUserFromModal = async (userData: {
     id?: string;
     name: string;
     email: string;
@@ -855,11 +868,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     role?: UserRole;
     isCabezaDeEquipo?: boolean;
     isFiduciante?: boolean;
-  }) => {
+  }): Promise<boolean> => {
+    let saved = false;
     if (userData.id) {
       const existing = users.find((u) => u.id === userData.id);
       if (existing) {
-        storageService.saveUser({
+        saved = await storageService.saveUser({
           ...existing,
           name: userData.name,
           email: userData.email,
@@ -902,22 +916,28 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
         active: true,
         createdAt: new Date().toISOString().split('T')[0],
       };
-      storageService.saveUser(newUser);
+      saved = await storageService.saveUser(newUser);
     }
+    if (!saved) return false;
     setEditingUser(null);
     setIsNewUserModalOpen(false);
     showSuccess('Copropietario guardado correctamente.');
+    return true;
   };
 
-  const handleToggleUserActive = (user: User) => {
+  const handleToggleUserActive = async (user: User) => {
     if (user.id === currentUser.id) {
       alert('No puede desactivar su propio usuario administrador.');
       return;
     }
-    storageService.saveUser({
+    const saved = await storageService.saveUser({
       ...user,
       active: !user.active,
     });
+    if (!saved) {
+      alert('La base de datos no confirmó el cambio de estado.');
+      return;
+    }
     showSuccess(`Estado de ${user.name} actualizado.`);
   };
 
@@ -1312,9 +1332,14 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                             onChange={(e) => {
                               const targetId = e.target.value;
                               if (!targetId) return;
-                              storageService.assignCabezaLeader(cNum, targetId);
-                              const assigned = users.find((u) => u.id === targetId);
-                              showSuccess(`¡${assigned?.name || 'Socio'} asignado como Líder de Cabeza ${cNum}!`);
+                              void storageService.assignCabezaLeader(cNum, targetId).then((saved) => {
+                                if (!saved) {
+                                  alert('La base de datos no confirmó el cambio de líder.');
+                                  return;
+                                }
+                                const assigned = users.find((u) => u.id === targetId);
+                                showSuccess(`¡${assigned?.name || 'Socio'} asignado como Líder de Cabeza ${cNum}!`);
+                              });
                             }}
                             className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#163323] cursor-pointer"
                           >
@@ -1487,12 +1512,17 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  storageService.toggleUserCabezaDeEquipo(u.id);
-                                  showSuccess(
-                                    u.isCabezaDeEquipo
-                                      ? `Se retiró el liderazgo de Cabeza de Equipo a ${u.name}`
-                                      : `¡${u.name} ha sido designado como Cabeza de Equipo!`
-                                  );
+                                  void storageService.toggleUserCabezaDeEquipo(u.id).then((saved) => {
+                                    if (!saved) {
+                                      alert('La base de datos no confirmó el cambio de liderazgo.');
+                                      return;
+                                    }
+                                    showSuccess(
+                                      u.isCabezaDeEquipo
+                                        ? `Se retiró el liderazgo de Cabeza de Equipo a ${u.name}`
+                                        : `¡${u.name} ha sido designado como Cabeza de Equipo!`
+                                    );
+                                  });
                                 }}
                                 className={`p-1 transition-colors cursor-pointer rounded-2xs ${
                                   u.isCabezaDeEquipo

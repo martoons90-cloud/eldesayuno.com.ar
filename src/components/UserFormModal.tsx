@@ -39,7 +39,7 @@ interface UserFormModalProps {
     role?: UserRole;
     isCabezaDeEquipo?: boolean;
     isFiduciante?: boolean;
-  }) => void;
+  }) => Promise<boolean>;
 }
 
 // Preset color options for new Cabezas
@@ -249,7 +249,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       ? activeSelectedCabeza?.color || '#DC2626'
       : newCabezaColor;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setDialog({
@@ -282,7 +282,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       ? 0
       : Math.max(0, Math.round(Number(String(sharePercentage).replace(',', '.')) * 10000) / 10000);
 
-    onSaveUser({
+    const saved = await onSaveUser({
       id: editingUser?.id,
       name: name.trim(),
       email: email.trim().toLowerCase(),
@@ -297,6 +297,18 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       isCabezaDeEquipo,
       isFiduciante,
     });
+
+    if (!saved) {
+      setDialog({
+        isOpen: true,
+        title: 'No se pudieron guardar los cambios',
+        message: 'La base de datos no confirmó la actualización del copropietario.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
 
     onClose();
   };

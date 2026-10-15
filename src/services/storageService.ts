@@ -468,7 +468,7 @@ class StorageService {
     }
   }
 
-  public saveUser(user: User) {
+  public async saveUser(user: User): Promise<boolean> {
     const users = this.getUsers();
     const index = users.findIndex((u) => {
       if (user.id && u.id === user.id) return true;
@@ -492,17 +492,22 @@ class StorageService {
       }
       updated = [...users, targetUser];
     }
-    localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-    this.notify(false);
+    const saved = await supabaseService.saveUser(targetUser);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
 
-    fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(targetUser),
-    }).catch((err) => console.error('Error guardando usuario en servidor:', err));
+    localStorage.setItem(USERS_KEY, JSON.stringify(updated));
+    const current = this.getCurrentUser();
+    if (current?.id === targetUser.id) {
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ ...current, ...targetUser }));
+    }
+    this.notify(false);
+    return true;
   }
 
-  public assignCabezaLeader(cabezaNumber: number, newLeaderUserId: string) {
+  public async assignCabezaLeader(cabezaNumber: number, newLeaderUserId: string): Promise<boolean> {
     const users = this.getUsers();
     const updated = users.map((u) => {
       if (u.cabezaNumber === cabezaNumber) {
@@ -513,41 +518,37 @@ class StorageService {
       }
       return u;
     });
+    const members = updated.filter((u) => u.cabezaNumber === cabezaNumber);
+    const saved = await supabaseService.saveUsers(members);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     localStorage.setItem(USERS_KEY, JSON.stringify(updated));
     this.notify(false);
-
-    // Sync updated members to server
-    fetch('/api/users/assign-cabeza-leader', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cabezaNumber, newLeaderUserId }),
-    }).catch(() => {
-      updated
-        .filter((u) => u.cabezaNumber === cabezaNumber)
-        .forEach((u) => this.saveUser(u));
-    });
+    return true;
   }
 
-  public toggleUserCabezaDeEquipo(userId: string) {
+  public async toggleUserCabezaDeEquipo(userId: string): Promise<boolean> {
     const users = this.getUsers();
     const target = users.find((u) => u.id === userId);
-    if (!target) return;
+    if (!target) return false;
     const newStatus = !target.isCabezaDeEquipo;
     const updatedUser = { ...target, isCabezaDeEquipo: newStatus };
-    this.saveUser(updatedUser);
+    return this.saveUser(updatedUser);
   }
 
-  public toggleUserFiduciante(userId: string) {
+  public async toggleUserFiduciante(userId: string): Promise<boolean> {
     const users = this.getUsers();
     const target = users.find((u) => u.id === userId);
-    if (!target) return;
+    if (!target) return false;
     const newStatus = !target.isFiduciante;
     const updatedRole = newStatus ? ('fiduciante' as const) : ('owner' as const);
     const updatedUser = { ...target, isFiduciante: newStatus, role: updatedRole };
-    this.saveUser(updatedUser);
+    return this.saveUser(updatedUser);
   }
 
-  public updateBulkSharePercentages(sharesMap: Record<string, number>) {
+  public async updateBulkSharePercentages(sharesMap: Record<string, number>): Promise<boolean> {
     const users = this.getUsers();
     const updated = users.map((u) => {
       if (sharesMap[u.id] !== undefined) {
@@ -558,14 +559,14 @@ class StorageService {
       }
       return u;
     });
+    const saved = await supabaseService.saveUsers(updated.filter((u) => sharesMap[u.id] !== undefined));
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     localStorage.setItem(USERS_KEY, JSON.stringify(updated));
     this.notify(false);
-
-    fetch('/api/users/bulk-shares', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sharesMap }),
-    }).catch((err) => console.error('Error actualizando acciones en servidor:', err));
+    return true;
   }
 
   public async deleteUser(userId: string): Promise<boolean> {

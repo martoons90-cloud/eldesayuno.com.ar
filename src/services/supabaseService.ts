@@ -518,6 +518,7 @@ class SupabaseService {
           email: u.email || '',
           phone: u.phone || '',
           role: u.role || 'owner',
+          isFiduciante: u.role === 'fiduciante',
           cabezaNumber: Number(u.cabeza_number) || 0,
           partName: u.part_name || '',
           color: u.color || '',
@@ -754,6 +755,32 @@ class SupabaseService {
       console.error('Error guardando gasto de Supabase:', result.message);
     }
     return result.success;
+  }
+
+  public async saveUser(user: Record<string, any>): Promise<boolean> {
+    return this.upsertRow('users', {
+      id: user.id,
+      name: user.name || '',
+      username: user.username || '',
+      email: user.email || '',
+      phone: user.phone || '',
+      role: user.role || 'owner',
+      cabeza_number: Number(user.cabezaNumber) || 0,
+      part_name: user.partName || '',
+      color: user.color || '#000000',
+      active: user.active ?? true,
+      annual_quota_days: Number(user.annualQuotaDays) || 0,
+      pending_days: Number(user.pendingDays) || 0,
+      used_days: Number(user.usedDays) || 0,
+      share_percentage: Number(user.sharePercentage) || 0,
+      avatar_initials: user.avatarInitials || '',
+      created_at: user.createdAt || new Date().toISOString(),
+    });
+  }
+
+  public async saveUsers(users: Record<string, any>[]): Promise<boolean> {
+    const results = await Promise.all(users.map((user) => this.saveUser(user)));
+    return results.every(Boolean);
   }
 
   public async saveInventoryItem(item: Record<string, any>): Promise<boolean> {
