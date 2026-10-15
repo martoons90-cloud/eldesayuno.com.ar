@@ -1362,7 +1362,13 @@ class StorageService {
     return raw ? JSON.parse(raw) : DEFAULT_EXPENSES;
   }
 
-  public saveExpense(expense: ExpenseItem): ExpenseItem {
+  public async saveExpense(expense: ExpenseItem): Promise<boolean> {
+    const saved = await supabaseService.saveExpense(expense);
+    if (!saved) {
+      await this.fetchExpensesFromDatabase();
+      return false;
+    }
+
     const list = this.getExpenses();
     const index = list.findIndex((e) => e.id === expense.id);
     let updated: ExpenseItem[];
@@ -1374,25 +1380,20 @@ class StorageService {
     }
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
     this.notify(false);
-
-    fetch('/api/expenses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(expense),
-    }).catch((err) => console.error('Error guardando gasto en servidor:', err));
-
-    return expense;
+    return true;
   }
 
-  public deleteExpense(expenseId: string) {
+  public async deleteExpense(expenseId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteExpense(expenseId);
+    if (!deleted) {
+      await this.fetchExpensesFromDatabase();
+      return false;
+    }
+
     const list = this.getExpenses().filter((e) => e.id !== expenseId);
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
     this.notify(false);
-
-    fetch(`/api/expenses/${expenseId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando gasto en servidor:', err));
-
+    return true;
   }
 
   // Cash Flow & Account Ledger
@@ -1430,14 +1431,12 @@ class StorageService {
   public async fetchExpensesFromDatabase(): Promise<ExpenseItem[]> {
     if (typeof window === 'undefined') return this.getExpenses();
     try {
-      const res = await fetch(`/api/expenses?_t=${Date.now()}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.expenses)) {
-          localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
-          this.notify(false);
-          return data.expenses;
-        }
+      const result = await supabaseService.pullDataFromSupabase();
+      if (result.success && Array.isArray(result.data?.expenses)) {
+        const expenses = result.data.expenses as ExpenseItem[];
+        localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+        this.notify(false);
+        return expenses;
       }
     } catch (err) {
       console.warn('Error fetching expenses from database:', err);

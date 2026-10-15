@@ -696,13 +696,24 @@ class SupabaseService {
 
   public async deleteExpense(expenseId: string): Promise<boolean> {
     if (!this.client) return false;
-    try {
-      await this.client.from('expenses').delete().eq('id', expenseId);
-      return true;
-    } catch (err) {
-      console.error('Error eliminando gasto de Supabase:', err);
+    const { data, error } = await this.client
+      .from('expenses')
+      .delete()
+      .eq('id', expenseId)
+      .select('id');
+    if (error || !data?.some((expense) => expense.id === expenseId)) {
+      console.error('Error eliminando gasto de Supabase:', error || 'La base de datos no confirmó la eliminación.');
       return false;
     }
+    return true;
+  }
+
+  public async saveExpense(expense: Record<string, any>): Promise<boolean> {
+    const result = await this.pushDataToSupabase({ expenses: [expense] });
+    if (!result.success) {
+      console.error('Error guardando gasto de Supabase:', result.message);
+    }
+    return result.success;
   }
 
   public async deleteCashFlowTransaction(txId: string): Promise<boolean> {

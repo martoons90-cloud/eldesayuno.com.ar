@@ -287,7 +287,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   };
 
   // Save Expense
-  const handleSaveExpense = (e: React.FormEvent) => {
+  const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!expenseForm.concept.trim()) {
       setDialog({
@@ -339,7 +339,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       createdAt: editingExpense ? editingExpense.createdAt : new Date().toISOString(),
     };
 
-    storageService.saveExpense(itemToSave);
+    const saved = await storageService.saveExpense(itemToSave);
+    if (!saved) {
+      setDialog({
+        isOpen: true,
+        title: 'No se pudo guardar',
+        message: 'La base de datos no confirmó el gasto. No se aplicaron cambios.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
     setIsNewExpenseModalOpen(false);
     setEditingExpense(null);
   };
@@ -353,7 +364,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       type: 'warning',
       confirmText: 'Eliminar',
       onConfirm: () => {
-        storageService.deleteExpense(id);
+        void storageService.deleteExpense(id).then((deleted) => {
+          if (!deleted) {
+            setDialog({
+              isOpen: true,
+              title: 'No se pudo eliminar',
+              message: 'La base de datos no confirmó la eliminación. El gasto sigue vigente.',
+              type: 'alert',
+              confirmText: 'Aceptar',
+              onConfirm: () => {},
+            });
+          }
+        });
       },
     });
   };
