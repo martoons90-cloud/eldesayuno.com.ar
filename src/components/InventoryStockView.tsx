@@ -102,21 +102,29 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
     { id: 'equipamiento_tecnico', label: 'Equipos & Grupo Electrógeno', icon: Wrench },
   ];
 
-  const handleSaveItem = (e: React.FormEvent) => {
+  const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingItem) {
       const updated: InventoryItem = {
         ...editingItem,
         ...formData,
       };
-      storageService.saveInventoryItem(updated);
+      const saved = await storageService.saveInventoryItem(updated);
+      if (!saved) {
+        alert('La base de datos no confirmó los cambios del inventario.');
+        return;
+      }
       setEditingItem(null);
     } else {
       const newItem: InventoryItem = {
         id: 'inv-' + Date.now(),
         ...formData,
       };
-      storageService.saveInventoryItem(newItem);
+      const saved = await storageService.saveInventoryItem(newItem);
+      if (!saved) {
+        alert('La base de datos no confirmó el alta del inventario.');
+        return;
+      }
       setIsModalOpen(false);
     }
     setInventory(storageService.getInventory());
@@ -126,9 +134,13 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
     setItemToDelete(item);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
-    storageService.deleteInventoryItem(itemToDelete.id);
+    const deleted = await storageService.deleteInventoryItem(itemToDelete.id);
+    if (!deleted) {
+      alert('La base de datos no confirmó la eliminación. El artículo sigue vigente.');
+      return;
+    }
     setInventory(storageService.getInventory());
     setItemToDelete(null);
   };

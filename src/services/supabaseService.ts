@@ -79,6 +79,43 @@ class SupabaseService {
     return this.client;
   }
 
+  private async deleteRow(table: string, id: string): Promise<boolean> {
+    if (!this.client) return false;
+    const { data, error } = await this.client
+      .from(table)
+      .delete()
+      .eq('id', id)
+      .select('id');
+    if (error || !data?.some((row: { id: string }) => row.id === id)) {
+      console.error(`Error eliminando ${table} de Supabase:`, error || 'La base de datos no confirmó la eliminación.');
+      return false;
+    }
+    return true;
+  }
+
+  private async upsertRow(table: string, row: Record<string, any>): Promise<boolean> {
+    if (!this.client) return false;
+    const { data, error } = await this.client
+      .from(table)
+      .upsert(row, { onConflict: 'id' })
+      .select('id');
+    if (error || !data?.some((saved: { id: string }) => saved.id === row.id)) {
+      console.error(`Error guardando ${table} en Supabase:`, error || 'La base de datos no confirmó el guardado.');
+      return false;
+    }
+    return true;
+  }
+
+  private async deleteAllRows(table: string): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from(table).delete().not('id', 'is', null);
+    if (error) {
+      console.error(`Error eliminando ${table} de Supabase:`, error);
+      return false;
+    }
+    return true;
+  }
+
   public async getSettingsFromSupabase(): Promise<Record<string, any> | null> {
     if (!this.client) return null;
     const { data, error } = await this.client.from('settings').select('*').limit(1);
@@ -522,8 +559,28 @@ class SupabaseService {
           reimbursedAmount: Number(e.reimbursed_amount) || 0,
         }));
       }
-      if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) data.cashFlow = cashFlowRes.data;
-      if (!feesRes.error && Array.isArray(feesRes.data)) data.fees = feesRes.data;
+      if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) {
+        data.cashFlow = cashFlowRes.data.map((transaction: any) => ({
+          id: transaction.id, type: transaction.type, category: transaction.category, concept: transaction.concept || '',
+          amount: Number(transaction.amount) || 0, currency: transaction.currency || 'ARS', date: transaction.date || '',
+          userId: transaction.user_id || undefined, userName: transaction.user_name || '', partName: transaction.part_name || '',
+          expenseId: transaction.expense_id || undefined, notes: transaction.notes || '', createdBy: transaction.created_by || '',
+          createdAt: transaction.created_at || '',
+        }));
+      }
+      if (!feesRes.error && Array.isArray(feesRes.data)) {
+        data.fees = feesRes.data.map((fee: any) => ({
+          id: fee.id, concept: fee.concept || '', category: fee.category || 'otro', totalAmount: Number(fee.total_amount) || 0,
+          currency: fee.currency || 'ARS', recurrence: fee.recurrence || 'one_time', issueDate: fee.issue_date || '',
+          dueDate: fee.due_date || '', distributionMode: fee.distribution_mode || 'share_percentage',
+          allocations: Array.isArray(fee.allocations) ? fee.allocations : (() => {
+            try { return JSON.parse(fee.allocations || '[]'); } catch { return []; }
+          })(),
+          status: fee.status || 'active', createdBy: fee.created_by || '', createdAt: fee.created_at || '', notes: fee.notes || '',
+          installmentsCount: Number(fee.installments_count) || 1, installmentNumber: Number(fee.installment_number) || 1,
+          originalExpenseId: fee.original_expense_id || undefined,
+        }));
+      }
       if (!bookingsRes.error && Array.isArray(bookingsRes.data)) {
         data.bookings = bookingsRes.data.map((b: any) => ({
           id: b.id, userId: b.user_id, userName: b.user_name || '', userColor: b.user_color || '',
@@ -668,15 +725,15 @@ class SupabaseService {
     categoryId: string
   ): Promise<boolean> {
     if (!this.client) return false;
-    try {
-      const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
-      await this.client.from(tableName).delete().eq('id', categoryId);
-      await this.client.from('operational_categories').delete().eq('id', categoryId);
-      return true;
-    } catch (err) {
-      console.error('Error eliminando categoría de Supabase:', err);
+    const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
+    const { error } = await this.client.from(tableName).delete().eq('id', categoryId);
+    if (error) {
+      console.error('Error eliminando categoría de Supabase:', error);
       return false;
     }
+    const { error: operationalError } = await this.client.from('operational_categories').delete().eq('id', categoryId);
+    if (operationalError) console.warn('No se pudo eliminar la categoría duplicada:', operationalError);
+    return true;
   }
 
   public async deleteOperationalCategory(categoryId: string): Promise<boolean> {
@@ -684,28 +741,11 @@ class SupabaseService {
   }
 
   public async deleteUser(userId: string): Promise<boolean> {
-    if (!this.client) return false;
-    try {
-      await this.client.from('users').delete().eq('id', userId);
-      return true;
-    } catch (err) {
-      console.error('Error eliminando usuario de Supabase:', err);
-      return false;
-    }
+    return this.deleteRow('users', userId);
   }
 
   public async deleteExpense(expenseId: string): Promise<boolean> {
-    if (!this.client) return false;
-    const { data, error } = await this.client
-      .from('expenses')
-      .delete()
-      .eq('id', expenseId)
-      .select('id');
-    if (error || !data?.some((expense) => expense.id === expenseId)) {
-      console.error('Error eliminando gasto de Supabase:', error || 'La base de datos no confirmó la eliminación.');
-      return false;
-    }
-    return true;
+    return this.deleteRow('expenses', expenseId);
   }
 
   public async saveExpense(expense: Record<string, any>): Promise<boolean> {
@@ -716,26 +756,71 @@ class SupabaseService {
     return result.success;
   }
 
+  public async saveInventoryItem(item: Record<string, any>): Promise<boolean> {
+    return this.upsertRow('inventory', {
+      id: item.id, name: item.name || '', category: item.category || '', quantity: Number(item.quantity) || 0,
+      unit: item.unit || 'unidades', condition: item.condition || 'bueno', location_room: item.locationRoom || '',
+      last_checked_date: item.lastCheckedDate || null,
+    });
+  }
+
+  public async saveCashFlowTransaction(transaction: Record<string, any>): Promise<boolean> {
+    return this.upsertRow('cash_flow', {
+      id: transaction.id, type: transaction.type || 'ingreso', category: transaction.category || 'otro_ingreso',
+      concept: transaction.concept || '', amount: Number(transaction.amount) || 0, currency: transaction.currency || 'ARS',
+      date: transaction.date || null, user_id: transaction.userId || null, user_name: transaction.userName || '',
+      part_name: transaction.partName || '', expense_id: transaction.expenseId || null, notes: transaction.notes || '',
+      created_by: transaction.createdBy || '', created_at: transaction.createdAt || new Date().toISOString(),
+    });
+  }
+
+  public async saveFeeCollection(collection: Record<string, any>): Promise<boolean> {
+    return this.upsertRow('fee_collections', {
+      id: collection.id, concept: collection.concept || '', category: collection.category || 'otro',
+      total_amount: Number(collection.totalAmount) || 0, currency: collection.currency || 'ARS',
+      recurrence: collection.recurrence || 'one_time', issue_date: collection.issueDate || null, due_date: collection.dueDate || null,
+      distribution_mode: collection.distributionMode || 'share_percentage', allocations: JSON.stringify(collection.allocations || []),
+      status: collection.status || 'active', created_by: collection.createdBy || '',
+      created_at: collection.createdAt || new Date().toISOString(), notes: collection.notes || '',
+      installments_count: Number(collection.installmentsCount) || 1, installment_number: Number(collection.installmentNumber) || 1,
+      original_expense_id: collection.originalExpenseId || null,
+    });
+  }
+
   public async deleteCashFlowTransaction(txId: string): Promise<boolean> {
-    if (!this.client) return false;
-    try {
-      await this.client.from('cash_flow').delete().eq('id', txId);
-      return true;
-    } catch (err) {
-      console.error('Error eliminando transacción de caja de Supabase:', err);
-      return false;
-    }
+    return this.deleteRow('cash_flow', txId);
   }
 
   public async deleteFeeCollection(feeId: string): Promise<boolean> {
-    if (!this.client) return false;
-    try {
-      await this.client.from('fee_collections').delete().eq('id', feeId);
-      return true;
-    } catch (err) {
-      console.error('Error eliminando cobranza de Supabase:', err);
-      return false;
-    }
+    return this.deleteRow('fee_collections', feeId);
+  }
+
+  public async deleteBlock(blockId: string): Promise<boolean> {
+    return this.deleteRow('blocks', blockId);
+  }
+
+  public async deleteRule(ruleId: string): Promise<boolean> {
+    return this.deleteRow('rules', ruleId);
+  }
+
+  public async deleteContact(contactId: string): Promise<boolean> {
+    return this.deleteRow('contacts', contactId);
+  }
+
+  public async deleteDocument(documentId: string): Promise<boolean> {
+    return this.deleteRow('documents', documentId);
+  }
+
+  public async deleteAllDocuments(): Promise<boolean> {
+    return this.deleteAllRows('documents');
+  }
+
+  public async deleteInventoryItem(itemId: string): Promise<boolean> {
+    return this.deleteRow('inventory', itemId);
+  }
+
+  public async deleteIncident(incidentId: string): Promise<boolean> {
+    return this.deleteRow('incidents', incidentId);
   }
 }
 

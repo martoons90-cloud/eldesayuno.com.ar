@@ -568,15 +568,16 @@ class StorageService {
     }).catch((err) => console.error('Error actualizando acciones en servidor:', err));
   }
 
-  public deleteUser(userId: string) {
+  public async deleteUser(userId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteUser(userId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const users = this.getUsers().filter((u) => u.id !== userId);
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
     this.notify(false);
-
-    fetch(`/api/users/${userId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando usuario en servidor:', err));
-
+    return true;
   }
 
   // Transfer Administrator role to another user
@@ -934,14 +935,16 @@ class StorageService {
     return newBlock;
   }
 
-  public deleteBlock(blockId: string) {
+  public async deleteBlock(blockId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteBlock(blockId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const blocks = this.getBlocks().filter((b) => b.id !== blockId);
     localStorage.setItem(BLOCKS_KEY, JSON.stringify(blocks));
     this.notify(false);
-
-    fetch(`/api/blocks/${blockId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando bloqueo en servidor:', err));
+    return true;
   }
 
   // Settings (Authoritative Cloud Persistence)
@@ -1021,14 +1024,16 @@ class StorageService {
     }).catch((err) => console.error('Error guardando regla en servidor:', err));
   }
 
-  public deleteRule(ruleId: string) {
+  public async deleteRule(ruleId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteRule(ruleId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getRules().filter((r) => r.id !== ruleId);
     localStorage.setItem(RULES_KEY, JSON.stringify(list));
     this.notify(false);
-
-    fetch(`/api/rules/${ruleId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando regla en servidor:', err));
+    return true;
   }
 
   // Contacts
@@ -1052,14 +1057,16 @@ class StorageService {
     }).catch((err) => console.error('Error guardando contacto en servidor:', err));
   }
 
-  public deleteContact(contactId: string) {
+  public async deleteContact(contactId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteContact(contactId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getContacts().filter((c) => c.id !== contactId);
     localStorage.setItem(CONTACTS_KEY, JSON.stringify(list));
     this.notify(false);
-
-    fetch(`/api/contacts/${contactId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando contacto en servidor:', err));
+    return true;
   }
 
   // Documents
@@ -1089,19 +1096,27 @@ class StorageService {
     }).catch((err) => console.error('Error guardando documento en servidor:', err));
   }
 
-  public deleteDocument(docId: string) {
+  public async deleteDocument(docId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteDocument(docId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getDocuments().filter((d) => d.id !== docId);
     localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(list));
     this.notify(false);
-
-    fetch(`/api/documents/${docId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando documento en servidor:', err));
+    return true;
   }
 
-  public clearAllDocuments() {
+  public async clearAllDocuments(): Promise<boolean> {
+    const deleted = await supabaseService.deleteAllDocuments();
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     localStorage.setItem(DOCUMENTS_KEY, JSON.stringify([]));
     this.notify(false);
+    return true;
   }
 
   // Inventory & Stock of the Estate
@@ -1111,38 +1126,34 @@ class StorageService {
     return raw ? JSON.parse(raw) : DEFAULT_INVENTORY;
   }
 
-  public saveInventoryItem(item: InventoryItem) {
+  public async saveInventoryItem(item: InventoryItem): Promise<boolean> {
+    const saved = await supabaseService.saveInventoryItem(item);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getInventory();
     const exists = list.some((i) => i.id === item.id);
     const updated = exists ? list.map((i) => (i.id === item.id ? item : i)) : [item, ...list];
     localStorage.setItem(INVENTORY_KEY, JSON.stringify(updated));
     this.notify(false);
-
-    fetch('/api/inventory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item),
-    }).catch((err) => console.error('Error guardando inventario en servidor:', err));
+    return true;
   }
 
   public async deleteInventoryItemAsync(itemId: string): Promise<boolean> {
-    const prev = this.getInventory();
-    const removedItem = prev.find((i) => i.id === itemId);
-    const list = prev.filter((i) => i.id !== itemId);
-    localStorage.setItem(INVENTORY_KEY, JSON.stringify(list));
-    this.notify(false);
-
-    try {
-      await fetch(`/api/inventory/${itemId}`, { method: 'DELETE' });
-      return true;
-    } catch (err) {
-      console.warn('Advertencia eliminando inventario en servidor:', err);
+    const deleted = await supabaseService.deleteInventoryItem(itemId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
       return false;
     }
+    const list = this.getInventory().filter((i) => i.id !== itemId);
+    localStorage.setItem(INVENTORY_KEY, JSON.stringify(list));
+    this.notify(false);
+    return true;
   }
 
-  public deleteInventoryItem(itemId: string) {
-    this.deleteInventoryItemAsync(itemId);
+  public deleteInventoryItem(itemId: string): Promise<boolean> {
+    return this.deleteInventoryItemAsync(itemId);
   }
 
   // Incident Reports (Daños, novedades, roturas con fotos)
@@ -1205,16 +1216,20 @@ class StorageService {
     }).catch((err) => console.error('Error actualizando incidente en servidor:', err));
   }
 
-  public deleteIncident(incidentId: string) {
+  public async deleteIncident(incidentId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteIncident(incidentId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getIncidents().filter((i) => i.id !== incidentId);
     localStorage.setItem(INCIDENTS_KEY, JSON.stringify(list));
     this.notify(false);
+    return true;
   }
 
-  public resetIncidents() {
-    localStorage.removeItem(INCIDENTS_KEY);
-    localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
-    this.notify(false);
+  public async resetIncidents() {
+    await this.hydrateFromAppStateAsync();
   }
 
   // Fee Collections & Cobranzas
@@ -1224,7 +1239,12 @@ class StorageService {
     return raw ? JSON.parse(raw) : DEFAULT_FEE_COLLECTIONS;
   }
 
-  public saveFeeCollection(collection: FeeCollection): FeeCollection {
+  public async saveFeeCollection(collection: FeeCollection): Promise<boolean> {
+    const saved = await supabaseService.saveFeeCollection(collection);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getFeeCollections();
     const index = list.findIndex((f) => f.id === collection.id);
     let updated: FeeCollection[];
@@ -1245,13 +1265,7 @@ class StorageService {
 
     this.notify(false);
 
-    fetch('/api/fees', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(collection),
-    }).catch((err) => console.error('Error guardando cobranza en servidor:', err));
-
-    return collection;
+    return true;
   }
 
   public updateOwnerAllocationStatus(
@@ -1281,15 +1295,16 @@ class StorageService {
     this.saveFeeCollection(updatedCollection);
   }
 
-  public deleteFeeCollection(collectionId: string) {
+  public async deleteFeeCollection(collectionId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteFeeCollection(collectionId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getFeeCollections().filter((f) => f.id !== collectionId);
     localStorage.setItem(FEES_KEY, JSON.stringify(list));
     this.notify(false);
-
-    fetch(`/api/fees/${collectionId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando cobranza en servidor:', err));
-
+    return true;
   }
 
   // Notifications
@@ -1403,29 +1418,30 @@ class StorageService {
     return raw ? JSON.parse(raw) : [];
   }
 
-  public saveCashFlowTransaction(tx: CashFlowTransaction) {
+  public async saveCashFlowTransaction(tx: CashFlowTransaction): Promise<boolean> {
+    const saved = await supabaseService.saveCashFlowTransaction(tx);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getCashFlows();
     const exists = list.some((t) => t.id === tx.id);
     const updated = exists ? list.map((t) => (t.id === tx.id ? tx : t)) : [tx, ...list];
     localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(updated));
     this.notify(false);
-
-    fetch('/api/cash-flow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tx),
-    }).catch((err) => console.error('Error guardando transacción de caja:', err));
+    return true;
   }
 
-  public deleteCashFlowTransaction(txId: string) {
+  public async deleteCashFlowTransaction(txId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteCashFlowTransaction(txId);
+    if (!deleted) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getCashFlows().filter((t) => t.id !== txId);
     localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(list));
     this.notify(false);
-
-    fetch(`/api/cash-flow/${txId}`, {
-      method: 'DELETE',
-    }).catch((err) => console.error('Error eliminando transacción de caja:', err));
-
+    return true;
   }
 
   public async fetchExpensesFromDatabase(): Promise<ExpenseItem[]> {
@@ -1447,15 +1463,12 @@ class StorageService {
   public async fetchCashFlowFromDatabase(): Promise<CashFlowTransaction[]> {
     if (typeof window === 'undefined') return this.getCashFlows();
     try {
-      const res = await fetch(`/api/cash-flow?_t=${Date.now()}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        const list = data.transactions || data.cashFlow;
-        if (data.success && Array.isArray(list)) {
-          localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(list));
-          this.notify(false);
-          return list;
-        }
+      const result = await supabaseService.pullDataFromSupabase();
+      if (result.success && Array.isArray(result.data?.cashFlow)) {
+        const cashFlow = result.data.cashFlow as CashFlowTransaction[];
+        localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(cashFlow));
+        this.notify(false);
+        return cashFlow;
       }
     } catch (err) {
       console.warn('Error fetching cash flow from database:', err);
@@ -1466,14 +1479,12 @@ class StorageService {
   public async fetchFeesFromDatabase(): Promise<FeeCollection[]> {
     if (typeof window === 'undefined') return this.getFeeCollections();
     try {
-      const res = await fetch(`/api/fees?_t=${Date.now()}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.fees)) {
-          localStorage.setItem(FEES_KEY, JSON.stringify(data.fees));
-          this.notify(false);
-          return data.fees;
-        }
+      const result = await supabaseService.pullDataFromSupabase();
+      if (result.success && Array.isArray(result.data?.fees)) {
+        const fees = result.data.fees as FeeCollection[];
+        localStorage.setItem(FEES_KEY, JSON.stringify(fees));
+        this.notify(false);
+        return fees;
       }
     } catch (err) {
       console.warn('Error fetching fees from database:', err);
