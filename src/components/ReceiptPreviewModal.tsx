@@ -13,6 +13,8 @@ import {
   Calendar,
 } from 'lucide-react';
 
+import { R2_PUBLIC_URL } from '../config';
+
 export interface ReceiptPreviewData {
   url: string;
   title: string;
@@ -26,6 +28,27 @@ export interface ReceiptPreviewData {
 interface ReceiptPreviewModalProps {
   receipt: ReceiptPreviewData | null;
   onClose: () => void;
+}
+
+/**
+ * Transforma cualquier URL relativa, endpoint de API o ruta de archivo
+ * a la URL pública correspondiente en Cloudflare R2
+ */
+export function getPublicR2Url(rawUrl: string): string {
+  if (!rawUrl) return '';
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  if (trimmed.includes('/api/r2/file?key=')) {
+    const key = trimmed.split('/api/r2/file?key=')[1];
+    return `${R2_PUBLIC_URL}/${decodeURIComponent(key)}`;
+  }
+  const cleanPath = trimmed.replace(/^\/?(uploads\/)?/, '');
+  return `${R2_PUBLIC_URL}/${cleanPath}`;
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -80,13 +103,14 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
       else if (blob.type.includes('webp')) ext = 'webp';
       return { isPdf: isPdfFile, safeBlobUrl: blobUrl, extension: ext };
     }
-    const cleanUrl = url.split('?')[0].toLowerCase();
+    const publicR2Url = getPublicR2Url(url);
+    const cleanUrl = publicR2Url.split('?')[0].toLowerCase();
     const isPdfFile = cleanUrl.endsWith('.pdf');
     let ext = 'jpg';
     if (isPdfFile) ext = 'pdf';
     else if (cleanUrl.endsWith('.png')) ext = 'png';
     else if (cleanUrl.endsWith('.webp')) ext = 'webp';
-    return { isPdf: isPdfFile, safeBlobUrl: url, extension: ext };
+    return { isPdf: isPdfFile, safeBlobUrl: publicR2Url, extension: ext };
   }, [receipt?.url]);
 
   // Clean up object URL when unmounting or changing receipt
@@ -118,7 +142,7 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
     const filename = `${cleanTitle}.${extension}`;
 
     const link = document.createElement('a');
-    link.href = safeBlobUrl || receipt.url;
+    link.href = safeBlobUrl || getPublicR2Url(receipt.url);
     link.download = filename;
     document.body.appendChild(link);
     link.click();
@@ -126,10 +150,9 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
   };
 
   const handleOpenInNewTab = () => {
-    if (safeBlobUrl) {
-      window.open(safeBlobUrl, '_blank');
-    } else {
-      window.open(receipt.url, '_blank');
+    const targetUrl = safeBlobUrl || getPublicR2Url(receipt.url);
+    if (targetUrl) {
+      window.open(targetUrl, '_blank');
     }
   };
 
@@ -268,7 +291,7 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
           ) : (
             <div className="overflow-auto max-w-full max-h-full flex items-center justify-center p-2">
               <img
-                src={receipt.url}
+                src={safeBlobUrl || getPublicR2Url(receipt.url)}
                 alt={receipt.title}
                 style={{
                   transform: `scale(${scale}) rotate(${rotation}deg)`,

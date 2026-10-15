@@ -1,3 +1,5 @@
+import { R2_PUBLIC_URL } from '../config';
+
 export interface R2Config {
   accountId: string;
   accessKeyId: string;
@@ -15,7 +17,7 @@ export const DEFAULT_R2_CONFIG: R2Config = {
   accessKeyId: '72d7f16fa1d308f11aa3912f0e942cbe',
   secretAccessKey: '86b4b4deb530203b17da24f057879c07f3741805e98cc10c0c30827bcb1ca98f',
   bucketName: 'el-desayuno',
-  publicUrl: '',
+  publicUrl: R2_PUBLIC_URL,
   enabled: true,
 };
 
