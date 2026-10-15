@@ -347,8 +347,16 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Filter collections
-  const filteredCollections = feeCollections.filter((c) => {
+  const currentDate = new Date();
+  const currentMonthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+  const isDueThisMonth = (collection: FeeCollection) => collection.dueDate?.slice(0, 7) === currentMonthKey;
+  const myCollectionsThisMonth = feeCollections.filter((collection) =>
+    isDueThisMonth(collection) && collection.allocations.some((allocation) => allocation.userId === currentUser.id)
+  );
+  const collectionsInScope = isAdmin ? feeCollections : myCollectionsThisMonth;
+
+  // Los copropietarios solo ven su cuota vigente del mes, nunca cuotas futuras de otros perfiles.
+  const filteredCollections = collectionsInScope.filter((c) => {
     // Search
     const matchesSearch =
       c.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -372,9 +380,15 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   });
 
   // Calculate Metrics
-  const totalCollectionsAmount = feeCollections.reduce((sum, c) => sum + c.totalAmount, 0);
-  const totalCollectedAmount = feeCollections.reduce((sum, c) => {
-    return sum + c.allocations.reduce((aSum, a) => aSum + (a.paidAmount || 0), 0);
+  const totalCollectionsAmount = collectionsInScope.reduce((sum, collection) => {
+    if (isAdmin) return sum + collection.totalAmount;
+    const myAllocation = collection.allocations.find((allocation) => allocation.userId === currentUser.id);
+    return sum + (myAllocation?.assignedAmount || 0);
+  }, 0);
+  const totalCollectedAmount = collectionsInScope.reduce((sum, collection) => {
+    if (isAdmin) return sum + collection.allocations.reduce((allocSum, allocation) => allocSum + (allocation.paidAmount || 0), 0);
+    const myAllocation = collection.allocations.find((allocation) => allocation.userId === currentUser.id);
+    return sum + (myAllocation?.paidAmount || 0);
   }, 0);
   const totalPendingAmount = totalCollectionsAmount - totalCollectedAmount;
   const overallCollectionProgress = totalCollectionsAmount > 0
@@ -382,7 +396,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     : 100;
 
   // My pending fees summary
-  const myPendingAllocations = feeCollections.flatMap((c) =>
+  const myPendingAllocations = myCollectionsThisMonth.flatMap((c) =>
     c.allocations
       .filter((a) => a.userId === currentUser.id && a.status !== 'paid')
       .map((a) => ({ collection: c, allocation: a }))
@@ -506,20 +520,22 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
           <div className="flex items-center justify-between text-xs text-[#637568] font-semibold uppercase tracking-wider mb-2">
-            <span>Total Emitido</span>
+            <span>{isAdmin ? 'Total Emitido' : 'Mi cuota del mes'}</span>
             <DollarSign className="w-4 h-4 text-[#163323]" />
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
             ${totalCollectionsAmount.toLocaleString()} <span className="text-xs font-sans text-[#7A8E7E]">ARS</span>
           </div>
           <p className="text-[11px] text-[#7A8E7E] mt-1">
-            {feeCollections.length} cobranzas registradas
+            {isAdmin
+              ? `${feeCollections.length} cobranzas registradas`
+              : `${collectionsInScope.length} cuota(s) vigente(s) en ${currentMonthKey}`}
           </p>
         </div>
 
         <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
           <div className="flex items-center justify-between text-xs text-emerald-800 font-semibold uppercase tracking-wider mb-2">
-            <span>Recaudado / Cobrado</span>
+            <span>{isAdmin ? 'Recaudado / Cobrado' : 'Mis pagos registrados'}</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-700">
@@ -535,20 +551,20 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
         <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs">
           <div className="flex items-center justify-between text-xs text-amber-800 font-semibold uppercase tracking-wider mb-2">
-            <span>Pendiente de Cobro</span>
+            <span>{isAdmin ? 'Pendiente de Cobro' : 'Pendiente este mes'}</span>
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-amber-700">
             ${totalPendingAmount.toLocaleString()} <span className="text-xs font-sans text-amber-600">ARS</span>
           </div>
           <p className="text-[11px] text-amber-700 mt-1 font-medium">
-            {100 - overallCollectionProgress}% por cobrar
+            {isAdmin ? `${100 - overallCollectionProgress}% por cobrar` : `${100 - overallCollectionProgress}% de mi cuota mensual`}
           </p>
         </div>
 
         <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4 shadow-xs">
           <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
-            <span>Mi Estado Personal</span>
+            <span>{isAdmin ? 'Mi Estado Personal' : 'Mi próxima obligación'}</span>
             <Users className="w-4 h-4 text-[#BFA270]" />
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
@@ -562,8 +578,8 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           </div>
           <p className="text-[11px] text-[#637568] mt-1">
             {myPendingAllocations.length > 0
-              ? `${myPendingAllocations.length} cuota(s) pendiente(s)`
-              : 'Sin cuotas adeudadas'}
+              ? `${myPendingAllocations.length} cuota(s) pendiente(s) este mes`
+              : 'Sin cuotas pendientes este mes'}
           </p>
         </div>
       </div>
@@ -580,7 +596,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                 : 'text-[#56685B] hover:bg-[#F4EFE6]'
             }`}
           >
-            Todas ({feeCollections.length})
+            Todas ({collectionsInScope.length})
           </button>
           <button
             onClick={() => setActiveTabFilter('active')}
@@ -590,7 +606,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                 : 'text-[#56685B] hover:bg-[#F4EFE6]'
             }`}
           >
-            En Curso ({feeCollections.filter((c) => c.status === 'active').length})
+            En Curso ({collectionsInScope.filter((c) => c.status === 'active').length})
           </button>
           <button
             onClick={() => setActiveTabFilter('completed')}
@@ -600,7 +616,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                 : 'text-[#56685B] hover:bg-[#F4EFE6]'
             }`}
           >
-            Completadas ({feeCollections.filter((c) => c.status === 'completed').length})
+            Completadas ({collectionsInScope.filter((c) => c.status === 'completed').length})
           </button>
           <button
             onClick={() => setActiveTabFilter('my_pending')}
@@ -656,9 +672,12 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           filteredCollections.map((collection) => {
             const isExpanded = expandedCollectionId === collection.id;
             const collectedAmount = collection.allocations.reduce((sum, a) => sum + (a.paidAmount || 0), 0);
-            const progressPct = Math.round((collectedAmount / collection.totalAmount) * 100);
-            const paidCount = collection.allocations.filter((a) => a.status === 'paid').length;
             const myAlloc = collection.allocations.find((a) => a.userId === currentUser.id);
+            const visibleAllocations = isAdmin ? collection.allocations : (myAlloc ? [myAlloc] : []);
+            const displayedAmount = isAdmin ? collection.totalAmount : (myAlloc?.assignedAmount || 0);
+            const displayedCollected = isAdmin ? collectedAmount : (myAlloc?.paidAmount || 0);
+            const progressPct = displayedAmount > 0 ? Math.round((displayedCollected / displayedAmount) * 100) : 0;
+            const paidCount = collection.allocations.filter((a) => a.status === 'paid').length;
 
             // Recurrence Badge
             const getRecurrenceLabel = (rec: RecurrenceType, days?: number) => {
@@ -724,13 +743,13 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                         </span>
                       )}
 
-                      {collection.status === 'completed' ? (
+                      {(isAdmin ? collection.status === 'completed' : myAlloc?.status === 'paid') ? (
                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
                           100% Cobrado
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold uppercase tracking-wider">
-                          En Cobranza ({progressPct}%)
+                          {isAdmin ? `En Cobranza (${progressPct}%)` : `Mi cuota pendiente (${progressPct}%)`}
                         </span>
                       )}
                     </div>
@@ -749,22 +768,22 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                   {/* Financial Breakdown Summary */}
                   <div className="flex flex-wrap lg:flex-nowrap items-center gap-6 border-t lg:border-t-0 pt-3 lg:pt-0 border-[#E3DFC8]">
                     <div className="text-right">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">Monto Total</div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">{isAdmin ? 'Monto Total' : 'Mi cuota'}</div>
                       <div className="text-lg font-bold font-mono text-[#163323]">
-                        ${collection.totalAmount.toLocaleString()} {collection.currency}
+                        ${displayedAmount.toLocaleString()} {collection.currency}
                       </div>
                       <div className="text-[11px] text-emerald-700 font-medium">
-                        ${collectedAmount.toLocaleString()} cobrados
+                        ${displayedCollected.toLocaleString()} {isAdmin ? 'cobrados' : 'pagados por mí'}
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">Copropietarios</div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">{isAdmin ? 'Copropietarios' : 'Mi porcentaje'}</div>
                       <div className="text-sm font-bold text-[#163323]">
-                        {paidCount} / {collection.allocations.length} al día
+                        {isAdmin ? `${paidCount} / ${collection.allocations.length} al día` : `${(myAlloc?.percentage || 0).toFixed(4)}%`}
                       </div>
                       <div className="text-[11px] text-amber-700 font-medium">
-                        {collection.allocations.length - paidCount} pendientes
+                        {isAdmin ? `${collection.allocations.length - paidCount} pendientes` : `$${Math.max(0, displayedAmount - displayedCollected).toLocaleString()} pendiente`}
                       </div>
                     </div>
 
@@ -784,7 +803,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                         onClick={() => setExpandedCollectionId(isExpanded ? null : collection.id)}
                         className="px-3 py-1.5 bg-[#F4EFE6] hover:bg-[#EFE9DB] border border-[#DDD5BF] text-xs font-bold text-[#163323] transition-colors cursor-pointer flex items-center gap-1"
                       >
-                        <span>{isExpanded ? 'Ocultar Detalle' : 'Ver Padrón Completo'}</span>
+                        <span>{isExpanded ? 'Ocultar Detalle' : isAdmin ? 'Ver Padrón Completo' : 'Ver mi detalle'}</span>
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
 
@@ -838,7 +857,9 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
                         <Users className="w-4 h-4 text-[#BFA270]" />
-                        Padrón de Distribución y Estado de Pago Individual ({collection.allocations.length} Copropietarios)
+                        {isAdmin
+                          ? `Padrón de Distribución y Estado de Pago Individual (${collection.allocations.length} Copropietarios)`
+                          : 'Mi cuota y estado de pago'}
                       </h4>
 
                       <span className="text-[11px] text-[#637568]">
@@ -862,7 +883,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#E3DFC8]">
-                          {collection.allocations.map((alloc) => {
+                          {visibleAllocations.map((alloc) => {
                             const isMe = alloc.userId === currentUser.id;
 
                             return (
