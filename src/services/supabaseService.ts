@@ -115,13 +115,8 @@ class SupabaseService {
   }
 
   private async deleteAllRows(table: string): Promise<boolean> {
-    if (!this.client) return false;
-    const { error } = await this.client.from(table).delete().not('id', 'is', null);
-    if (error) {
-      console.error(`Error eliminando ${table} de Supabase:`, error);
-      return false;
-    }
-    return true;
+    console.warn(`[Supabase Shield] Operación destructiva masiva 'deleteAllRows' bloqueada para la tabla '${table}' para blindar los datos.`);
+    return false;
   }
 
   public async getSettingsFromSupabase(): Promise<Record<string, any> | null> {

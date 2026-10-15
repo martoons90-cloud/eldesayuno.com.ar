@@ -665,29 +665,11 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   const handlePushDataToSupabase = async () => {
     setDialogState({
       isOpen: true,
-      title: 'Migrar / Guardar Datos en Supabase',
-      message: '¿Desea enviar y sincronizar todos los socios, gastos y datos actuales del fideicomiso a Supabase?',
-      type: 'confirm',
-      confirmText: 'Sí, Sincronizar',
-      cancelText: 'Cancelar',
-      onConfirm: async () => {
-        setSupabaseLoading(true);
-        const payload = storageService.getAllDataPackage();
-        const res = await supabaseService.pushDataToSupabase(payload);
-        setSupabaseLoading(false);
-        if (res.success) {
-          showSuccess(res.message);
-        } else {
-          setDialogState({
-            isOpen: true,
-            title: 'Atención Supabase',
-            message: res.message,
-            type: 'alert',
-            confirmText: 'Entendido',
-            onConfirm: () => {},
-          });
-        }
-      },
+      title: 'Base de Datos Blindada',
+      message: 'Supabase se encuentra configurada como fuente canónica de verdad. Para preservar la integridad de los registros existentes, las modificaciones se realizan de forma atómica y no se permiten sobreescrituras masivas desde el navegador.',
+      type: 'alert',
+      confirmText: 'Entendido',
+      onConfirm: () => {},
     });
   };
 
@@ -2767,14 +2749,9 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handlePushDataToSupabase}
-                        disabled={supabaseLoading || !supabaseService.isConnected()}
-                        className="px-3 py-1.5 bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border border-emerald-600/60 text-xs font-semibold cursor-pointer rounded disabled:opacity-50"
-                      >
-                        📤 Migrar Datos a Supabase
-                      </button>
+                      <span className="px-2.5 py-1.5 bg-emerald-950/90 text-emerald-300 border border-emerald-600/60 text-xs font-semibold rounded flex items-center gap-1.5 shadow-2xs">
+                        🛡️ Base Blindada (Lectura/Escritura Canónica)
+                      </span>
 
                       <button
                         type="button"
@@ -2782,7 +2759,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                         disabled={supabaseLoading || !supabaseService.isConnected()}
                         className="px-3 py-1.5 bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border border-emerald-600/60 text-xs font-semibold cursor-pointer rounded disabled:opacity-50"
                       >
-                        📥 Descargar de Supabase
+                        📥 Sincronizar desde Supabase
                       </button>
                     </div>
                   </div>
