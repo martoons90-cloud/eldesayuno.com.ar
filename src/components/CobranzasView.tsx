@@ -162,11 +162,20 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
     if (mode === 'share_percentage') {
       // Divided according to co-owner's registered % de acciones / participación in profile
-      return activeUsers.map((m) => {
-        const pct = typeof m.sharePercentage === 'number' && m.sharePercentage > 0
-          ? m.sharePercentage
+      const registeredShares = activeUsers.map((user) => Math.max(0, Number(user.sharePercentage) || 0));
+      const totalRegisteredShares = registeredShares.reduce((sum, share) => sum + share, 0);
+      return activeUsers.map((m, index) => {
+        const pct = totalRegisteredShares > 0
+          ? (registeredShares[index] / totalRegisteredShares) * 100
           : (100 / activeUsers.length);
-        const assigned = Math.round((total * (pct / 100)) * 100) / 100;
+        const assigned = index === activeUsers.length - 1
+          ? Math.round((total - activeUsers.slice(0, -1).reduce((sum, _user, priorIndex) => {
+              const priorPct = totalRegisteredShares > 0
+                ? (registeredShares[priorIndex] / totalRegisteredShares) * 100
+                : (100 / activeUsers.length);
+              return sum + Math.round((total * (priorPct / 100)) * 100) / 100;
+            }, 0)) * 100) / 100
+          : Math.round((total * (pct / 100)) * 100) / 100;
         return {
           userId: m.id,
           userName: m.name,
@@ -1323,6 +1332,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
   );
   const [distributionMode, setDistributionMode] = useState<DistributionMode>('share_percentage');
   const [installmentsCount, setInstallmentsCount] = useState<number>(1); // 1, 2, 3, 6, 12, 24
+  const [installmentInterestPercentage, setInstallmentInterestPercentage] = useState<number>(0);
   const [notes, setNotes] = useState('');
 
   // Custom percentages & amounts mapping
@@ -1345,7 +1355,11 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
 
   const activeUsers = users.filter((u) => u.active !== false);
 
-  const currentAmountPerInstallment = Math.round((totalAmount / Math.max(1, installmentsCount)) * 100) / 100;
+  const financingCharge = installmentsCount > 1
+    ? Math.round((totalAmount * (installmentInterestPercentage / 100)) * 100) / 100
+    : 0;
+  const financedTotal = Math.round((totalAmount + financingCharge) * 100) / 100;
+  const currentAmountPerInstallment = Math.round((financedTotal / Math.max(1, installmentsCount)) * 100) / 100;
 
   // Computed allocations for live preview
   const liveAllocations = calculateAllocationsForMode(
@@ -1399,19 +1413,26 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
 
       const instSuffix = createdCount > 1 ? ` - Cuota ${i} de ${createdCount}` : '';
 
+      const installmentAmount = i === createdCount
+        ? Math.round((financedTotal - currentAmountPerInstallment * (createdCount - 1)) * 100) / 100
+        : currentAmountPerInstallment;
       const allocations = calculateAllocationsForMode(
         distributionMode,
-        currentAmountPerInstallment,
+        installmentAmount,
         activeUsers,
         customPercentages,
         customAmounts
-      );
+      ).map((allocation) => ({
+        ...allocation,
+        financingInterestPercentage: installmentInterestPercentage,
+        baseInstallmentAmount: Math.round((totalAmount / createdCount) * 100) / 100,
+      }));
 
       const newCollection: FeeCollection = {
         id: `fee-${Date.now()}-${i}`,
         concept: `${concept.trim()}${instSuffix}`,
         category,
-        totalAmount: currentAmountPerInstallment,
+        totalAmount: installmentAmount,
         currency,
         recurrence: createdCount > 1 ? 'monthly' : recurrence,
         customRecurrenceDays: recurrence === 'custom_days' ? customRecurrenceDays : undefined,
@@ -1422,7 +1443,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
         status: 'active',
         createdBy: currentUser.name,
         createdAt: new Date().toISOString(),
-        notes: notes.trim(),
+        notes: `${notes.trim()}${installmentsCount > 1 ? `${notes.trim() ? '\n' : ''}Financiación: ${installmentInterestPercentage.toFixed(2)}% de recargo total ($${financingCharge.toLocaleString()} ARS).` : ''}`,
         installmentsCount: createdCount,
         installmentNumber: i,
       };
@@ -1570,14 +1591,36 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
             </div>
 
             {installmentsCount > 1 && (
-              <div className="bg-white p-2.5 border border-[#DDD5BF] space-y-1 text-[11px]">
+              <div className="bg-white p-2.5 border border-[#DDD5BF] space-y-2.5 text-[11px]">
+                <div className="flex items-center justify-between gap-3 pb-2 border-b border-[#E3DFC8]">
+                  <label className="font-bold text-[#163323]">Recargo / interés total por financiación:</label>
+                  <div className="flex items-center gap-1 border border-[#DDD5BF] px-2 py-1 bg-[#FAF8F5]">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={installmentInterestPercentage}
+                      onChange={(e) => setInstallmentInterestPercentage(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-16 text-right font-mono font-bold text-xs bg-transparent focus:outline-none"
+                    />
+                    <span className="font-mono font-bold text-xs">%</span>
+                  </div>
+                </div>
                 <div className="flex justify-between">
-                  <span className="text-[#637568]">Monto por Cuota Mensual Total:</span>
+                  <span className="text-[#637568]">Monto base:</span>
+                  <strong className="font-mono text-[#163323]">${totalAmount.toLocaleString()} ARS</strong>
+                </div>
+                <div className="flex justify-between text-amber-800">
+                  <span>Recargo por financiación:</span>
+                  <strong className="font-mono">+${financingCharge.toLocaleString()} ARS</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#637568]">Monto por cuota:</span>
                   <strong className="font-mono text-[#163323]">${currentAmountPerInstallment.toLocaleString()} ARS / mes</strong>
                 </div>
                 <div className="flex justify-between text-emerald-800">
-                  <span>Prorrateo Estimado por Socio (1/15):</span>
-                  <strong className="font-mono">${Math.round(currentAmountPerInstallment / 15).toLocaleString()} ARS / mes</strong>
+                  <span>Total financiado:</span>
+                  <strong className="font-mono">${financedTotal.toLocaleString()} ARS</strong>
                 </div>
               </div>
             )}

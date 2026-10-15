@@ -256,6 +256,9 @@ export interface OwnerFeeAllocation {
   paymentMethod?: 'transfer' | 'cash' | 'check' | 'mercadopago' | 'other';
   receiptUrl?: string; // Photo voucher in R2
   notes?: string;
+  /** Datos del plan financiero, persistidos junto a la asignación en la base. */
+  financingInterestPercentage?: number;
+  baseInstallmentAmount?: number;
 }
 
 export interface FeeCollection {

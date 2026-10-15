@@ -26,6 +26,7 @@ import {
   PieChart,
   Users,
   Check,
+  Eye,
   ExternalLink,
 } from 'lucide-react';
 
@@ -135,6 +136,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [selectedExpenseForTransfer, setSelectedExpenseForTransfer] = useState<ExpenseItem | null>(null);
   const [transferPercentage, setTransferPercentage] = useState<number>(100); // 100%, 75%, 50%, 25%, 10%, or custom
   const [installmentsCount, setInstallmentsCount] = useState<number>(1); // 1, 2, 3, 6, 12, 24
+  const [installmentInterestPercentage, setInstallmentInterestPercentage] = useState<number>(0);
   const [transferDueDate, setTransferDueDate] = useState(
     new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
@@ -145,6 +147,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [isSharesBreakdownModalOpen, setIsSharesBreakdownModalOpen] = useState(false);
 
   const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
+  const [viewingExpenseCollections, setViewingExpenseCollections] = useState<ExpenseItem | null>(null);
 
   const loadExpenses = async () => {
     const fresh = await storageService.fetchExpensesFromDatabase();
@@ -153,14 +156,20 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }
   };
 
+  const loadFeeCollections = async () => {
+    const fresh = await storageService.fetchFeesFromDatabase();
+    if (Array.isArray(fresh)) {
+      setFeeCollections(fresh);
+    }
+  };
+
   useEffect(() => {
     loadExpenses();
-    storageService.fetchFeesFromDatabase().then((fresh) => {
-      if (fresh && Array.isArray(fresh)) {
-        setFeeCollections(fresh);
-      }
+    loadFeeCollections();
+    const unsub = storageService.subscribe(() => {
+      void loadExpenses();
+      void loadFeeCollections();
     });
-    const unsub = storageService.subscribe(loadExpenses);
     return () => {
       unsub();
     };
@@ -387,7 +396,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       : periodTotalAmount;
 
   const currentTotalToCollect = Math.round((currentBaseAmount * (transferPercentage / 100)) * 100) / 100;
-  const currentAmountPerInstallment = Math.round((currentTotalToCollect / Math.max(1, installmentsCount)) * 100) / 100;
+  const currentFinancingCharge = installmentsCount > 1
+    ? Math.round((currentTotalToCollect * (installmentInterestPercentage / 100)) * 100) / 100
+    : 0;
+  const currentFinancedTotal = Math.round((currentTotalToCollect + currentFinancingCharge) * 100) / 100;
+  const currentAmountPerInstallment = Math.round((currentFinancedTotal / Math.max(1, installmentsCount)) * 100) / 100;
 
   // Calculate allocations for transfer modal
   const calculateTransferAllocations = (amountToDistribute: number): OwnerFeeAllocation[] => {
@@ -395,11 +408,23 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     if (activeUsers.length === 0) return [];
 
     if (transferDistributionMode === 'share_percentage') {
+      const registeredShares = activeUsers.map((user) => Math.max(0, Number(user.sharePercentage) || 0));
+      const totalRegisteredShares = registeredShares.reduce((sum, share) => sum + share, 0);
       return activeUsers.map((m) => {
-        const pct = typeof m.sharePercentage === 'number' && m.sharePercentage > 0
-          ? m.sharePercentage
+        const index = activeUsers.findIndex((user) => user.id === m.id);
+        // Si la matriz no suma exactamente 100, conservamos la proporción registrada
+        // y normalizamos para que el total de la cuota nunca quede incompleto ni excedido.
+        const pct = totalRegisteredShares > 0
+          ? (registeredShares[index] / totalRegisteredShares) * 100
           : (100 / activeUsers.length);
-        const assigned = Math.round((amountToDistribute * (pct / 100)) * 100) / 100;
+        const assigned = index === activeUsers.length - 1
+          ? Math.round((amountToDistribute - activeUsers.slice(0, -1).reduce((sum, user, priorIndex) => {
+              const priorPct = totalRegisteredShares > 0
+                ? (registeredShares[priorIndex] / totalRegisteredShares) * 100
+                : (100 / activeUsers.length);
+              return sum + Math.round((amountToDistribute * (priorPct / 100)) * 100) / 100;
+            }, 0)) * 100) / 100
+          : Math.round((amountToDistribute * (pct / 100)) * 100) / 100;
         return {
           userId: m.id,
           userName: m.name,
@@ -496,7 +521,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const liveTransferTotalAmt = liveTransferAllocations.reduce((s, a) => s + a.assignedAmount, 0);
 
   // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES OR INDIVIDUAL INVOICE)
-  const handleTransferToCobranza = () => {
+  const handleTransferToCobranza = async () => {
     if (currentTotalToCollect <= 0) {
       setDialog({
         isOpen: true,
@@ -537,13 +562,20 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           filteredExpenses.map((e) => `• ${e.concept}: $${e.amount.toLocaleString()} ARS`).join('\n');
       }
 
-      const allocations = calculateTransferAllocations(currentAmountPerInstallment);
+      const installmentAmount = i === createdCount
+        ? Math.round((currentFinancedTotal - currentAmountPerInstallment * (createdCount - 1)) * 100) / 100
+        : currentAmountPerInstallment;
+      const allocations = calculateTransferAllocations(installmentAmount).map((allocation) => ({
+        ...allocation,
+        financingInterestPercentage: installmentInterestPercentage,
+        baseInstallmentAmount: Math.round((currentTotalToCollect / createdCount) * 100) / 100,
+      }));
 
       const newFeeCollection: FeeCollection = {
         id: `fee-exp-${Date.now()}-${i}`,
         concept: conceptTitle,
         category: 'expensas_ordinarias',
-        totalAmount: currentAmountPerInstallment,
+        totalAmount: installmentAmount,
         currency: 'ARS',
         recurrence: createdCount > 1 ? 'monthly' : 'one_time',
         issueDate: issueDateStr,
@@ -553,35 +585,50 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         status: 'active',
         createdBy: `${currentUser.name} (Administración)`,
         createdAt: new Date().toISOString(),
-        notes: notesDetail,
+        notes: `${notesDetail}${installmentsCount > 1 ? `\nFinanciación: ${installmentInterestPercentage.toFixed(2)}% de recargo total ($${currentFinancingCharge.toLocaleString()} ARS).` : ''}`,
         installmentsCount: createdCount,
         installmentNumber: i,
         transferredPercentage: transferPercentage,
         originalExpenseId: selectedExpenseForTransfer?.id,
       };
 
-      storageService.saveFeeCollection(newFeeCollection);
+      const saved = await storageService.saveFeeCollection(newFeeCollection);
+      if (!saved) {
+        setDialog({
+          isOpen: true,
+          title: 'Cobranza no emitida',
+          message: 'La base de datos no confirmó todas las cuotas. No se marcará el gasto como enviado.',
+          type: 'alert',
+          confirmText: 'Aceptar',
+          onConfirm: () => {},
+        });
+        return;
+      }
     }
 
     // Mark expenses transferred
     if (transferTarget === 'selected_expense' && selectedExpenseForTransfer) {
-      storageService.saveExpense({
+      const expenseSaved = await storageService.saveExpense({
         ...selectedExpenseForTransfer,
         transferredToFeeCollectionId: 'transferred-multi-' + Date.now(),
         transferredPercentage: transferPercentage,
         transferredInstallments: createdCount,
       });
+      if (!expenseSaved) return;
     } else {
-      filteredExpenses.forEach((e) => {
-        storageService.saveExpense({
-          ...e,
+      for (const expense of filteredExpenses) {
+        const expenseSaved = await storageService.saveExpense({
+          ...expense,
           transferredToFeeCollectionId: 'transferred-multi-' + Date.now(),
           transferredPercentage: transferPercentage,
           transferredInstallments: createdCount,
         });
-      });
+        if (!expenseSaved) return;
+      }
     }
 
+    const savedCollections = await storageService.fetchFeesFromDatabase();
+    setFeeCollections(savedCollections);
     setTransferSuccessMsg(true);
     setTimeout(() => {
       setTransferSuccessMsg(false);
@@ -590,30 +637,29 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }, 2000);
   };
 
+  const getLinkedCollections = (exp: ExpenseItem) => feeCollections.filter(
+    (collection) => collection.originalExpenseId === exp.id ||
+      collection.id === exp.transferredToFeeCollectionId ||
+      (!collection.originalExpenseId && collection.notes?.includes(exp.concept))
+  );
+
   const getExpenseCollectionStatus = (exp: ExpenseItem) => {
-    if (!exp.transferredToFeeCollectionId && !exp.transferredPercentage) {
-      return { label: 'Aún No', color: 'bg-neutral-100 text-neutral-600 border border-neutral-300' };
-    }
-    const matchingCollections = feeCollections.filter(
-      (fc) => fc.id === exp.transferredToFeeCollectionId || fc.notes?.includes(exp.concept) || fc.originalExpenseId === exp.id
-    );
+    const matchingCollections = getLinkedCollections(exp);
     if (matchingCollections.length === 0) {
-      return { label: `Enviado (${exp.transferredPercentage || 100}%)`, color: 'bg-blue-100 text-blue-800 border border-blue-300' };
+      return exp.transferredPercentage
+        ? { label: `Enviado (${exp.transferredPercentage}%)`, color: 'bg-blue-100 text-blue-800 border border-blue-300' }
+        : { label: 'Aún No', color: 'bg-neutral-100 text-neutral-600 border border-neutral-300' };
     }
-    let totalAllocations = 0;
-    let paidAllocations = 0;
-    for (const fc of matchingCollections) {
-      for (const alloc of fc.allocations || []) {
-        totalAllocations++;
-        if (alloc.status === 'paid') {
-          paidAllocations++;
-        }
-      }
-    }
-    if (totalAllocations > 0 && paidAllocations === totalAllocations) {
+    const totalEmitted = matchingCollections.reduce((sum, collection) => sum + collection.totalAmount, 0);
+    const totalCollected = matchingCollections.reduce(
+      (sum, collection) => sum + collection.allocations.reduce((allocSum, allocation) => allocSum + (Number(allocation.paidAmount) || 0), 0),
+      0
+    );
+    const collectedPercentage = totalEmitted > 0 ? Math.round((totalCollected / totalEmitted) * 100) : 0;
+    if (totalEmitted > 0 && totalCollected >= totalEmitted - 0.01) {
       return { label: 'Cobrado (100%)', color: 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold' };
-    } else if (paidAllocations > 0) {
-      return { label: `Parcial (${paidAllocations}/${totalAllocations})`, color: 'bg-amber-100 text-amber-800 border border-amber-300' };
+    } else if (totalCollected > 0) {
+      return { label: `Cobrado (${collectedPercentage}%)`, color: 'bg-amber-100 text-amber-800 border border-amber-300' };
     } else {
       return { label: 'Pendiente Cobro', color: 'bg-indigo-100 text-indigo-800 border border-indigo-300' };
     }
@@ -846,6 +892,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               ) : (
                 filteredExpenses.map((exp) => {
                   const expPalette = getAutoExpenseColor(exp.id || exp.concept);
+                  const linkedCollections = getLinkedCollections(exp);
                   return (
                     <tr key={exp.id} className={`hover:${expPalette.bg} transition-colors border-l-4 ${expPalette.bar}`}>
                       <td className="py-3 px-3 whitespace-nowrap font-mono text-[#56685B]">
@@ -934,12 +981,22 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     {isAdmin && (
                       <td className="py-3 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          {linkedCollections.length > 0 && (
+                            <button
+                              onClick={() => setViewingExpenseCollections(exp)}
+                              className="p-1 text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                              title="Ver cobranzas y cuotas vinculadas"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setSelectedExpenseForTransfer(exp);
                               setTransferTarget('selected_expense');
                               setTransferPercentage(100);
                               setInstallmentsCount(1);
+                              setInstallmentInterestPercentage(0);
                               setIsTransferModalOpen(true);
                             }}
                             className="px-2 py-1 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs cursor-pointer rounded"
@@ -1410,14 +1467,36 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   </div>
 
                   {installmentsCount > 1 && (
-                    <div className="bg-white p-2.5 border border-[#DDD5BF] space-y-1 text-[11px]">
+                    <div className="bg-white p-2.5 border border-[#DDD5BF] space-y-2.5 text-[11px]">
+                      <div className="flex items-center justify-between gap-3 pb-2 border-b border-[#E3DFC8]">
+                        <label className="font-bold text-[#163323]">Recargo / interés total por financiación:</label>
+                        <div className="flex items-center gap-1 border border-[#DDD5BF] px-2 py-1 bg-[#FAF8F5]">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={installmentInterestPercentage}
+                            onChange={(e) => setInstallmentInterestPercentage(Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="w-16 text-right font-mono font-bold text-xs bg-transparent focus:outline-none"
+                          />
+                          <span className="font-mono font-bold text-xs">%</span>
+                        </div>
+                      </div>
                       <div className="flex justify-between">
-                        <span className="text-[#637568]">Valor de Cada Cuota Mensual General:</span>
+                        <span className="text-[#637568]">Monto base a cobrar:</span>
+                        <strong className="font-mono text-[#163323]">${currentTotalToCollect.toLocaleString()} ARS</strong>
+                      </div>
+                      <div className="flex justify-between text-amber-800">
+                        <span>Recargo por financiación:</span>
+                        <strong className="font-mono">+${currentFinancingCharge.toLocaleString()} ARS</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#637568]">Valor de cada cuota:</span>
                         <strong className="font-mono text-[#163323]">${currentAmountPerInstallment.toLocaleString()} ARS / mes</strong>
                       </div>
                       <div className="flex justify-between text-emerald-800">
-                        <span>Prorrateo Estimado por Socio (1/15 Parte):</span>
-                        <strong className="font-mono">${Math.round(currentAmountPerInstallment / 15).toLocaleString()} ARS / mes</strong>
+                        <span>Total financiado a emitir:</span>
+                        <strong className="font-mono">${currentFinancedTotal.toLocaleString()} ARS</strong>
                       </div>
                     </div>
                   )}
@@ -1533,6 +1612,103 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
         </div>
       )}
+      {viewingExpenseCollections && (() => {
+        const linkedCollections = getLinkedCollections(viewingExpenseCollections);
+        const totalEmitted = linkedCollections.reduce((sum, collection) => sum + collection.totalAmount, 0);
+        const totalCollected = linkedCollections.reduce(
+          (sum, collection) => sum + collection.allocations.reduce((allocationSum, allocation) => allocationSum + (Number(allocation.paidAmount) || 0), 0),
+          0
+        );
+        const totalPending = Math.max(0, totalEmitted - totalCollected);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in overflow-y-auto">
+            <div className="bg-white border border-[#E3DFC8] max-w-5xl w-full p-6 shadow-xl relative my-8 max-h-[90vh] flex flex-col">
+              <button
+                onClick={() => setViewingExpenseCollections(null)}
+                className="absolute top-4 right-4 p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
+                title="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="pr-8 pb-4 border-b border-[#E3DFC8]">
+                <h3 className="text-lg font-bold text-[#163323] flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-blue-700" />
+                  Cobranzas vinculadas al gasto
+                </h3>
+                <p className="text-xs text-[#637568] mt-1">
+                  {viewingExpenseCollections.concept} {viewingExpenseCollections.invoiceNumber ? `· Factura ${viewingExpenseCollections.invoiceNumber}` : ''}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 py-4 text-xs">
+                <div className="border border-[#E3DFC8] bg-[#FAF8F5] p-3">
+                  <span className="block text-[10px] uppercase font-bold text-[#637568]">Gasto original</span>
+                  <strong className="font-mono text-base text-[#163323]">${viewingExpenseCollections.amount.toLocaleString()} ARS</strong>
+                  <span className="block mt-1 text-[10px] text-[#637568]">Proveedor: {viewingExpenseCollections.status === 'paid' ? 'pagado' : 'pendiente'}</span>
+                </div>
+                <div className="border border-blue-200 bg-blue-50 p-3">
+                  <span className="block text-[10px] uppercase font-bold text-blue-700">Emitido a cobrar</span>
+                  <strong className="font-mono text-base text-blue-900">${totalEmitted.toLocaleString()} ARS</strong>
+                  <span className="block mt-1 text-[10px] text-blue-700">{linkedCollections.length} {linkedCollections.length === 1 ? 'cuota' : 'cuotas'} vinculadas</span>
+                </div>
+                <div className="border border-emerald-200 bg-emerald-50 p-3">
+                  <span className="block text-[10px] uppercase font-bold text-emerald-700">Cobrado de copropietarios</span>
+                  <strong className="font-mono text-base text-emerald-900">${totalCollected.toLocaleString()} ARS</strong>
+                  <span className="block mt-1 text-[10px] text-emerald-700">Importes de pago confirmados</span>
+                </div>
+                <div className="border border-amber-200 bg-amber-50 p-3">
+                  <span className="block text-[10px] uppercase font-bold text-amber-800">Pendiente de cobro</span>
+                  <strong className="font-mono text-base text-amber-900">${totalPending.toLocaleString()} ARS</strong>
+                  <span className="block mt-1 text-[10px] text-amber-800">Sobre las cuotas emitidas</span>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto border border-[#E3DFC8]">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#1B3B2B] text-white font-mono text-[10px] sticky top-0">
+                    <tr>
+                      <th className="p-2">Cobranza / cuota</th>
+                      <th className="p-2">Vencimiento</th>
+                      <th className="p-2 text-right">Emitido</th>
+                      <th className="p-2 text-right">Cobrado</th>
+                      <th className="p-2 text-right">Pendiente</th>
+                      <th className="p-2 text-right">Copropietarios</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E3DFC8]">
+                    {linkedCollections.map((collection) => {
+                      const collected = collection.allocations.reduce((sum, allocation) => sum + (Number(allocation.paidAmount) || 0), 0);
+                      const pending = Math.max(0, collection.totalAmount - collected);
+                      const paidOwners = collection.allocations.filter((allocation) => (Number(allocation.paidAmount) || 0) >= allocation.assignedAmount - 0.01).length;
+                      const financingRate = collection.allocations[0]?.financingInterestPercentage || 0;
+
+                      return (
+                        <tr key={collection.id} className="hover:bg-[#FAF8F5]">
+                          <td className="p-2">
+                            <strong className="block text-[#163323]">{collection.concept}</strong>
+                            <span className="text-[10px] text-[#637568]">
+                              Cuota {collection.installmentNumber || 1} de {collection.installmentsCount || 1}
+                              {financingRate > 0 ? ` · Recargo ${financingRate.toFixed(2)}%` : ''}
+                            </span>
+                          </td>
+                          <td className="p-2 font-mono text-[#56685B]">{collection.dueDate || 'Sin fecha'}</td>
+                          <td className="p-2 text-right font-mono font-bold text-[#163323]">${collection.totalAmount.toLocaleString()}</td>
+                          <td className="p-2 text-right font-mono font-bold text-emerald-800">${collected.toLocaleString()}</td>
+                          <td className="p-2 text-right font-mono font-bold text-amber-800">${pending.toLocaleString()}</td>
+                          <td className="p-2 text-right text-[#56685B]">{paidOwners} / {collection.allocations.length} al día</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Modal: Shares Breakdown Table */}
       {isSharesBreakdownModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
