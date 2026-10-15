@@ -58,6 +58,14 @@ class SupabaseService {
       try {
         this.client = createClient(this.config.url, this.config.anonKey, {
           auth: { persistSession: false },
+          // La base es la fuente de verdad: nunca reutilizar una respuesta HTTP anterior.
+          global: {
+            fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              Pragma: 'no-cache',
+            },
+          },
         });
         this.config.enabled = true;
       } catch (err) {

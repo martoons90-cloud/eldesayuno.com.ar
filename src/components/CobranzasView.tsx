@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, RecurrenceType, PaymentStatus } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
@@ -46,6 +46,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   isAdmin,
 }) => {
   const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
+  const collectionsRequestRef = useRef(0);
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'active' | 'completed' | 'my_pending'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -126,8 +127,12 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
   // Load collections
   const loadCollections = async () => {
+    const requestId = ++collectionsRequestRef.current;
     const fresh = await storageService.fetchFeesFromDatabase();
-    if (fresh && Array.isArray(fresh)) setFeeCollections(fresh);
+    // Si hubo otra consulta después, ignoramos esta respuesta anterior.
+    if (requestId === collectionsRequestRef.current && Array.isArray(fresh)) {
+      setFeeCollections(fresh);
+    }
   };
 
   useEffect(() => {
@@ -275,10 +280,10 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   };
 
   // Save Payment
-  const handleSavePaymentRecord = () => {
+  const handleSavePaymentRecord = async () => {
     if (!recordPaymentState.userAllocation) return;
 
-    storageService.updateOwnerAllocationStatus(
+    const saved = await storageService.updateOwnerAllocationStatus(
       recordPaymentState.collectionId,
       recordPaymentState.userAllocation.userId,
       {
@@ -292,6 +297,19 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
       }
     );
 
+    if (!saved) {
+      setDialog({
+        isOpen: true,
+        title: 'Pago no guardado',
+        message: 'La base de datos no confirmó el pago. La pantalla conserva el estado confirmado.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
+
+    await loadCollections();
     setRecordPaymentState({ open: false, collectionId: '', userAllocation: null });
   };
 
@@ -770,9 +788,20 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                               message: '¿Está seguro de eliminar esta orden de cobranza y su registro de asignaciones?',
                               type: 'warning',
                               confirmText: 'Eliminar',
-                              onConfirm: () => {
-                                storageService.deleteFeeCollection(collection.id);
-                                loadCollections();
+                              onConfirm: async () => {
+                                const deleted = await storageService.deleteFeeCollection(collection.id);
+                                if (deleted) {
+                                  await loadCollections();
+                                  return;
+                                }
+                                setDialog({
+                                  isOpen: true,
+                                  title: 'Cobranza no eliminada',
+                                  message: 'La base de datos no confirmó la eliminación. El registro se mantiene visible.',
+                                  type: 'alert',
+                                  confirmText: 'Aceptar',
+                                  onConfirm: () => {},
+                                });
                               },
                             });
                           }}
@@ -930,10 +959,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           onClose={() => setIsCreateModalOpen(false)}
           users={users}
           currentUser={currentUser}
-          onSave={(col) => {
-            storageService.saveFeeCollection(col);
-            setIsCreateModalOpen(false);
-          }}
+          onSave={async (col) => storageService.saveFeeCollection(col)}
           calculateAllocationsForMode={calculateAllocationsForMode}
         />
       )}
@@ -1268,7 +1294,7 @@ interface CreateFeeModalProps {
   onClose: () => void;
   users: User[];
   currentUser: User;
-  onSave: (collection: FeeCollection) => void;
+  onSave: (collection: FeeCollection) => Promise<boolean>;
   calculateAllocationsForMode: (
     mode: DistributionMode,
     total: number,
@@ -1333,7 +1359,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
   const totalCalculatedPercentages = liveAllocations.reduce((s, a) => s + a.percentage, 0);
   const totalCalculatedAmounts = liveAllocations.reduce((s, a) => s + a.assignedAmount, 0);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!concept.trim()) {
       setDialog({
@@ -1401,8 +1427,21 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
         installmentNumber: i,
       };
 
-      onSave(newCollection);
+      const saved = await onSave(newCollection);
+      if (!saved) {
+        setDialog({
+          isOpen: true,
+          title: 'Cobranza no guardada',
+          message: 'La base de datos no confirmó la emisión. No se mostrará como creada.',
+          type: 'alert',
+          confirmText: 'Aceptar',
+          onConfirm: () => {},
+        });
+        return;
+      }
     }
+
+    onClose();
   };
 
   return (

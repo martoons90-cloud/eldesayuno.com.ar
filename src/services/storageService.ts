@@ -1273,10 +1273,10 @@ class StorageService {
     collectionId: string,
     userId: string,
     update: Partial<OwnerFeeAllocation>
-  ) {
+  ): Promise<boolean> {
     const list = this.getFeeCollections();
     const collection = list.find((f) => f.id === collectionId);
-    if (!collection) return;
+    if (!collection) return Promise.resolve(false);
 
     const updatedAllocations = collection.allocations.map((alloc) => {
       if (alloc.userId === userId) {
@@ -1293,7 +1293,7 @@ class StorageService {
       status: allPaid ? 'completed' : collection.status,
     };
 
-    this.saveFeeCollection(updatedCollection);
+    return this.saveFeeCollection(updatedCollection);
   }
 
   public async deleteFeeCollection(collectionId: string): Promise<boolean> {
@@ -1452,13 +1452,12 @@ class StorageService {
       if (result.success && Array.isArray(result.data?.expenses)) {
         const expenses = result.data.expenses as ExpenseItem[];
         localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-        this.notify(false);
         return expenses;
       }
     } catch (err) {
       console.warn('Error fetching expenses from database:', err);
     }
-    return this.getExpenses();
+    return DEFAULT_EXPENSES;
   }
 
   public async fetchCashFlowFromDatabase(): Promise<CashFlowTransaction[]> {
@@ -1468,13 +1467,12 @@ class StorageService {
       if (result.success && Array.isArray(result.data?.cashFlow)) {
         const cashFlow = result.data.cashFlow as CashFlowTransaction[];
         localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(cashFlow));
-        this.notify(false);
         return cashFlow;
       }
     } catch (err) {
       console.warn('Error fetching cash flow from database:', err);
     }
-    return this.getCashFlows();
+    return [];
   }
 
   public async fetchFeesFromDatabase(): Promise<FeeCollection[]> {
@@ -1484,13 +1482,12 @@ class StorageService {
       if (result.success && Array.isArray(result.data?.fees)) {
         const fees = result.data.fees as FeeCollection[];
         localStorage.setItem(FEES_KEY, JSON.stringify(fees));
-        this.notify(false);
         return fees;
       }
     } catch (err) {
       console.warn('Error fetching fees from database:', err);
     }
-    return this.getFeeCollections();
+    return DEFAULT_FEE_COLLECTIONS;
   }
 
   // Get complete package of local data for D1 push & backup
