@@ -1035,6 +1035,37 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     },
   ];
 
+  const ownerGroups = (() => {
+    const isGrouped = (user: User) => Number.isInteger(user.cabezaNumber) && (user.cabezaNumber ?? 0) > 0;
+    const cabezaNumbers = Array.from(
+      new Set(users.filter(isGrouped).map((user) => user.cabezaNumber as number))
+    ).sort((a, b) => a - b);
+
+    const groups = cabezaNumbers.map((number) => ({
+      id: `cabeza-${number}`,
+      label: `Cabeza ${number}`,
+      color: number === 1 ? '#DC2626' : number === 2 ? '#16A34A' : number === 3 ? '#2563EB' : '#D97706',
+      members: users
+        .filter((user) => user.cabezaNumber === number)
+        .sort((a, b) => Number(b.isCabezaDeEquipo) - Number(a.isCabezaDeEquipo) || a.name.localeCompare(b.name)),
+    }));
+
+    const independents = users
+      .filter((user) => !isGrouped(user))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (independents.length > 0) {
+      groups.push({
+        id: 'independientes',
+        label: 'Sin grupo / Independientes',
+        color: '#64748B',
+        members: independents,
+      });
+    }
+
+    return groups;
+  })();
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -1385,7 +1416,20 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EFEAE0]">
-                    {users.map((u) => {
+                    {ownerGroups.map((group) => (
+                      <React.Fragment key={group.id}>
+                        <tr className="bg-[#F8F5EE] border-y border-[#E3DFC8]">
+                          <td colSpan={8} className="px-3 py-2">
+                            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-[#163323]">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: group.color }} />
+                              <span>{group.label}</span>
+                              <span className="font-medium normal-case tracking-normal text-[#7A8E7E]">
+                                {group.members.length} {group.members.length === 1 ? 'copropietario' : 'copropietarios'}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                        {group.members.map((u) => {
                       const isCurrentUser = u.id === currentUser.id;
                       const isCurrentAdmin = u.role === 'admin';
                       return (
@@ -1614,7 +1658,9 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                           </td>
                         </tr>
                       );
-                    })}
+                        })}
+                      </React.Fragment>
+                    ))}
                   </tbody>
                 </table>
               </div>
