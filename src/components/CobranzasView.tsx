@@ -125,7 +125,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('paid');
-  const [paymentMethod, setPaymentMethod] = useState<'transfer' | 'cash' | 'check' | 'mercadopago' | 'other'>('transfer');
+  const [paymentMethod, setPaymentMethod] = useState<'transfer' | 'cash' | 'check' | 'mercadopago' | 'auto_debit' | 'other'>('transfer');
   const [paidAtDate, setPaidAtDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentNotes, setPaymentNotes] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
@@ -1494,7 +1494,11 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                                   {alloc.paidAt ? (
                                     <div>
                                       <span className="font-mono">{alloc.paidAt}</span>
-                                      {alloc.paymentMethod && <span className="block text-[10px] uppercase text-[#7A8E7E]">{alloc.paymentMethod}</span>}
+                                      {alloc.paymentMethod && (
+                                        <span className={`block text-[10px] uppercase font-bold ${alloc.paymentMethod === 'auto_debit' ? 'text-emerald-700' : 'text-[#7A8E7E]'}`}>
+                                          {alloc.paymentMethod === 'auto_debit' ? '⚡ Débito Automático' : alloc.paymentMethod}
+                                        </span>
+                                      )}
                                     </div>
                                   ) : (
                                     <span className="text-neutral-400 italic">Sin fecha</span>
@@ -1705,6 +1709,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   >
                     <option value="transfer">Transferencia Bancaria</option>
+                    <option value="auto_debit">⚡ Débito Automático (Cuenta Particular)</option>
                     <option value="cash">Efectivo</option>
                     <option value="mercadopago">MercadoPago</option>
                     <option value="check">Cheque</option>

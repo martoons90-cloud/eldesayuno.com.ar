@@ -1311,6 +1311,86 @@ class StorageService {
     return this.saveFeeCollection(updatedCollection);
   }
 
+  // Auto Debit Configuration & Execution
+  public isAutoDebitEnabled(userId: string): boolean {
+    if (typeof window === 'undefined' || !userId) return true;
+    try {
+      const raw = localStorage.getItem('el_desayuno_auto_debit_prefs_v1');
+      if (!raw) return true; // Por defecto siempre activo (true)
+      const parsed = JSON.parse(raw);
+      return parsed[userId] !== undefined ? Boolean(parsed[userId]) : true;
+    } catch {
+      return true;
+    }
+  }
+
+  public setAutoDebitEnabled(userId: string, enabled: boolean): void {
+    if (typeof window === 'undefined' || !userId) return;
+    try {
+      const raw = localStorage.getItem('el_desayuno_auto_debit_prefs_v1');
+      const parsed = raw ? JSON.parse(raw) : {};
+      parsed[userId] = enabled;
+      localStorage.setItem('el_desayuno_auto_debit_prefs_v1', JSON.stringify(parsed));
+      this.notify(false);
+    } catch (err) {
+      console.warn('Error saving auto debit preference:', err);
+    }
+  }
+
+  public async executeAutoDebitForUser(
+    userId: string,
+    availableBalance: number
+  ): Promise<{ debitedTotal: number; paymentsCount: number }> {
+    if (!this.isAutoDebitEnabled(userId) || availableBalance <= 0) {
+      return { debitedTotal: 0, paymentsCount: 0 };
+    }
+
+    const collections = this.getFeeCollections();
+    const pendingCollections = collections
+      .filter((c) => c.status === 'active')
+      .map((c) => {
+        const alloc = c.allocations?.find((a) => a.userId === userId);
+        return { collection: c, allocation: alloc };
+      })
+      .filter(
+        (item): item is { collection: FeeCollection; allocation: OwnerFeeAllocation } =>
+          Boolean(
+            item.allocation &&
+              item.allocation.status !== 'paid' &&
+              item.allocation.assignedAmount - (item.allocation.paidAmount || 0) > 0
+          )
+      )
+      .sort((a, b) => (a.collection.dueDate || '').localeCompare(b.collection.dueDate || ''));
+
+    let remainingBalance = availableBalance;
+    let debitedTotal = 0;
+    let paymentsCount = 0;
+
+    for (const { collection, allocation } of pendingCollections) {
+      if (remainingBalance <= 0) break;
+      const pendingAmount = allocation.assignedAmount - (allocation.paidAmount || 0);
+      const toPay = Math.min(remainingBalance, pendingAmount);
+      if (toPay > 0) {
+        const newPaid = (allocation.paidAmount || 0) + toPay;
+        const isFull = newPaid >= allocation.assignedAmount;
+        const success = await this.updateOwnerAllocationStatus(collection.id, userId, {
+          paidAmount: newPaid,
+          status: isFull ? 'paid' : 'partial',
+          paymentMethod: 'auto_debit',
+          paidAt: new Date().toISOString().split('T')[0],
+          notes: `Abonado automáticamente por débito de cuenta corriente ($${toPay.toLocaleString()} ARS)`,
+        });
+        if (success) {
+          remainingBalance -= toPay;
+          debitedTotal += toPay;
+          paymentsCount++;
+        }
+      }
+    }
+
+    return { debitedTotal, paymentsCount };
+  }
+
   public async deleteFeeCollection(collectionId: string): Promise<boolean> {
     const deleted = await supabaseService.deleteFeeCollection(collectionId);
     if (!deleted) {

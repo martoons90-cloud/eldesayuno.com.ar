@@ -18,6 +18,7 @@ export interface User {
   avatarInitials: string;
   phone: string;
   password?: string; // 6-character alphanumeric password
+  autoDebitEnabled?: boolean; // Débito automático de cuotas y expensas
   active: boolean;
   createdAt: string;
 }
@@ -40,6 +41,10 @@ export const hasFullOperationalAccess = (user?: User | null): boolean =>
 // Financial power: exclusively for Gastos, Cobranzas, Caja & Cuentas (Admin & Intendente)
 export const hasFinancialAccess = (user?: User | null): boolean =>
   Boolean(isUserAdmin(user) || isUserIntendente(user));
+
+// General account visibility: only Admin, Intendente, and Fiduciario / Fiduciante
+export const canViewGeneralFinancialAccount = (user?: User | null): boolean =>
+  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserFiduciante(user));
 
 // Upload expenses allowed for Cabezas de Equipo, Admin & Intendente
 export const canUploadExpenses = (user?: User | null): boolean =>
@@ -253,7 +258,7 @@ export interface OwnerFeeAllocation {
   paidAmount: number; // $ paid so far
   status: PaymentStatus;
   paidAt?: string; // YYYY-MM-DD
-  paymentMethod?: 'transfer' | 'cash' | 'check' | 'mercadopago' | 'other';
+  paymentMethod?: 'transfer' | 'cash' | 'check' | 'mercadopago' | 'auto_debit' | 'other';
   receiptUrl?: string; // Photo voucher in R2
   notes?: string;
   /** Datos del plan financiero, persistidos junto a la asignación en la base. */

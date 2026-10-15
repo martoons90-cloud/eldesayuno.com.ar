@@ -7,13 +7,16 @@ import {
   ExpenseItem,
   ExpenseCategory,
   TrustSettings,
+  FeeCollection,
+  OwnerFeeAllocation,
   isUserAdmin,
   isUserIntendente,
+  isUserFiduciante,
   hasFinancialAccess,
+  canViewGeneralFinancialAccount,
   canUploadExpenses,
 } from '../types';
 import { storageService } from '../services/storageService';
-import { UserRoleBadge } from './UserRoleBadge';
 import {
   DollarSign,
   TrendingUp,
@@ -36,12 +39,15 @@ import {
   UserCheck,
   Coins,
   RefreshCw,
+  Zap,
+  Users,
 } from 'lucide-react';
 
 interface CashFlowViewProps {
   currentUser: User;
   settings: TrustSettings;
   isAdmin?: boolean;
+  canViewGeneral?: boolean;
   onNavigateToCobranzas?: () => void;
 }
 
@@ -49,28 +55,40 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   currentUser,
   settings,
   isAdmin,
+  canViewGeneral: canViewGeneralProp,
   onNavigateToCobranzas,
 }) => {
   const [cashFlows, setCashFlows] = useState<CashFlowTransaction[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
 
-  // Filters
-  const [activeTabSub, setActiveTabSub] = useState<'caja' | 'cuentas' | 'gastos_pendientes'>('caja');
+  // Permissions
+  const fullAdmin = isAdmin !== undefined ? isAdmin : hasFinancialAccess(currentUser);
+  const canViewGeneral = canViewGeneralProp !== undefined
+    ? canViewGeneralProp
+    : canViewGeneralFinancialAccount(currentUser);
+  const canUpload = canUploadExpenses(currentUser);
+
+  // Sub-tabs: if user cannot view general, force to 'mi_cuenta'
+  const [activeTabSub, setActiveTabSub] = useState<'caja' | 'cuentas_socios' | 'mi_cuenta' | 'gastos_pendientes'>(
+    canViewGeneral ? 'caja' : 'mi_cuenta'
+  );
   const [typeFilter, setTypeFilter] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isExecutingDebit, setIsExecutingDebit] = useState(false);
 
   // Modals
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [txType, setTxType] = useState<CashFlowType>('ingreso');
-  const [txCategory, setTxCategory] = useState<CashFlowCategory>('aporte_socio');
+  const [txCategory, setTxCategory] = useState<CashFlowCategory>('otro_ingreso');
   const [txConcept, setTxConcept] = useState('');
   const [txAmount, setTxAmount] = useState<number>(0);
   const [txDate, setTxDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [txLinkedUserId, setTxLinkedUserId] = useState<string>('');
   const [txNotes, setTxNotes] = useState('');
 
-  // Expense Submission Modal (for Cabezas de Equipo, Admin, Intendente)
+  // Expense Submission Modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expConcept, setExpConcept] = useState('');
   const [expCategory, setExpCategory] = useState<ExpenseCategory>('servicios');
@@ -81,118 +99,230 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [expPayerUserId, setExpPayerUserId] = useState('');
   const [expNotes, setExpNotes] = useState('');
 
-  // Partial Reimbursement Modal (for Admin/Intendente managing owner account balances)
+  // Reimbursement Modal
   const [reimburseModalUser, setReimburseModalUser] = useState<{ userId: string; userName: string; balanceDue: number } | null>(null);
   const [reimburseAmount, setReimburseAmount] = useState<number>(0);
   const [reimburseNotes, setReimburseNotes] = useState('');
 
-  const fullAdmin = isAdmin !== undefined ? isAdmin : hasFinancialAccess(currentUser);
-  const canUpload = canUploadExpenses(currentUser);
+  // Auto-debit local toggle state for currentUser
+  const [autoDebitEnabled, setAutoDebitEnabled] = useState<boolean>(
+    storageService.isAutoDebitEnabled(currentUser.id)
+  );
+
+  const syncData = async () => {
+    const [freshCF, freshExp] = await Promise.all([
+      storageService.fetchCashFlowFromDatabase(),
+      storageService.fetchExpensesFromDatabase(),
+    ]);
+    if (freshCF && Array.isArray(freshCF)) setCashFlows(freshCF);
+    if (freshExp && Array.isArray(freshExp)) setExpenses(freshExp);
+    setUsers(storageService.getUsers());
+    setFeeCollections(storageService.getFeeCollections());
+    setAutoDebitEnabled(storageService.isAutoDebitEnabled(currentUser.id));
+  };
 
   useEffect(() => {
-    const syncData = async () => {
-      const [freshCF, freshExp] = await Promise.all([
-        storageService.fetchCashFlowFromDatabase(),
-        storageService.fetchExpensesFromDatabase(),
-      ]);
-      if (freshCF && Array.isArray(freshCF)) setCashFlows(freshCF);
-      if (freshExp && Array.isArray(freshExp)) setExpenses(freshExp);
-      setUsers(storageService.getUsers());
-    };
     syncData();
     const unsub = storageService.subscribe(syncData);
     return () => unsub();
-  }, []);
+  }, [currentUser.id]);
 
-  // 1. Transactions filtered by role (Admin/Intendente sees all; Copropietario sees only their own)
-  const isUserTx = (t: CashFlowTransaction) => {
-    if (t.userId && t.userId === currentUser.id) return true;
-    if (t.userName && currentUser.name && t.userName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true;
-    return false;
+  // Ensure tab matches permission if switched
+  useEffect(() => {
+    if (!canViewGeneral && activeTabSub !== 'mi_cuenta') {
+      setActiveTabSub('mi_cuenta');
+    }
+  }, [canViewGeneral, activeTabSub]);
+
+  // Helper: Share Percentage of an owner
+  const getOwnerSharePct = (u: User): number => {
+    if (typeof u.sharePercentage === 'number' && u.sharePercentage > 0) {
+      return u.sharePercentage;
+    }
+    return 6.25; // 100% / 16 copropietarios
   };
 
-  const visibleCashFlows = fullAdmin ? cashFlows : cashFlows.filter(isUserTx);
+  // Common Incomes (no specific user linked -> distributed proportionally)
+  const commonIncomes = cashFlows.filter(
+    (t) => t.type === 'ingreso' && (!t.userId || t.userId === '')
+  );
 
-  // Global cash totals (for Admin / Intendente)
-  const totalIngresos = cashFlows
+  // Global cash totals (for General Account)
+  const totalIngresosGeneral = cashFlows
     .filter((t) => t.type === 'ingreso')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const totalEgresos = cashFlows
+  const totalEgresosGeneral = cashFlows
     .filter((t) => t.type === 'egreso')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const cajaBalance = totalIngresos - totalEgresos;
+  const cajaBalanceGeneral = totalIngresosGeneral - totalEgresosGeneral;
 
-  // Personal cash totals (for Copropietario)
-  const myIngresos = visibleCashFlows
-    .filter((t) => t.type === 'ingreso')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const myEgresos = visibleCashFlows
-    .filter((t) => t.type === 'egreso')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  // Eligible users for Cuentas Corrientes:
-  // Admin sees all owner accounts; Copropietario sees ONLY their own account ("su parte")
-  const targetUsers = fullAdmin
-    ? users.filter((u) => u.role !== 'intendente' && u.role !== 'fiduciante')
-    : users.filter(
+  // Compute particular account details for all eligible owners
+  const activeOwners = users.filter((u) => u.active !== false && u.role !== 'intendente');
+  const targetOwners = canViewGeneral
+    ? activeOwners
+    : activeOwners.filter(
         (u) =>
           u.id === currentUser.id ||
           (currentUser.name && u.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
       );
+  const finalOwners = targetOwners.length === 0 ? [currentUser] : targetOwners;
 
-  const finalUsers = (!fullAdmin && targetUsers.length === 0) ? [currentUser] : targetUsers;
+  const accountsSummary = finalOwners.map((u) => {
+    const sharePct = getOwnerSharePct(u);
 
-  const visibleAccountBalances = finalUsers.map((u) => {
-    // Expenses submitted by this user that are approved
-    const userApprovedExpenses = expenses.filter(
-      (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
-             (e.approvalStatus === 'approved' || e.status === 'paid')
+    // 1. Proportional share from common incomes (e.g. 6.25% of 1,000,000 = 62,500)
+    const distributedIncome = commonIncomes.reduce(
+      (sum, t) => sum + Math.round(t.amount * (sharePct / 100)),
+      0
     );
-    const totalAdvanced = userApprovedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-    // Reimbursements issued to this user from cash flow
-    const userReimbursements = cashFlows.filter(
-      (t) => (t.userId === u.id || (t.userName && t.userName.toLowerCase() === u.name.toLowerCase())) &&
-             t.category === 'reintegro_gasto'
+    // 2. Direct personal incomes
+    const directIncomes = cashFlows.filter(
+      (t) =>
+        t.type === 'ingreso' &&
+        Boolean(t.userId && (t.userId === u.id || (t.userName && t.userName.toLowerCase() === u.name.toLowerCase())))
     );
-    const totalReimbursed = userReimbursements.reduce((sum, t) => sum + t.amount, 0);
+    const totalDirectIncome = directIncomes.reduce((sum, t) => sum + t.amount, 0);
+    const totalUserIncome = distributedIncome + totalDirectIncome;
 
-    const balanceDue = Math.max(0, totalAdvanced - totalReimbursed);
+    // 3. Approved expenses advanced out of pocket
+    const approvedExpenses = expenses.filter(
+      (e) =>
+        (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
+        (e.approvalStatus === 'approved' || e.status === 'paid')
+    );
+    const totalAdvanced = approvedExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+    // 4. Reimbursements received from cash flow
+    const reimbursements = cashFlows.filter(
+      (t) =>
+        (t.userId === u.id || (t.userName && t.userName.toLowerCase() === u.name.toLowerCase())) &&
+        t.category === 'reintegro_gasto'
+    );
+    const totalReimbursed = reimbursements.reduce((sum, t) => sum + t.amount, 0);
+
+    // 5. Monthly fees paid via automatic debit
+    const autoDebitedAllocations = feeCollections.flatMap((fc) =>
+      (fc.allocations || [])
+        .filter((a) => a.userId === u.id && a.paymentMethod === 'auto_debit' && (a.paidAmount || 0) > 0)
+        .map((a) => ({ collection: fc, allocation: a }))
+    );
+    const totalAutoDebited = autoDebitedAllocations.reduce(
+      (sum, item) => sum + (item.allocation.paidAmount || 0),
+      0
+    );
+
+    // 6. Net available balance in owner's particular account
+    // (+) Incomes credited + (+) Expenses advanced - (-) Reimbursements - (-) Auto debits applied
+    const totalCredited = totalUserIncome + totalAdvanced;
+    const totalDeductions = totalReimbursed + totalAutoDebited;
+    const netAvailableBalance = Math.max(0, totalCredited - totalDeductions);
+
+    // 7. Pending monthly fee debts
+    const pendingAllocations = feeCollections.flatMap((fc) =>
+      (fc.allocations || [])
+        .filter(
+          (a) =>
+            a.userId === u.id &&
+            a.status !== 'paid' &&
+            a.assignedAmount - (a.paidAmount || 0) > 0
+        )
+        .map((a) => ({
+          collection: fc,
+          allocation: a,
+          pendingAmount: a.assignedAmount - (a.paidAmount || 0),
+        }))
+    );
+    const totalPendingDebt = pendingAllocations.reduce((sum, item) => sum + item.pendingAmount, 0);
+
     const pendingExpensesCount = expenses.filter(
-      (e) => (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
-             e.approvalStatus === 'pending'
+      (e) =>
+        (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
+        e.approvalStatus === 'pending'
     ).length;
+
+    const isAutoDebitOn = storageService.isAutoDebitEnabled(u.id);
 
     return {
       userId: u.id,
       userName: u.name,
       partName: u.partName,
       userColor: u.color,
+      sharePct,
+      distributedIncome,
+      totalDirectIncome,
+      totalUserIncome,
       totalAdvanced,
       totalReimbursed,
-      balanceDue,
+      totalAutoDebited,
+      netAvailableBalance,
+      totalPendingDebt,
+      pendingAllocations,
+      autoDebitedAllocations,
       pendingExpensesCount,
+      isAutoDebitOn,
     };
   });
 
-  const myAccount = visibleAccountBalances.find(
-    (acc) =>
-      acc.userId === currentUser.id ||
-      (currentUser.name && acc.userName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
-  ) || visibleAccountBalances[0] || {
-    totalAdvanced: 0,
-    totalReimbursed: 0,
-    balanceDue: 0,
-    pendingExpensesCount: 0,
+  // Current user's particular account summary
+  const myAccount =
+    accountsSummary.find((acc) => acc.userId === currentUser.id) ||
+    accountsSummary[0] || {
+      userId: currentUser.id,
+      userName: currentUser.name,
+      partName: currentUser.partName,
+      userColor: currentUser.color || '#1B3B2B',
+      sharePct: getOwnerSharePct(currentUser),
+      distributedIncome: 0,
+      totalDirectIncome: 0,
+      totalUserIncome: 0,
+      totalAdvanced: 0,
+      totalReimbursed: 0,
+      totalAutoDebited: 0,
+      netAvailableBalance: 0,
+      totalPendingDebt: 0,
+      pendingAllocations: [],
+      autoDebitedAllocations: [],
+      pendingExpensesCount: 0,
+      isAutoDebitOn: true,
+    };
+
+  // Toggle Auto Debit
+  const handleToggleAutoDebit = (userId: string) => {
+    const current = storageService.isAutoDebitEnabled(userId);
+    const nextVal = !current;
+    storageService.setAutoDebitEnabled(userId, nextVal);
+    if (userId === currentUser.id) {
+      setAutoDebitEnabled(nextVal);
+    }
+    syncData();
   };
 
-  // Pending expenses submitted for admin/intendente approval
-  const pendingExpenses = expenses.filter((e) => !e.approvalStatus || e.approvalStatus === 'pending');
+  // Execute Auto Debit Manually for an owner
+  const handleExecuteAutoDebitNow = async (userId: string, availableBalance: number) => {
+    setIsExecutingDebit(true);
+    try {
+      const res = await storageService.executeAutoDebitForUser(userId, availableBalance);
+      if (res.debitedTotal > 0) {
+        alert(
+          `¡Débito automático exitoso!\n\n` +
+          `Se aplicaron $${res.debitedTotal.toLocaleString()} ARS a ${res.paymentsCount} cuota(s) mensual(es) pendiente(s). Tu saldo se actualizó automáticamente.`
+        );
+      } else {
+        alert('No se registran cuotas mensuales pendientes para debitar o tu saldo disponible es $0.');
+      }
+      await syncData();
+    } catch (err) {
+      alert('Ocurrió un error al ejecutar el débito automático.');
+    } finally {
+      setIsExecutingDebit(false);
+    }
+  };
 
-  const handleSaveTransaction = (e: React.FormEvent) => {
+  // Save Transaction Modal Form
+  const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!txConcept.trim() || txAmount <= 0) {
       alert('Por favor ingrese un concepto válido y un monto mayor a 0.');
@@ -213,17 +343,54 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       userName: linkedUser?.name,
       partName: linkedUser?.partName,
       notes: txNotes.trim(),
-      createdBy: `${currentUser.name} (${currentUser.role === 'admin' ? 'Admin' : currentUser.role === 'intendente' ? 'Intendente' : 'Socio'})`,
+      createdBy: `${currentUser.name} (${currentUser.role === 'admin' ? 'Admin' : currentUser.role === 'intendente' ? 'Intendente' : 'Fiduciario'})`,
       createdAt: new Date().toISOString(),
     };
 
-    storageService.saveCashFlowTransaction(newTx);
+    await storageService.saveCashFlowTransaction(newTx);
+
+    // If it's a common income (no single owner linked), distribute and auto-debit pending fees
+    if (txType === 'ingreso' && !linkedUser) {
+      const activeOwnersList = users.filter((u) => u.active !== false && u.role !== 'intendente');
+      let debitedTotalAll = 0;
+      let affectedCount = 0;
+
+      for (const owner of activeOwnersList) {
+        if (storageService.isAutoDebitEnabled(owner.id)) {
+          const ownerPct = getOwnerSharePct(owner);
+          const ownerCredit = Math.round(Number(txAmount) * (ownerPct / 100));
+          if (ownerCredit > 0) {
+            const result = await storageService.executeAutoDebitForUser(owner.id, ownerCredit);
+            if (result.debitedTotal > 0) {
+              debitedTotalAll += result.debitedTotal;
+              affectedCount++;
+            }
+          }
+        }
+      }
+
+      if (debitedTotalAll > 0) {
+        alert(
+          `Ingreso común de $${Number(txAmount).toLocaleString()} ARS distribuido a los copropietarios.\n\n` +
+          `⚡ Se ejecutó débito automático para ${affectedCount} copropietario(s) con cuotas pendientes por un total de $${debitedTotalAll.toLocaleString()} ARS.`
+        );
+      } else {
+        alert(
+          `Ingreso común de $${Number(txAmount).toLocaleString()} ARS registrado con éxito.\n` +
+          `Se acreditó a cada copropietario la parte proporcional según su porcentaje de participación.`
+        );
+      }
+    }
+
     setIsTransactionModalOpen(false);
     setTxConcept('');
     setTxAmount(0);
     setTxNotes('');
+    setTxLinkedUserId('');
+    await syncData();
   };
 
+  // Submit Expense Modal Form
   const handleCreateExpenseSubmission = (e: React.FormEvent) => {
     e.preventDefault();
     if (!expConcept.trim() || expAmount <= 0) {
@@ -244,7 +411,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       provider: expProvider.trim() || selectedPayer.name,
       invoiceNumber: expInvoiceNumber.trim() || undefined,
       status: 'pending',
-      approvalStatus: fullAdmin ? 'approved' : 'pending', // Admin/Intendente auto-approve, others pending
+      approvalStatus: fullAdmin ? 'approved' : 'pending',
       approvedAt: fullAdmin ? new Date().toISOString() : undefined,
       approvedBy: fullAdmin ? currentUser.name : undefined,
       userId: selectedPayer.id,
@@ -257,7 +424,6 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
     storageService.saveExpense(newExpense);
 
-    // If auto-approved by admin/intendente, also record as expense cash flow transaction
     if (fullAdmin) {
       const outflow: CashFlowTransaction = {
         id: `cf-exp-${Date.now()}`,
@@ -302,7 +468,6 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     };
     storageService.saveExpense(updated);
 
-    // Register corresponding egreso in cash flow
     const outflow: CashFlowTransaction = {
       id: `cf-exp-${Date.now()}`,
       type: 'egreso',
@@ -341,8 +506,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       return;
     }
 
-    if (reimburseAmount > cajaBalance + 1) {
-      alert('Advertencia: El monto a reintegrar supera el saldo disponible actual en caja.');
+    if (reimburseAmount > cajaBalanceGeneral + 1) {
+      alert('Advertencia: El monto a reintegrar supera el saldo disponible actual en caja común.');
     }
 
     const tx: CashFlowTransaction = {
@@ -364,10 +529,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     setReimburseModalUser(null);
     setReimburseAmount(0);
     setReimburseNotes('');
-    alert(`Reintegro de $${reimburseAmount.toLocaleString()} registrado correctamente. Se descontó de la caja común.`);
+    alert(`Reintegro de $${reimburseAmount.toLocaleString()} ARS registrado correctamente.`);
   };
 
-  const filteredCashFlows = visibleCashFlows.filter((t) => {
+  // Filtered cash flows for General Ledger
+  const filteredGeneralCashFlows = cashFlows.filter((t) => {
     const matchesType = typeFilter === 'all' || t.type === typeFilter;
     const matchesSearch =
       t.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -375,6 +541,94 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       (t.partName && t.partName.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesType && matchesSearch;
   });
+
+  // Personal Ledger for currentUser:
+  // Combines:
+  // 1. User's share of common incomes
+  // 2. Direct incomes
+  // 3. Approved expense advances
+  // 4. Reimbursements
+  // 5. Auto-debits applied to monthly fee debts
+  const personalMovements = [
+    // Common incomes distributed
+    ...commonIncomes.map((t) => {
+      const shareAmount = Math.round(t.amount * (myAccount.sharePct / 100));
+      return {
+        id: `dist-${t.id}`,
+        date: t.date,
+        type: 'ingreso' as CashFlowType,
+        category: 'Ingreso Común Distribuido',
+        concept: `Participación ${myAccount.sharePct.toFixed(2)}%: ${t.concept}`,
+        amount: shareAmount,
+        notes: `Total ingresado a caja común: $${t.amount.toLocaleString()} ARS`,
+        isCommonShare: true,
+      };
+    }),
+    // Direct incomes
+    ...cashFlows
+      .filter(
+        (t) =>
+          t.type === 'ingreso' &&
+          Boolean(t.userId && (t.userId === currentUser.id || (t.userName && t.userName.toLowerCase() === currentUser.name.toLowerCase())))
+      )
+      .map((t) => ({
+        id: t.id,
+        date: t.date,
+        type: 'ingreso' as CashFlowType,
+        category: t.category.replace('_', ' '),
+        concept: t.concept,
+        amount: t.amount,
+        notes: t.notes || 'Aporte directo registrado',
+        isCommonShare: false,
+      })),
+    // Approved expenses advanced
+    ...expenses
+      .filter(
+        (e) =>
+          (e.userId === currentUser.id || (e.userName && e.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+          (e.approvalStatus === 'approved' || e.status === 'paid')
+      )
+      .map((e) => ({
+        id: `exp-${e.id}`,
+        date: e.date,
+        type: 'ingreso' as CashFlowType, // positive credit to owner's account
+        category: 'Gasto Adelantado (Aprobado)',
+        concept: `Adelanto: ${e.concept}${e.invoiceNumber ? ` (Factura N° ${e.invoiceNumber})` : ''}`,
+        amount: e.amount,
+        notes: `Comercio: ${e.provider || 'Varios'} - Aprobado por ${e.approvedBy || 'Administración'}`,
+        isCommonShare: false,
+      })),
+    // Reimbursements received
+    ...cashFlows
+      .filter(
+        (t) =>
+          (t.userId === currentUser.id || (t.userName && t.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
+          t.category === 'reintegro_gasto'
+      )
+      .map((t) => ({
+        id: `reimb-${t.id}`,
+        date: t.date,
+        type: 'egreso' as CashFlowType,
+        category: 'Reintegro Cobrado',
+        concept: t.concept,
+        amount: t.amount,
+        notes: t.notes || 'Transferencia de reintegro desde caja común',
+        isCommonShare: false,
+      })),
+    // Monthly fees debited automatically
+    ...myAccount.autoDebitedAllocations.map(({ collection, allocation }) => ({
+      id: `debit-${collection.id}-${allocation.userId}`,
+      date: allocation.paidAt || collection.dueDate || '2026-10-15',
+      type: 'egreso' as CashFlowType,
+      category: '⚡ Débito Automático',
+      concept: `Pago de Expensas: ${collection.concept}`,
+      amount: allocation.paidAmount || 0,
+      notes: allocation.notes || 'Débito automático aplicado desde saldo a favor',
+      isCommonShare: false,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+
+  const pendingExpenses = expenses.filter((e) => !e.approvalStatus || e.approvalStatus === 'pending');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -384,19 +638,27 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           <div className="flex items-center gap-2 text-xs text-[#7A8E7E] pb-1">
             <span className="font-serif font-bold text-[#163323]">Fideicomiso El Desayuno</span>
             <span>·</span>
-            <span>{fullAdmin ? 'Gestión de Caja, Ingresos y Cuentas Corrientes' : 'Mi Cuenta, Ingresos y Reintegros'}</span>
+            <span>
+              {canViewGeneral
+                ? 'Gestión Integral de Caja, Cuentas Generales y Particulares'
+                : 'Mi Cuenta Particular, Ingresos Distribuidos y Débito Automático'}
+            </span>
           </div>
           <h2
             className="text-xl sm:text-2xl font-serif font-bold text-[#163323] tracking-wide flex items-center gap-2.5"
             style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}
           >
             <Wallet className="w-6 h-6 text-[#BFA270]" />
-            <span>{fullAdmin ? 'Caja Común, Ingresos, Egresos y Reintegros' : 'Mi Estado de Cuenta y Movimientos de Caja'}</span>
+            <span>
+              {canViewGeneral
+                ? 'Caja Común, Ingresos Distribuidos y Cuentas de Socios'
+                : `Mi Cuenta Particular: ${currentUser.name} (${currentUser.partName || 'Socio'})`}
+            </span>
           </h2>
           <p className="text-xs text-[#526657] mt-1 max-w-3xl leading-relaxed">
-            {fullAdmin
-              ? 'Control de caja en tiempo real, cuentas corrientes individuales por copropietario, carga de facturas sujetas a aprobación y devoluciones escalonadas de adelantos.'
-              : 'Consultá tus aportes e ingresos registrados, los gastos que adelantaste de tu bolsillo y el estado de reintegros de tu cuenta corriente.'}
+            {canViewGeneral
+              ? 'Panel reservado para Administrador, Intendente y Fiduciario. Control de caja común, distribución de ingresos por porcentaje accionario, débitos automáticos y cuentas particulares.'
+              : 'Consultá tu porcentaje de participación, los ingresos comunes distribuidos a tu favor, tus gastos adelantados y el estado del débito automático de tus cuotas mensuales.'}
           </p>
         </div>
 
@@ -405,7 +667,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             <button
               onClick={() => setIsExpenseModalOpen(true)}
               className="px-4 py-2.5 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#DDD5BF] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-              title="Subir factura o gasto adelantado para aprobación del administrador"
+              title="Subir factura o gasto adelantado para aprobación"
             >
               <Receipt className="w-4 h-4 text-[#8C7A53]" />
               <span>+ Subir Factura / Gasto</span>
@@ -418,257 +680,286 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-2xs"
             >
               <Plus className="w-4 h-4 text-[#BFA270]" />
-              <span>+ Registrar Movimiento de Caja</span>
+              <span>+ Registrar Ingreso / Movimiento</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {fullAdmin ? (
-          <>
-            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-                Saldo Disponible en Caja
-              </span>
-              <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
-                ${cajaBalance.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-              </div>
-              <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                <span>Ingresos totales menos egresos ejecutados</span>
-              </p>
-            </div>
+      {/* Navigation Sub-Tabs (Exclusive options for Admin, Intendente and Fiduciario) */}
+      {canViewGeneral ? (
+        <div className="flex border-b border-[#E3DFC8] bg-white px-4 pt-2 gap-6 overflow-x-auto">
+          <button
+            onClick={() => setActiveTabSub('caja')}
+            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
+              activeTabSub === 'caja'
+                ? 'border-[#1B3B2B] text-[#163323]'
+                : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
+            }`}
+          >
+            <Building2 className="w-4 h-4 text-[#BFA270]" />
+            <span>🏛️ Cuenta General (Caja Común)</span>
+          </button>
 
-            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-emerald-700">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-                Total Ingresos Comunes
-              </span>
-              <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">
-                ${totalIngresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-              </div>
-              <p className="text-[11px] text-[#526657] mt-1">
-                Aportes de socios y fondos de reserva
-              </p>
-            </div>
+          <button
+            onClick={() => setActiveTabSub('mi_cuenta')}
+            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
+              activeTabSub === 'mi_cuenta'
+                ? 'border-[#1B3B2B] text-[#163323]'
+                : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
+            }`}
+          >
+            <UserCheck className="w-4 h-4 text-[#BFA270]" />
+            <span>👤 Mi Cuenta Particular</span>
+          </button>
 
-            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-amber-700">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-                Total Egresos & Proveedores
-              </span>
-              <div className="text-2xl font-bold font-mono text-amber-900 mt-1">
-                ${totalEgresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-              </div>
-              <p className="text-[11px] text-[#526657] mt-1">
-                Gastos operativos, servicios y reintegros
-              </p>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-                Mi Saldo a Favor (Adelantos)
-              </span>
-              <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
-                ${myAccount.balanceDue.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-              </div>
-              <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${myAccount.balanceDue > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-600'}`} />
-                <span>{myAccount.balanceDue > 0 ? 'Monto a reintegrar por la administración' : 'Cuenta al día (sin saldo adeudado)'}</span>
-              </p>
-            </div>
+          <button
+            onClick={() => setActiveTabSub('cuentas_socios')}
+            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
+              activeTabSub === 'cuentas_socios'
+                ? 'border-[#1B3B2B] text-[#163323]'
+                : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
+            }`}
+          >
+            <Users className="w-4 h-4 text-[#BFA270]" />
+            <span>👥 Cuentas de Copropietarios ({accountsSummary.length})</span>
+          </button>
 
-            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-emerald-700">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-                Mis Ingresos / Aportes Registrados
-              </span>
-              <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">
-                ${myIngresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-              </div>
-              <p className="text-[11px] text-[#526657] mt-1">
-                Aportes y pagos registrados a tu nombre
-              </p>
-            </div>
-
-            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-amber-700">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-                Mis Reintegros / Devoluciones Cobradas
-              </span>
-              <div className="text-2xl font-bold font-mono text-amber-900 mt-1">
-                ${myEgresos.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
-              </div>
-              <p className="text-[11px] text-[#526657] mt-1">
-                Reintegros cobrados por gastos adelantados
-              </p>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Sub-Tab Navigation */}
-      <div className="flex border-b border-[#E3DFC8] bg-white px-4 pt-2 gap-6">
-        <button
-          onClick={() => setActiveTabSub('caja')}
-          className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
-            activeTabSub === 'caja'
-              ? 'border-[#1B3B2B] text-[#163323]'
-              : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
-          }`}
-        >
-          <Coins className="w-4 h-4 text-[#BFA270]" />
-          <span>{fullAdmin ? `Libro Diario de Caja (${cashFlows.length})` : `Mis Movimientos de Caja (${visibleCashFlows.length})`}</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTabSub('cuentas')}
-          className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
-            activeTabSub === 'cuentas'
-              ? 'border-[#1B3B2B] text-[#163323]'
-              : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
-          }`}
-        >
-          <Wallet className="w-4 h-4 text-[#BFA270]" />
-          <span>{fullAdmin ? 'Cuentas Corrientes & Reintegros Escalonados' : `Mi Cuenta Corriente (${currentUser.partName || 'Mi Parte'})`}</span>
-        </button>
-
-        {fullAdmin && (
           <button
             onClick={() => setActiveTabSub('gastos_pendientes')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 relative ${
+            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 relative shrink-0 ${
               activeTabSub === 'gastos_pendientes'
                 ? 'border-[#1B3B2B] text-[#163323]'
                 : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
             }`}
           >
             <Receipt className="w-4 h-4 text-[#BFA270]" />
-            <span>Facturas Pendientes de Aprobación</span>
+            <span>Facturas por Aprobar</span>
             {pendingExpenses.length > 0 && (
               <span className="w-4 h-4 rounded-full bg-amber-600 text-white font-mono text-[9px] font-bold flex items-center justify-center">
                 {pendingExpenses.length}
               </span>
             )}
           </button>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       {/* ========================================================= */}
-      {/* 1. LIBRO DIARIO DE CAJA                                   */}
+      {/* 1. VISTA: MI CUENTA PARTICULAR (PARA TODOS LOS COPROPIETARIOS) */}
       {/* ========================================================= */}
-      {activeTabSub === 'caja' && (
-        <div className="space-y-4">
-          <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-[#8C7A53] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Buscar por concepto o socio..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-medium focus:outline-none focus:border-[#163323]"
-              />
+      {activeTabSub === 'mi_cuenta' && (
+        <div className="space-y-6">
+          {/* KPI Summary Cards: Copropietario Particular */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Saldo Disponible en Mi Cuenta
+              </span>
+              <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
+                ${myAccount.netAvailableBalance.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${myAccount.netAvailableBalance > 0 ? 'bg-emerald-600 animate-pulse' : 'bg-neutral-400'}`} />
+                <span>Monto disponible para reintegro o débito de cuotas</span>
+              </p>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-              <span className="text-xs text-[#637568] font-semibold flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5 text-[#BFA270]" />
-                <span>Tipo:</span>
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-emerald-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Ingresos Distribuidos ({myAccount.sharePct.toFixed(2)}%)
               </span>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as any)}
-                className="px-3 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none cursor-pointer"
-              >
-                <option value="all">Todos los Movimientos</option>
-                <option value="ingreso">Solo Ingresos (Entradas)</option>
-                <option value="egreso">Solo Egresos (Salidas)</option>
-              </select>
+              <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">
+                ${myAccount.distributedIncome.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Acreditación automática de ingresos comunes
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-blue-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Gastos Adelantados Aprobados
+              </span>
+              <div className="text-2xl font-bold font-mono text-blue-900 mt-1">
+                ${myAccount.totalAdvanced.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Compras y servicios pagados de tu bolsillo
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-amber-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Débito Automático Aplicado
+              </span>
+              <div className="text-2xl font-bold font-mono text-amber-900 mt-1">
+                ${myAccount.totalAutoDebited.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Cuotas y expensas canceladas con tu saldo
+              </p>
             </div>
           </div>
 
+          {/* DÉBITO AUTOMÁTICO CARD & CONTROLS */}
+          <div className="bg-[#FAF8F5] border border-[#DCD4C0] p-5 shadow-xs rounded-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="space-y-1.5 max-w-2xl">
+              <div className="flex items-center gap-2">
+                <span className="p-1 bg-[#1B3B2B] text-[#BFA270] rounded-xs">
+                  <Zap className="w-4 h-4" />
+                </span>
+                <h3 className="font-bold text-sm text-[#163323] tracking-wide uppercase">
+                  Débito Automático de Cuotas Mensuales y Expensas
+                </h3>
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
+                    autoDebitEnabled
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-neutral-200 text-neutral-700 border border-neutral-300'
+                  }`}
+                >
+                  {autoDebitEnabled ? '● ACTIVADO POR DEFECTO' : '○ PAUSADO'}
+                </span>
+              </div>
+              <p className="text-xs text-[#526657] leading-relaxed">
+                Cuando ingresa dinero común al fideicomiso (o registrás gastos adelantados a favor), tu porcentaje se acredita automáticamente en tu cuenta. Con el débito automático activado, el sistema cancela tus cuotas pendientes sin que tengas que transferir manualmente.
+              </p>
+              <div className="text-xs text-[#163323] font-medium pt-1">
+                {myAccount.totalPendingDebt > 0 ? (
+                  <span className="text-amber-800 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>
+                      Registrás <strong>${myAccount.totalPendingDebt.toLocaleString()} ARS</strong> en cuotas pendientes ({myAccount.pendingAllocations.length} cuota/s).
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-emerald-800 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Tu cuenta está 100% al día. No tenés cuotas mensuales pendientes.</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleToggleAutoDebit(currentUser.id)}
+                className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 border shadow-xs ${
+                  autoDebitEnabled
+                    ? 'bg-emerald-800 hover:bg-emerald-900 text-white border-emerald-900'
+                    : 'bg-white hover:bg-neutral-50 text-[#163323] border-[#DDD5BF]'
+                }`}
+                title="Activar o pausar débito automático"
+              >
+                <Zap className="w-4 h-4 text-[#BFA270]" />
+                <span>{autoDebitEnabled ? 'Débito Automático: ON' : 'Activar Débito Automático'}</span>
+              </button>
+
+              {myAccount.netAvailableBalance > 0 && myAccount.totalPendingDebt > 0 && (
+                <button
+                  type="button"
+                  disabled={isExecutingDebit}
+                  onClick={() => handleExecuteAutoDebitNow(currentUser.id, myAccount.netAvailableBalance)}
+                  className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-2xs disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-[#BFA270] ${isExecutingDebit ? 'animate-spin' : ''}`} />
+                  <span>{isExecutingDebit ? 'Aplicando...' : '⚡ Pagar Cuotas con Saldo Ahora'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* CUOTAS PENDIENTES & CUOTAS PAGADAS POR DÉBITO */}
+          {myAccount.pendingAllocations.length > 0 && (
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs space-y-3">
+              <h4 className="font-bold text-xs uppercase tracking-wider text-amber-900 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-600" />
+                <span>Cuotas Mensuales Pendientes de Pago</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {myAccount.pendingAllocations.map(({ collection, allocation, pendingAmount }) => (
+                  <div key={collection.id} className="p-3 bg-[#FAF8F5] border border-amber-200 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-[#7A8E7E] block">{collection.category}</span>
+                      <h5 className="font-bold text-xs text-[#163323] mt-0.5">{collection.concept}</h5>
+                      <span className="text-[11px] text-[#637568] block mt-1">Vencimiento: {collection.dueDate}</span>
+                    </div>
+                    <div className="pt-2 mt-2 border-t border-[#EFEAE0] flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-amber-900">Pendiente:</span>
+                      <span className="font-mono font-bold text-sm text-amber-900">${pendingAmount.toLocaleString()} ARS</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* HISTORIAL DETALLADO DE MI CUENTA PARTICULAR */}
           <div className="bg-white border border-[#E3DFC8] shadow-xs overflow-hidden">
+            <div className="p-4 bg-[#F8F5EE] border-b border-[#E3DFC8] flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm text-[#163323] flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-[#BFA270]" />
+                  <span>Mis Movimientos Detallados ({personalMovements.length})</span>
+                </h3>
+                <span className="text-[11px] text-[#637568]">
+                  Ingresos comunes distribuidos ({myAccount.sharePct.toFixed(2)}%), adelantos aprobados, reintegros y cuotas debitadas.
+                </span>
+              </div>
+            </div>
+
             <table className="w-full text-xs text-left">
-              <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
+              <thead className="bg-[#FAF8F5] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Fecha</th>
                   <th className="py-3 px-3">Tipo</th>
                   <th className="py-3 px-3">Categoría</th>
                   <th className="py-3 px-4">Concepto / Detalle</th>
-                  <th className="py-3 px-3">Socio / Parte</th>
                   <th className="py-3 px-4 text-right">Monto (ARS)</th>
-                  {fullAdmin && <th className="py-3 px-3 text-right">Acciones</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEAE0]">
-                {filteredCashFlows.length === 0 ? (
+                {personalMovements.length === 0 ? (
                   <tr>
-                    <td colSpan={fullAdmin ? 7 : 6} className="py-12 text-center text-xs text-[#7A8E7E]">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Coins className="w-8 h-8 text-[#DDD5BF]" />
-                        <span className="font-semibold text-sm text-[#163323]">
-                          {fullAdmin
-                            ? 'No se encontraron movimientos de caja con los filtros seleccionados.'
-                            : 'No tenés movimientos de ingresos ni egresos registrados a tu nombre aún.'}
-                        </span>
-                        <p className="text-[11px] text-[#7A8E7E] max-w-md">
-                          {fullAdmin
-                            ? 'Podés registrar nuevos movimientos de caja con el botón superior.'
-                            : 'Tus aportes de expensas, fondos y reintegros cobrados se listarán en esta sección una vez asentados por la administración.'}
-                        </p>
-                      </div>
+                    <td colSpan={5} className="py-12 text-center text-xs text-[#7A8E7E]">
+                      <Coins className="w-8 h-8 text-[#DDD5BF] mx-auto mb-2" />
+                      <span className="font-semibold text-sm text-[#163323] block">
+                        No registrás movimientos en tu cuenta particular todavía.
+                      </span>
+                      <p className="text-[11px] text-[#7A8E7E] mt-1 max-w-md mx-auto">
+                        Cuando la administración registre ingresos comunes o subas gastos adelantados con factura, se acreditarán en esta sección.
+                      </p>
                     </td>
                   </tr>
                 ) : (
-                  filteredCashFlows.map((tx) => {
-                    const isIngreso = tx.type === 'ingreso';
+                  personalMovements.map((mov) => {
+                    const isCredit = mov.type === 'ingreso';
                     return (
-                      <tr key={tx.id} className="hover:bg-[#FAF8F5] transition-colors">
-                        <td className="py-3.5 px-4 font-mono text-[#637568]">{tx.date}</td>
+                      <tr key={mov.id} className="hover:bg-[#FAF8F5] transition-colors">
+                        <td className="py-3.5 px-4 font-mono text-[#637568]">{mov.date}</td>
                         <td className="py-3.5 px-3">
                           <span
                             className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
-                              isIngreso
+                              isCredit
                                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                                 : 'bg-amber-100 text-amber-900 border border-amber-300'
                             }`}
                           >
-                            {isIngreso ? <TrendingUp className="w-3 h-3 text-emerald-700" /> : <TrendingDown className="w-3 h-3 text-amber-700" />}
-                            <span>{tx.type}</span>
+                            {isCredit ? <TrendingUp className="w-3 h-3 text-emerald-700" /> : <TrendingDown className="w-3 h-3 text-amber-700" />}
+                            <span>{isCredit ? 'Acreditación' : 'Débito / Pago'}</span>
                           </span>
                         </td>
-                        <td className="py-3.5 px-3 font-medium uppercase text-[10px] text-[#526657]">
-                          {tx.category.replace('_', ' ')}
+                        <td className="py-3.5 px-3 font-semibold text-[10px] text-[#526657] uppercase">
+                          {mov.category}
                         </td>
                         <td className="py-3.5 px-4 font-semibold text-[#163323]">
-                          <span>{tx.concept}</span>
-                          {tx.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal">{tx.notes}</span>}
+                          <span>{mov.concept}</span>
+                          {mov.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal">{mov.notes}</span>}
                         </td>
-                        <td className="py-3.5 px-3">
-                          {tx.userName ? (
-                            <span className="font-medium text-[#163323]">{tx.userName} ({tx.partName})</span>
-                          ) : (
-                            <span className="text-neutral-400">—</span>
-                          )}
+                        <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isCredit ? 'text-emerald-700' : 'text-amber-900'}`}>
+                          {isCredit ? '+' : '-'}${mov.amount.toLocaleString()}
                         </td>
-                        <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isIngreso ? 'text-emerald-700' : 'text-amber-900'}`}>
-                          {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
-                        </td>
-                        {fullAdmin && (
-                          <td className="py-3.5 px-3 text-right">
-                            <button
-                              onClick={() => {
-                                if (confirm('¿Eliminar este movimiento de caja?')) {
-                                  storageService.deleteCashFlowTransaction(tx.id);
-                                }
-                              }}
-                              className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
-                              title="Eliminar movimiento"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        )}
                       </tr>
                     );
                   })
@@ -680,25 +971,250 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 2. CUENTAS CORRIENTES & REINTEGROS ESCALONADOS            */}
+      {/* 2. VISTA: CUENTA GENERAL (CAJA COMÚN) - SÓLO ADMIN / INTENDENTE / FIDUCIARIO */}
       {/* ========================================================= */}
-      {activeTabSub === 'cuentas' && (
+      {activeTabSub === 'caja' && canViewGeneral && (
+        <div className="space-y-6">
+          {/* Global KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Saldo Total en Caja Común
+              </span>
+              <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
+                ${cajaBalanceGeneral.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                <span>Total ingresos generales menos egresos ejecutados</span>
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-emerald-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Total Ingresos Comunes
+              </span>
+              <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">
+                ${totalIngresosGeneral.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Alquileres, pastaje, ventas e ingresos del fideicomiso
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-amber-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Total Egresos & Proveedores
+              </span>
+              <div className="text-2xl font-bold font-mono text-amber-900 mt-1">
+                ${totalEgresosGeneral.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Gastos operativos, facturas y reintegros
+              </p>
+            </div>
+          </div>
+
+          {/* MATRIZ DE DISTRIBUCIÓN DE INGRESOS A COPROPIETARIOS */}
+          <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#EFEAE0]">
+              <div>
+                <h3 className="font-bold text-sm text-[#163323] flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-[#BFA270]" />
+                  <span>Distribución de Ingresos Comunes por Porcentaje ({commonIncomes.length} ingresos registrados)</span>
+                </h3>
+                <p className="text-xs text-[#526657] mt-0.5">
+                  Cada ingreso común registrado en el fideicomiso se divide automáticamente entre los copropietarios según sus acciones.
+                </p>
+              </div>
+              <span className="px-3 py-1 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-xs font-bold text-[#163323] shrink-0">
+                Total Común Distribuido: ${commonIncomes.reduce((s, t) => s + t.amount, 0).toLocaleString()} ARS
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-[#FAF8F5] text-[#55695B] uppercase font-bold text-[10px] tracking-wider border-b border-[#E3DFC8]">
+                  <tr>
+                    <th className="py-2.5 px-3">Copropietario</th>
+                    <th className="py-2.5 px-3 text-center">Parte / Cabeza</th>
+                    <th className="py-2.5 px-3 text-center">Acciones (%)</th>
+                    <th className="py-2.5 px-3 text-right">Ingreso Distribuido</th>
+                    <th className="py-2.5 px-3 text-center">Débito Automático</th>
+                    <th className="py-2.5 px-3 text-right">Saldo a Favor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#EFEAE0]">
+                  {accountsSummary.map((acc) => (
+                    <tr key={acc.userId} className="hover:bg-[#FAF8F5]">
+                      <td className="py-2.5 px-3 font-semibold text-[#163323]">
+                        {acc.userName}
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-[#7A8E7E]">{acc.partName}</td>
+                      <td className="py-2.5 px-3 text-center font-mono font-bold text-[#163323]">{acc.sharePct.toFixed(2)}%</td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">
+                        ${acc.distributedIncome.toLocaleString()} ARS
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span
+                          className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-2xs ${
+                            acc.isAutoDebitOn
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : 'bg-neutral-200 text-neutral-600'
+                          }`}
+                        >
+                          {acc.isAutoDebitOn ? '⚡ Activado' : 'Pausado'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
+                        ${acc.netAvailableBalance.toLocaleString()} ARS
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* LIBRO DIARIO GENERAL DE CAJA */}
+          <div className="space-y-4">
+            <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-[#8C7A53] absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar en libro diario..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-medium focus:outline-none focus:border-[#163323]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <span className="text-xs text-[#637568] font-semibold flex items-center gap-1">
+                  <Filter className="w-3.5 h-3.5 text-[#BFA270]" />
+                  <span>Tipo:</span>
+                </span>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as any)}
+                  className="px-3 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none cursor-pointer"
+                >
+                  <option value="all">Todos los Movimientos</option>
+                  <option value="ingreso">Solo Ingresos (Entradas)</option>
+                  <option value="egreso">Solo Egresos (Salidas)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-white border border-[#E3DFC8] shadow-xs overflow-hidden">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Fecha</th>
+                    <th className="py-3 px-3">Tipo</th>
+                    <th className="py-3 px-3">Categoría</th>
+                    <th className="py-3 px-4">Concepto / Detalle</th>
+                    <th className="py-3 px-3">Socio / Destino</th>
+                    <th className="py-3 px-4 text-right">Monto (ARS)</th>
+                    {fullAdmin && <th className="py-3 px-3 text-right">Acciones</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#EFEAE0]">
+                  {filteredGeneralCashFlows.length === 0 ? (
+                    <tr>
+                      <td colSpan={fullAdmin ? 7 : 6} className="py-12 text-center text-xs text-[#7A8E7E]">
+                        <Coins className="w-8 h-8 text-[#DDD5BF] mx-auto mb-2" />
+                        <span className="font-semibold text-sm text-[#163323] block">
+                          No se encontraron movimientos de caja con los filtros seleccionados.
+                        </span>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredGeneralCashFlows.map((tx) => {
+                      const isIngreso = tx.type === 'ingreso';
+                      const isCommon = isIngreso && (!tx.userId || tx.userId === '');
+                      return (
+                        <tr key={tx.id} className="hover:bg-[#FAF8F5] transition-colors">
+                          <td className="py-3.5 px-4 font-mono text-[#637568]">{tx.date}</td>
+                          <td className="py-3.5 px-3">
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
+                                isIngreso
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : 'bg-amber-100 text-amber-900 border border-amber-300'
+                              }`}
+                            >
+                              {isIngreso ? <TrendingUp className="w-3 h-3 text-emerald-700" /> : <TrendingDown className="w-3 h-3 text-amber-700" />}
+                              <span>{tx.type}</span>
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 font-medium uppercase text-[10px] text-[#526657]">
+                            {tx.category.replace('_', ' ')}
+                          </td>
+                          <td className="py-3.5 px-4 font-semibold text-[#163323]">
+                            <span>{tx.concept}</span>
+                            {isCommon && (
+                              <span className="block text-[10px] text-emerald-700 font-bold">
+                                🏛️ Distribuido entre los 16 copropietarios por porcentaje
+                              </span>
+                            )}
+                            {tx.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal">{tx.notes}</span>}
+                          </td>
+                          <td className="py-3.5 px-3">
+                            {tx.userName ? (
+                              <span className="font-medium text-[#163323]">{tx.userName} ({tx.partName})</span>
+                            ) : (
+                              <span className="font-medium text-emerald-800">Fideicomiso Común</span>
+                            )}
+                          </td>
+                          <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isIngreso ? 'text-emerald-700' : 'text-amber-900'}`}>
+                            {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
+                          </td>
+                          {fullAdmin && (
+                            <td className="py-3.5 px-3 text-right">
+                              <button
+                                onClick={() => {
+                                  if (confirm('¿Eliminar este movimiento de caja?')) {
+                                    storageService.deleteCashFlowTransaction(tx.id);
+                                  }
+                                }}
+                                className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
+                                title="Eliminar movimiento"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 3. VISTA: CUENTAS DE COPROPIETARIOS (SOLO ADMIN / FIDUCIARIO) */}
+      {/* ========================================================= */}
+      {activeTabSub === 'cuentas_socios' && canViewGeneral && (
         <div className="space-y-4">
           <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4.5 space-y-2">
             <h3 className="text-sm font-bold text-[#163323] flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-[#BFA270]" />
-              <span>{fullAdmin ? 'Cuenta Corriente & Devoluciones Escalonadas de Adelantos' : `Mi Cuenta Corriente (${currentUser.partName || 'Mi Parte'})`}</span>
+              <Users className="w-4 h-4 text-[#BFA270]" />
+              <span>Cuentas Corrientes Particulares de Copropietarios ({accountsSummary.length} Socios)</span>
             </h3>
             <p className="text-xs text-[#526657] leading-relaxed">
-              {fullAdmin
-                ? 'Cada perfil acumula los gastos que pagó de su bolsillo por cuenta del fideicomiso. Si la división de expensas o la caja no permite devolver todo junto, el Administrador o Intendente puede realizar reintegros parciales escalonados, descontándose de la caja común de forma transparente.'
-                : 'Acá podés consultar los gastos que adelantaste de tu bolsillo por cuenta del fideicomiso, los reintegros que ya te fueron transferidos y el saldo pendiente de devolución por parte de la administración.'}
+              Consulte la cuenta particular de cada socio: sus gastos adelantados, sus ingresos comunes acreditados por porcentaje accionario, débitos automáticos aplicados a expensas y reintegros emitidos desde caja común.
             </p>
           </div>
 
-          <div className={`grid grid-cols-1 ${fullAdmin ? 'md:grid-cols-2' : 'max-w-2xl'} gap-4`}>
-            {visibleAccountBalances.map((acc) => {
-              const hasBalance = acc.balanceDue > 0;
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {accountsSummary.map((acc) => {
+              const hasBalance = acc.netAvailableBalance > 0;
               return (
                 <div key={acc.userId} className="bg-white border border-[#E3DFC8] p-5 shadow-xs space-y-4 flex flex-col justify-between">
                   <div className="space-y-3">
@@ -712,56 +1228,79 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                         </span>
                         <div>
                           <h4 className="font-bold text-sm text-[#163323]">{acc.userName}</h4>
-                          <span className="text-[11px] text-[#7A8E7E]">{acc.partName}</span>
+                          <span className="text-[11px] text-[#7A8E7E]">
+                            {acc.partName} · {acc.sharePct.toFixed(2)}% Acciones
+                          </span>
                         </div>
                       </div>
 
-                      <span
-                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
-                          hasBalance
-                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                        }`}
-                      >
-                        {hasBalance ? 'Saldo a Favor del Socio' : 'Cuenta Al Día'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
+                            acc.isAutoDebitOn
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : 'bg-neutral-200 text-neutral-600'
+                          }`}
+                        >
+                          {acc.isAutoDebitOn ? '⚡ Débito ON' : 'Débito OFF'}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
+                            hasBalance
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-neutral-100 text-neutral-700'
+                          }`}
+                        >
+                          {hasBalance ? 'Saldo a Favor' : 'Al Día'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
-                        <span className="text-[10px] text-[#7A8E7E] block uppercase">Gastos Adelantados</span>
+                        <span className="text-[10px] text-[#7A8E7E] block uppercase">Ingresos %</span>
+                        <span className="font-mono font-bold text-emerald-800 text-sm">${acc.distributedIncome.toLocaleString()}</span>
+                      </div>
+                      <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
+                        <span className="text-[10px] text-[#7A8E7E] block uppercase">Adelantos</span>
                         <span className="font-mono font-bold text-[#163323] text-sm">${acc.totalAdvanced.toLocaleString()}</span>
                       </div>
                       <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
-                        <span className="text-[10px] text-[#7A8E7E] block uppercase">Reintegrado</span>
-                        <span className="font-mono font-bold text-emerald-800 text-sm">${acc.totalReimbursed.toLocaleString()}</span>
-                      </div>
-                      <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
-                        <span className="text-[10px] text-[#7A8E7E] block uppercase">Saldo Adeudado</span>
-                        <span className={`font-mono font-bold text-sm ${hasBalance ? 'text-amber-900' : 'text-[#163323]'}`}>
-                          ${acc.balanceDue.toLocaleString()}
+                        <span className="text-[10px] text-[#7A8E7E] block uppercase">Saldo Disponible</span>
+                        <span className={`font-mono font-bold text-sm ${hasBalance ? 'text-emerald-800' : 'text-[#163323]'}`}>
+                          ${acc.netAvailableBalance.toLocaleString()}
                         </span>
                       </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-[#637568] pt-1">
+                      <span>Cuotas debitadas: <strong>${acc.totalAutoDebited.toLocaleString()} ARS</strong></span>
+                      <span>Deuda pendiente: <strong className={acc.totalPendingDebt > 0 ? 'text-amber-800' : 'text-emerald-700'}>${acc.totalPendingDebt.toLocaleString()} ARS</strong></span>
                     </div>
                   </div>
 
                   {fullAdmin && hasBalance && (
-                    <div className="pt-3 border-t border-[#EFEAE0] flex items-center justify-between">
-                      <span className="text-[11px] text-[#637568]">
-                        Devolución parcial o total desde caja:
-                      </span>
+                    <div className="pt-3 border-t border-[#EFEAE0] flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAutoDebit(acc.userId)}
+                        className="text-[11px] text-[#1B3B2B] hover:underline cursor-pointer"
+                      >
+                        {acc.isAutoDebitOn ? 'Pausar Débito' : 'Activar Débito'}
+                      </button>
+
                       <button
                         onClick={() => {
                           setReimburseModalUser({
                             userId: acc.userId,
                             userName: acc.userName,
-                            balanceDue: acc.balanceDue,
+                            balanceDue: acc.netAvailableBalance,
                           });
-                          setReimburseAmount(acc.balanceDue);
+                          setReimburseAmount(acc.netAvailableBalance);
                         }}
                         className="px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                       >
-                        <span>Realizar Reintegro</span>
+                        <span>Emitir Reintegro</span>
                         <ArrowRight className="w-3.5 h-3.5 text-[#BFA270]" />
                       </button>
                     </div>
@@ -774,15 +1313,15 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 3. GASTOS PENDIENTES DE APROBACIÓN                        */}
+      {/* 4. VISTA: FACTURAS PENDIENTES DE APROBACIÓN                */}
       {/* ========================================================= */}
-      {activeTabSub === 'gastos_pendientes' && fullAdmin && (
+      {activeTabSub === 'gastos_pendientes' && canViewGeneral && (
         <div className="space-y-4">
           <div className="bg-amber-50 border border-amber-300 p-4 text-xs text-amber-950 flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div>
               <strong className="block font-bold">Bandeja de Aprobación de Facturas y Gastos</strong>
-              <span>Los copropietarios y cabezas de equipo pueden subir comprobantes de compras realizadas para la estancia. Una vez aprobados por usted, se registran automáticamente como egresos en la caja.</span>
+              <span>Los copropietarios y cabezas de equipo pueden subir comprobantes de compras realizadas para la estancia. Una vez aprobados por usted, se acreditan a su cuenta corriente particular y se asientan como egresos en la caja común.</span>
             </div>
           </div>
 
@@ -798,62 +1337,70 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EFEAE0]">
-                {pendingExpenses.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-[#FAF8F5] transition-colors">
-                    <td className="py-3.5 px-4">
-                      <span className="font-semibold text-[#163323] block">{exp.userName || exp.createdBy}</span>
-                      <span className="text-[10px] text-[#7A8E7E] font-mono">{exp.date}</span>
-                    </td>
-                    <td className="py-3.5 px-3 uppercase text-[10px] font-bold text-[#526657]">
-                      {exp.category}
-                    </td>
-                    <td className="py-3.5 px-4 font-semibold text-[#163323]">
-                      <span>{exp.concept}</span>
-                      {exp.provider && <span className="block text-[11px] text-[#7A8E7E]">Proveedor: {exp.provider}</span>}
-                    </td>
-                    <td className="py-3.5 px-3 text-right font-mono font-bold text-sm text-[#163323]">
-                      ${exp.amount.toLocaleString()} {exp.currency}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleApproveExpense(exp)}
-                          className="px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                        >
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Aprobar</span>
-                        </button>
-                        <button
-                          onClick={() => handleRejectExpense(exp)}
-                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
-                        >
-                          <X className="w-3.5 h-3.5 text-red-700" />
-                          <span>Rechazar</span>
-                        </button>
-                      </div>
+                {pendingExpenses.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-12 text-center text-xs text-[#7A8E7E]">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                      <span className="font-semibold text-sm text-[#163323] block">
+                        No hay comprobantes pendientes de aprobación.
+                      </span>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  pendingExpenses.map((exp) => (
+                    <tr key={exp.id} className="hover:bg-[#FAF8F5]">
+                      <td className="py-3 px-4">
+                        <span className="font-mono text-[#637568] block">{exp.date}</span>
+                        <strong className="text-[#163323]">{exp.userName}</strong>
+                        <span className="block text-[10px] text-[#7A8E7E]">{exp.partName}</span>
+                      </td>
+                      <td className="py-3 px-3 uppercase text-[10px] font-semibold text-[#526657]">
+                        {exp.category}
+                      </td>
+                      <td className="py-3 px-4">
+                        <strong className="text-[#163323] block">{exp.concept}</strong>
+                        <span className="text-[11px] text-[#7A8E7E]">Comercio: {exp.provider || 'No informado'}</span>
+                        {exp.invoiceNumber && <span className="block text-[11px] text-[#7A8E7E] font-mono">Factura: {exp.invoiceNumber}</span>}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-sm text-[#163323]">
+                        ${exp.amount.toLocaleString()} ARS
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleApproveExpense(exp)}
+                            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] uppercase rounded-2xs cursor-pointer flex items-center gap-1 shadow-2xs"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Aprobar</span>
+                          </button>
+                          <button
+                            onClick={() => handleRejectExpense(exp)}
+                            className="px-2.5 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold text-[10px] uppercase rounded-2xs cursor-pointer flex items-center gap-1"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            <span>Rechazar</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
-            {pendingExpenses.length === 0 && (
-              <div className="p-8 text-center text-xs text-[#7A8E7E]">
-                No hay facturas o gastos pendientes de aprobación en este momento.
-              </div>
-            )}
           </div>
         </div>
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 1: REGISTRAR MOVIMIENTO DE CAJA                     */}
+      {/* MODAL 1: REGISTRAR MOVIMIENTO DE CAJA / INGRESO           */}
       {/* ========================================================= */}
-      {isTransactionModalOpen && (
+      {isTransactionModalOpen && fullAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div className="bg-[#FFFFFF] w-full max-w-lg border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
               <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>
-                Registrar Movimiento de Caja Común
+                Registrar Movimiento de Caja / Ingreso
               </h3>
               <button onClick={() => setIsTransactionModalOpen(false)} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer">
                 <X className="w-5 h-5" />
@@ -869,8 +1416,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     onChange={(e) => setTxType(e.target.value as CashFlowType)}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs focus:outline-none"
                   >
-                    <option value="ingreso">Ingreso de Dinero (Entrada)</option>
-                    <option value="egreso">Egreso de Dinero (Salida)</option>
+                    <option value="ingreso">Ingreso (Entrada de Dinero)</option>
+                    <option value="egreso">Egreso (Salida de Dinero)</option>
                   </select>
                 </div>
 
@@ -881,12 +1428,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     onChange={(e) => setTxCategory(e.target.value as CashFlowCategory)}
                     className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs focus:outline-none uppercase"
                   >
-                    <option value="aporte_socio">Aporte de Socio</option>
-                    <option value="pago_expensas">Pago de Expensas</option>
-                    <option value="pago_proveedor">Pago a Proveedor / Servicio</option>
-                    <option value="reintegro_gasto">Reintegro de Gasto a Socio</option>
+                    <option value="otro_ingreso">Ingreso Común / Alquiler / Pastaje</option>
+                    <option value="aporte_socio">Aporte de Socio / Cuota</option>
                     <option value="fondo_reserva">Fondo de Reserva</option>
-                    <option value="otro_ingreso">Otro Ingreso</option>
+                    <option value="pago_proveedor">Pago a Proveedor</option>
+                    <option value="servicio">Servicio (Luz, Gas, etc.)</option>
+                    <option value="mantenimiento">Mantenimiento</option>
                     <option value="otro_egreso">Otro Egreso</option>
                   </select>
                 </div>
@@ -897,7 +1444,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="ej. Cobro cuota extraordinaria o pago servicio"
+                  placeholder="ej. Cobro de Alquiler / Pastaje de campo ($1.000.000)"
                   value={txConcept}
                   onChange={(e) => setTxConcept(e.target.value)}
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-sm focus:outline-none"
@@ -934,19 +1481,28 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-semibold uppercase text-[#35483A] mb-1">Vincular a Copropietario (Opcional)</label>
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">
+                  Destino / Vincular a Copropietario
+                </label>
                 <select
                   value={txLinkedUserId}
                   onChange={(e) => setTxLinkedUserId(e.target.value)}
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs focus:outline-none"
                 >
-                  <option value="">-- Sin socio vinculado --</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.partName})
-                    </option>
-                  ))}
+                  <option value="">
+                    🏛️ Ingreso Común General (Se divide por % entre los 16 copropietarios)
+                  </option>
+                  {users
+                    .filter((u) => u.active !== false && u.role !== 'intendente')
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        👤 {u.name} ({u.partName})
+                      </option>
+                    ))}
                 </select>
+                <span className="block text-[11px] text-[#7A8E7E] mt-1">
+                  💡 Si seleccionás "Ingreso Común General", se acreditará a cada copropietario según su porcentaje (ej. 6.25%) y cancelará automáticamente cuotas pendientes con débito automático activo.
+                </span>
               </div>
 
               <div>
@@ -955,7 +1511,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                   rows={2}
                   value={txNotes}
                   onChange={(e) => setTxNotes(e.target.value)}
-                  placeholder="Número de transferencia, comprobante, etc..."
+                  placeholder="Número de comprobante, transferencia, etc..."
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] focus:outline-none"
                 />
               </div>
@@ -998,7 +1554,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
             <form onSubmit={handleCreateExpenseSubmission} className="p-6 space-y-4 text-xs">
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] leading-snug">
-                💡 <strong>Aviso:</strong> Como {currentUser.partName}, al subir este gasto quedará registrado en su cuenta corriente a favor y sujeto a aprobación del Administrador o Intendente.
+                💡 <strong>Aviso:</strong> Como {currentUser.partName || 'Socio'}, al subir este gasto quedará acreditado a tu favor en tu cuenta particular y sujeto a aprobación de la administración.
               </div>
 
               <div>
@@ -1049,7 +1605,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3 bg-[#FAF8F5] p-2.5 border border-[#DCD4C0]">
                 <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">👤 ¿Quién realizó / pagó el gasto?</label>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">👤 ¿Quién pagó el gasto?</label>
                   {fullAdmin ? (
                     <select
                       value={expPayerUserId}
@@ -1057,7 +1613,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       className="w-full p-2 bg-white border border-[#DCD4C0] font-semibold text-xs focus:outline-none"
                     >
                       <option value="">{currentUser.name} ({currentUser.partName}) [Tú]</option>
-                      {users.filter((u) => u.id !== currentUser.id).map((u) => (
+                      {users.filter((u) => u.id !== currentUser.id && u.active !== false).map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name} ({u.partName})
                         </option>
@@ -1071,7 +1627,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">🧾 N° Factura / Comprobante</label>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">🧾 N° Factura / Ticket</label>
                   <input
                     type="text"
                     placeholder="ej. 0001-0004812"
@@ -1141,12 +1697,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       {/* ========================================================= */}
       {/* MODAL 3: EJECUTAR REINTEGRO PARCIAL O TOTAL               */}
       {/* ========================================================= */}
-      {reimburseModalUser && (
+      {reimburseModalUser && fullAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div className="bg-[#FFFFFF] w-full max-w-md border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
               <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>
-                Reintegro de Adelanto a {reimburseModalUser.userName}
+                Reintegro de Saldo a {reimburseModalUser.userName}
               </h3>
               <button onClick={() => setReimburseModalUser(null)} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer">
                 <X className="w-5 h-5" />
@@ -1154,39 +1710,35 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             </div>
 
             <form onSubmit={handleExecuteReimbursement} className="p-6 space-y-4 text-xs">
-              <div className="p-3 bg-[#FAF8F5] border border-[#E3DFC8] space-y-1">
-                <span className="text-[10px] text-[#7A8E7E] uppercase block font-bold">Saldo Adeudado Actual:</span>
-                <span className="font-mono font-bold text-base text-amber-900">${reimburseModalUser.balanceDue.toLocaleString()} ARS</span>
-                <p className="text-[11px] text-[#526657] mt-1">
-                  Puede realizar una devolución parcial (ej. $10,000 o más) y el sistema irá descontando de la cuenta del copropietario y registrando el egreso en caja.
-                </p>
+              <div className="p-3 bg-blue-50 border border-blue-200 text-blue-950 text-xs">
+                Saldo total disponible a favor del socio: <strong>${reimburseModalUser.balanceDue.toLocaleString()} ARS</strong>.
               </div>
 
               <div>
-                <label className="block font-semibold uppercase text-[#35483A] mb-1">Monto a Devolver / Reintegrar (ARS) *</label>
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">Monto a Reintegrar (ARS) *</label>
                 <input
                   type="number"
                   step="any"
-                  min="0"
+                  min="1"
                   max={reimburseModalUser.balanceDue}
                   required
                   value={reimburseAmount || ''}
                   onChange={(e) => {
-                    const valStr = e.target.value.replace(',', '.');
-                    setReimburseAmount(parseFloat(valStr) || 0);
+                    const val = parseFloat(e.target.value) || 0;
+                    setReimburseAmount(val);
                   }}
-                  className="w-full p-2.5 bg-white border border-[#DCD4C0] font-mono font-bold text-sm text-[#163323] focus:outline-none"
+                  className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-base focus:outline-none text-[#163323]"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold uppercase text-[#35483A] mb-1">Motivo / Notas del Reintegro</label>
-                <input
-                  type="text"
+                <label className="block font-semibold uppercase text-[#35483A] mb-1">Concepto / Comprobante de Transferencia</label>
+                <textarea
+                  rows={2}
                   value={reimburseNotes}
                   onChange={(e) => setReimburseNotes(e.target.value)}
-                  placeholder="ej. Transferencia parcial cuenta bancaria"
-                  className="w-full p-2.5 bg-white border border-[#DCD4C0] font-semibold focus:outline-none"
+                  placeholder="ej. Transferencia bancaria Banco Galicia N° 821940"
+                  className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] focus:outline-none"
                 />
               </div>
 

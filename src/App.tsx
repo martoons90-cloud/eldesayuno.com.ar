@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport, hasFinancialAccess, isUserIntendente, isUserAdmin } from './types';
+import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport, hasFinancialAccess, isUserIntendente, isUserAdmin, canViewGeneralFinancialAccount } from './types';
 import { storageService } from './services/storageService';
 import { LoginScreen } from './components/LoginScreen';
 import { TopBar } from './components/TopBar';
@@ -533,6 +533,7 @@ export default function App() {
             currentUser={currentUser}
             settings={settings}
             isAdmin={hasFinancialAccess(currentUser) && adminViewMode !== 'owner'}
+            canViewGeneral={canViewGeneralFinancialAccount(currentUser) && adminViewMode !== 'owner'}
             onNavigateToCobranzas={() => setActiveTab('cobranzas')}
           />
         )}
