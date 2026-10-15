@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserRole, Booking, DateBlock, TrustSettings } from '../types';
+import { User, UserRole, Booking, DateBlock, TrustSettings, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import { pushService } from '../services/notificationService';
@@ -83,8 +83,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
   const [copiedAllSuccess, setCopiedAllSuccess] = useState(false);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  // Protección también para esta vista histórica: las claves de terceros las ve solo el intendente.
+  const canViewAccountPasswords = isUserIntendente(currentUser);
 
   const handleCopyAllCredentials = () => {
+    if (!canViewAccountPasswords) return;
     const lines = [
       '=====================================================',
       'ESTANCIA EL DESAYUNO - PADRÓN DE COPROPIETARIOS Y ACCESOS',
@@ -637,13 +640,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {activeSection === 'reservations' && (
             <>
-              <button
+              {canViewAccountPasswords && <button
                 onClick={handleExportCSV}
                 className="px-3 py-1.5 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
                 <span>Exportar CSV</span>
-              </button>
+              </button>}
               <button
                 onClick={handlePrintReport}
                 className="px-3 py-1.5 bg-[#F6F2E8] hover:bg-[#EDE6D7] border border-[#DDD5BF] text-xs font-semibold text-[#163323] transition-colors cursor-pointer flex items-center gap-1.5"
@@ -1095,7 +1098,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              {canViewAccountPasswords && <button
                 type="button"
                 onClick={handleCopyAllCredentials}
                 className="px-3.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
@@ -1112,7 +1115,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span>Copiar Usuarios y Contraseñas</span>
                   </>
                 )}
-              </button>
+              </button>}
 
               <button
                 onClick={() => setIsTransferAdminOpen(true)}
@@ -1195,8 +1198,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-xs tracking-wider bg-[#F4EFE6] px-2 py-0.5 border border-[#DCD4C0] text-[#163323]">
-                            {revealedPasswords[u.id] ? (u.password || '******') : '••••••'}
+                            {canViewAccountPasswords && revealedPasswords[u.id] ? (u.password || '******') : '••••••'}
                           </span>
+                          {canViewAccountPasswords && <>
                           <button
                             type="button"
                             onClick={() => setRevealedPasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
@@ -1231,6 +1235,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           >
                             Editar
                           </button>
+                          </>}
                         </div>
                       </td>
                       <td className="py-3 px-3">
@@ -1244,13 +1249,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </td>
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
+                          {canViewAccountPasswords && <button
                             onClick={() => setPasswordModalUser(u)}
                             className="p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
                             title="Cambiar Contraseña"
                           >
                             <KeyRound className="w-3.5 h-3.5 text-[#BFA270]" />
-                          </button>
+                          </button>}
                           <button
                             onClick={() => {
                               setEditingUser(u);
@@ -2023,7 +2028,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       })()}
 
       {/* Modal: Password Management */}
-      {passwordModalUser && (
+      {canViewAccountPasswords && passwordModalUser && (
         <PasswordManagementModal
           isOpen={!!passwordModalUser}
           onClose={() => setPasswordModalUser(null)}

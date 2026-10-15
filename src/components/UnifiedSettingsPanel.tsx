@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem, CustomCategory } from '../types';
+import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem, CustomCategory, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
 import { d1Service, D1Config } from '../services/d1Service';
 import { r2Service, R2Config } from '../services/r2Service';
@@ -111,6 +111,8 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
   const [copiedAllSuccess, setCopiedAllSuccess] = useState(false);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  // Las claves de cuentas de terceros son exclusivas del intendente.
+  const canViewAccountPasswords = isUserIntendente(currentUser);
 
   // Shares / Equity Matrix Modal State
   const [isSharesMatrixModalOpen, setIsSharesMatrixModalOpen] = useState(false);
@@ -139,6 +141,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   };
 
   const handleCopyAllCredentials = () => {
+    if (!canViewAccountPasswords) return;
     const lines = [
       '=====================================================',
       'ESTANCIA EL DESAYUNO - PADRÓN DE COPROPIETARIOS Y ACCESOS',
@@ -1227,7 +1230,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     <span>Matriz % de Acciones</span>
                   </button>
 
-                  <button
+                  {canViewAccountPasswords && <button
                     type="button"
                     onClick={handleCopyAllCredentials}
                     className="px-3.5 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
@@ -1244,7 +1247,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                         <span>Copiar Usuarios y Contraseñas</span>
                       </>
                     )}
-                  </button>
+                  </button>}
 
                   <button
                     onClick={() => setIsTransferAdminOpen(true)}
@@ -1498,8 +1501,9 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-2">
                               <span className="font-mono font-bold text-xs tracking-wider bg-[#F4EFE6] px-2 py-0.5 border border-[#DCD4C0] text-[#163323]">
-                                {revealedPasswords[u.id] ? (u.password || '******') : '••••••'}
+                                {canViewAccountPasswords && revealedPasswords[u.id] ? (u.password || '******') : '••••••'}
                               </span>
+                              {canViewAccountPasswords && <>
                               <button
                                 type="button"
                                 onClick={() => setRevealedPasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
@@ -1534,6 +1538,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                               >
                                 Editar
                               </button>
+                              </>}
                             </div>
                           </td>
                           <td className="py-3 px-3">
@@ -1607,13 +1612,13 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                                 <Landmark className="w-3.5 h-3.5" />
                               </button>
 
-                              <button
+                              {canViewAccountPasswords && <button
                                 onClick={() => setPasswordModalUser(u)}
                                 className="p-1 hover:bg-[#EFEAE0] text-[#163323] transition-colors cursor-pointer"
                                 title="Cambiar contraseña"
                               >
                                 <KeyRound className="w-3.5 h-3.5 text-[#BFA270]" />
-                              </button>
+                              </button>}
                               <button
                                 onClick={() => {
                                   setEditingUser(u);
@@ -3348,7 +3353,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       )}
 
       {/* Modal: Password Management */}
-      {passwordModalUser && (
+      {canViewAccountPasswords && passwordModalUser && (
         <PasswordManagementModal
           isOpen={!!passwordModalUser}
           onClose={() => setPasswordModalUser(null)}
