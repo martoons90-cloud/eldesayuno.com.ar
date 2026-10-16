@@ -108,6 +108,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [incomeForAllocation, setIncomeForAllocation] = useState<CashFlowTransaction | null>(null);
   const [incomeAllocationMode, setIncomeAllocationMode] = useState<'general' | 'all' | 'one' | 'expenses'>('general');
   const [incomeAllocationUserId, setIncomeAllocationUserId] = useState('');
+  const [incomeExpenseEntryMode, setIncomeExpenseEntryMode] = useState<'percentage' | 'amount'>('percentage');
   const [incomeExpensePercentages, setIncomeExpensePercentages] = useState<Record<string, number>>({});
   const [incomeRemainderMode, setIncomeRemainderMode] = useState<'general' | 'all' | 'one'>('general');
   const [incomeRemainderUserId, setIncomeRemainderUserId] = useState('');
@@ -516,6 +517,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     setIncomeForAllocation(income);
     setIncomeAllocationMode(existing.length === 0 ? 'general' : existing.length === 1 ? 'one' : 'all');
     setIncomeAllocationUserId(existing.length === 1 ? existing[0].userId || '' : '');
+    setIncomeExpenseEntryMode('percentage');
     setIncomeExpensePercentages(initialPercentages);
     setIncomeRemainderMode('general');
     setIncomeRemainderUserId('');
@@ -536,11 +538,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       const availableAmount = Math.max(0, incomeForAllocation.amount - alreadyApplied);
 
       if (selectedPercentages.length === 0) {
-        alert('Indicá el porcentaje del ingreso que querés aplicar a al menos un gasto.');
+        alert('Indicá un monto o porcentaje del ingreso para aplicar a al menos un gasto.');
         return;
       }
       if (requestedPercentage > 100.001) {
-        alert('La suma de los porcentajes no puede superar el 100% del ingreso.');
+        alert('La suma de los importes no puede superar el total del ingreso.');
         return;
       }
       const requestedAmount = Math.round((incomeForAllocation.amount * requestedPercentage / 100) * 100) / 100;
@@ -549,7 +551,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         return;
       }
       if (selectedPercentages.some((item) => (incomeForAllocation.amount * item.percentage / 100) > item.pendingAmount + 0.01)) {
-        alert('El porcentaje elegido supera el saldo pendiente de al menos uno de los gastos.');
+        alert('El importe elegido supera el saldo pendiente de al menos uno de los gastos.');
         return;
       }
       if (incomeRemainderMode === 'one' && !incomeRemainderUserId) {
@@ -1914,13 +1916,34 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       <span className="font-bold text-[#163323]">Asignación del ingreso a gastos</span>
                       <span className={`font-mono font-bold ${selectedPct > remainingPct + 0.01 ? 'text-red-700' : 'text-blue-900'}`}>{selectedPct.toFixed(2)}% elegido · ${(incomeForAllocation.amount * selectedPct / 100).toLocaleString()} ARS</span>
                     </div>
-                    <p className="text-[11px] text-[#526657]">Disponible de este ingreso: ${availableAmount.toLocaleString()} ARS ({remainingPct.toFixed(2)}%). El porcentaje no asignado queda como dinero general en Caja.</p>
+                    <p className="text-[11px] text-[#526657]">Disponible de este ingreso: ${availableAmount.toLocaleString()} ARS ({remainingPct.toFixed(2)}%). El saldo no asignado queda como dinero general en Caja.</p>
+                    <div className="flex flex-wrap items-center gap-2 border-y border-blue-200 py-2.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#526657]">Cargar cada gasto por:</span>
+                      <button
+                        type="button"
+                        onClick={() => setIncomeExpenseEntryMode('percentage')}
+                        className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'percentage' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
+                      >
+                        Porcentaje (%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIncomeExpenseEntryMode('amount')}
+                        className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'amount' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
+                      >
+                        Monto (ARS)
+                      </button>
+                      <span className="text-[10px] text-[#637568]">Podés cambiar de modalidad sin perder los valores cargados.</span>
+                    </div>
                     {payableInvoices.length === 0 ? (
                       <p className="text-[11px] text-[#637568] py-2">No hay gastos cargados con saldo pendiente.</p>
                     ) : payableInvoices.map(({ expense, isOwnerAdvance, pendingAmount }) => {
                       const percentage = Number(incomeExpensePercentages[expense.id]) || 0;
                       const amount = Math.round((incomeForAllocation.amount * percentage / 100) * 100) / 100;
                       const maxPctForExpense = incomeForAllocation.amount > 0 ? Math.min(100, (pendingAmount / incomeForAllocation.amount) * 100) : 0;
+                      const maxAmountForExpense = Math.min(pendingAmount, incomeForAllocation.amount);
+                      const isAmountEntry = incomeExpenseEntryMode === 'amount';
+                      const displayedValue = isAmountEntry ? amount : percentage;
                       return (
                         <div key={expense.id} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px] gap-4 items-center bg-white border border-blue-100 p-3.5">
                           <div>
@@ -1932,11 +1955,27 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                             </div>
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-[#526657] uppercase mb-1">% del ingreso</label>
+                            <label className="block text-[10px] font-bold text-[#526657] uppercase mb-1">{isAmountEntry ? 'Monto a aplicar (ARS)' : '% del ingreso'}</label>
                             <div className="flex items-center gap-1">
-                              <input type="number" min="0" max={maxPctForExpense} step="0.01" value={percentage || ''} onChange={(e) => setIncomeExpensePercentages({ ...incomeExpensePercentages, [expense.id]: Math.max(0, Number(e.target.value) || 0) })} className="w-full p-2 border border-[#DCD4C0] bg-[#FAF8F5] font-mono font-bold focus:outline-none" placeholder="0" />
-                              <span className="text-[#637568]">%</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max={isAmountEntry ? maxAmountForExpense : maxPctForExpense}
+                                step="0.01"
+                                value={displayedValue || ''}
+                                onChange={(e) => {
+                                  const enteredValue = Math.max(0, Number(e.target.value) || 0);
+                                  const nextPercentage = isAmountEntry && incomeForAllocation.amount > 0
+                                    ? Math.round((enteredValue / incomeForAllocation.amount) * 100 * 1000000) / 1000000
+                                    : enteredValue;
+                                  setIncomeExpensePercentages({ ...incomeExpensePercentages, [expense.id]: nextPercentage });
+                                }}
+                                className="w-full p-2 border border-[#DCD4C0] bg-[#FAF8F5] font-mono font-bold focus:outline-none"
+                                placeholder="0"
+                              />
+                              <span className="text-[#637568]">{isAmountEntry ? 'ARS' : '%'}</span>
                             </div>
+                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo: ${maxAmountForExpense.toLocaleString()} ARS ({maxPctForExpense.toFixed(2)}%)</span>
                           </div>
                         </div>
                       );
