@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   User,
   CashFlowTransaction,
@@ -117,6 +117,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   );
 
   const syncData = async () => {
+    await storageService.syncApprovedExpensesToCashFlow();
     const [freshCF, freshExp] = await Promise.all([
       storageService.fetchCashFlowFromDatabase(),
       storageService.fetchExpensesFromDatabase(),
@@ -141,6 +142,39 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     }
   }, [canViewGeneral, activeTabSub]);
 
+  // Combine registered cash flows with all approved/paid expenses from Gastos
+  const effectiveCashFlows = useMemo(() => {
+    const list = [...cashFlows];
+    expenses
+      .filter(
+        (e) =>
+          (e.approvalStatus === 'approved' || e.status === 'paid' || !e.approvalStatus) &&
+          e.approvalStatus !== 'rejected'
+      )
+      .forEach((e) => {
+        const alreadyInCashFlow = list.some((t) => t.expenseId === e.id || t.id === `cf-exp-${e.id}`);
+        if (!alreadyInCashFlow) {
+          list.push({
+            id: `cf-exp-${e.id}`,
+            type: 'egreso',
+            category: (e.category === 'servicios' ? 'servicio' : e.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as CashFlowCategory,
+            concept: `${e.concept}${e.provider ? ` (${e.provider})` : ''}`,
+            amount: Number(e.amount),
+            currency: e.currency || 'ARS',
+            date: e.date,
+            userId: e.userId,
+            userName: e.userName,
+            partName: e.partName,
+            expenseId: e.id,
+            notes: e.invoiceNumber ? `Factura N° ${e.invoiceNumber}` : (e.notes || 'Gasto auditado del fideicomiso'),
+            createdBy: e.createdBy || e.userName || 'Sistema Gastos',
+            createdAt: e.createdAt || e.date,
+          });
+        }
+      });
+    return list.sort((a, b) => b.date.localeCompare(a.date));
+  }, [cashFlows, expenses]);
+
   // Helper: Share Percentage of an owner
   const getOwnerSharePct = (u: User): number => {
     if (typeof u.sharePercentage === 'number' && u.sharePercentage > 0) {
@@ -150,16 +184,18 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   };
 
   // Common Incomes (no specific user linked -> distributed proportionally)
-  const commonIncomes = cashFlows.filter(
-    (t) => t.type === 'ingreso' && (!t.userId || t.userId === '')
-  );
+  const commonIncomes = useMemo(() => {
+    return effectiveCashFlows.filter(
+      (t) => t.type === 'ingreso' && (!t.userId || t.userId === '')
+    );
+  }, [effectiveCashFlows]);
 
   // Global cash totals (for General Account)
-  const totalIngresosGeneral = cashFlows
+  const totalIngresosGeneral = effectiveCashFlows
     .filter((t) => t.type === 'ingreso')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const totalEgresosGeneral = cashFlows
+  const totalEgresosGeneral = effectiveCashFlows
     .filter((t) => t.type === 'egreso')
     .reduce((sum, t) => sum + t.amount, 0);
 
@@ -540,7 +576,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   };
 
   // Filtered cash flows for General Ledger
-  const filteredGeneralCashFlows = cashFlows.filter((t) => {
+  const filteredGeneralCashFlows = effectiveCashFlows.filter((t) => {
     const matchesType = typeFilter === 'all' || t.type === typeFilter;
     const matchesSearch =
       t.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -572,7 +608,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       };
     }),
     // Direct incomes
-    ...cashFlows
+    ...effectiveCashFlows
       .filter(
         (t) =>
           t.type === 'ingreso' &&
@@ -606,7 +642,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         isCommonShare: false,
       })),
     // Reimbursements received
-    ...cashFlows
+    ...effectiveCashFlows
       .filter(
         (t) =>
           (t.userId === currentUser.id || (t.userName && t.userName.toLowerCase() === currentUser.name.toLowerCase())) &&

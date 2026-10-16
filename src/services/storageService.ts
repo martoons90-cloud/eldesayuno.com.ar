@@ -1490,6 +1490,28 @@ class StorageService {
       updated = [expense, ...list];
     }
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
+
+    // Automatically sync approved/paid expense as an egreso in cash flow
+    if (expense.approvalStatus !== 'rejected') {
+      const outflowTx: CashFlowTransaction = {
+        id: `cf-exp-${expense.id}`,
+        type: 'egreso',
+        category: (expense.category === 'servicios' ? 'servicio' : expense.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as any,
+        concept: `${expense.concept}${expense.provider ? ` (${expense.provider})` : ''}`,
+        amount: Number(expense.amount),
+        currency: expense.currency || 'ARS',
+        date: expense.date,
+        userId: expense.userId,
+        userName: expense.userName,
+        partName: expense.partName,
+        expenseId: expense.id,
+        notes: expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : (expense.notes || 'Gasto auditado del fideicomiso'),
+        createdBy: expense.createdBy || expense.userName || 'Sistema Gastos',
+        createdAt: expense.createdAt || new Date().toISOString(),
+      };
+      await this.saveCashFlowTransaction(outflowTx);
+    }
+
     this.notify(false);
     return true;
   }
@@ -1503,8 +1525,45 @@ class StorageService {
 
     const list = this.getExpenses().filter((e) => e.id !== expenseId);
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
+
+    // Remove matching cash flow egreso if exists
+    const matchingTx = this.getCashFlows().find((t) => t.expenseId === expenseId || t.id === `cf-exp-${expenseId}`);
+    if (matchingTx) {
+      await this.deleteCashFlowTransaction(matchingTx.id);
+    }
+
     this.notify(false);
     return true;
+  }
+
+  public async syncApprovedExpensesToCashFlow(): Promise<void> {
+    const expenses = this.getExpenses();
+    const cashFlows = this.getCashFlows();
+    const approved = expenses.filter(
+      (e) => (e.approvalStatus === 'approved' || e.status === 'paid' || !e.approvalStatus) && e.approvalStatus !== 'rejected'
+    );
+    for (const exp of approved) {
+      const exists = cashFlows.some((t) => t.expenseId === exp.id || t.id === `cf-exp-${exp.id}`);
+      if (!exists) {
+        const outflowTx: CashFlowTransaction = {
+          id: `cf-exp-${exp.id}`,
+          type: 'egreso',
+          category: (exp.category === 'servicios' ? 'servicio' : exp.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as any,
+          concept: `${exp.concept}${exp.provider ? ` (${exp.provider})` : ''}`,
+          amount: Number(exp.amount),
+          currency: exp.currency || 'ARS',
+          date: exp.date,
+          userId: exp.userId,
+          userName: exp.userName,
+          partName: exp.partName,
+          expenseId: exp.id,
+          notes: exp.invoiceNumber ? `Factura N° ${exp.invoiceNumber}` : (exp.notes || 'Gasto auditado del fideicomiso'),
+          createdBy: exp.createdBy || exp.userName || 'Sistema Gastos',
+          createdAt: exp.createdAt || new Date().toISOString(),
+        };
+        await this.saveCashFlowTransaction(outflowTx);
+      }
+    }
   }
 
   // Cash Flow & Account Ledger
