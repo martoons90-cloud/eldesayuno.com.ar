@@ -108,6 +108,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [incomeForAllocation, setIncomeForAllocation] = useState<CashFlowTransaction | null>(null);
   const [incomeAllocationMode, setIncomeAllocationMode] = useState<'general' | 'all' | 'one' | 'expenses'>('general');
   const [incomeAllocationUserId, setIncomeAllocationUserId] = useState('');
+  const [incomeExpensePercentages, setIncomeExpensePercentages] = useState<Record<string, number>>({});
 
   // Expense Submission Modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -496,21 +497,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     await syncData();
   };
 
-  const openInvoicePaymentModal = (sourceIncome: CashFlowTransaction | null = null) => {
-    const initialAmounts: Record<string, number> = {};
-    payableInvoices.forEach(({ expense }) => { initialAmounts[expense.id] = 0; });
-    setInvoicePaymentAmounts(initialAmounts);
-    setInvoicePaymentDate(new Date().toISOString().split('T')[0]);
-    setInvoicePaymentNotes('');
-    setIncomeForExpensePayment(sourceIncome);
-    setIsInvoicePaymentModalOpen(true);
-  };
-
   const openIncomeAllocation = (income: CashFlowTransaction) => {
     const existing = incomeDistributionBySource.get(income.id) || [];
+    const initialPercentages: Record<string, number> = {};
+    payableInvoices.forEach(({ expense }) => { initialPercentages[expense.id] = 0; });
     setIncomeForAllocation(income);
     setIncomeAllocationMode(existing.length === 0 ? 'general' : existing.length === 1 ? 'one' : 'all');
     setIncomeAllocationUserId(existing.length === 1 ? existing[0].userId || '' : '');
+    setIncomeExpensePercentages(initialPercentages);
   };
 
   const handleIncomeAllocation = async (e: React.FormEvent) => {
@@ -518,6 +512,32 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     if (!incomeForAllocation) return;
     const existing = incomeDistributionBySource.get(incomeForAllocation.id) || [];
     if (incomeAllocationMode === 'expenses') {
+      const selectedPercentages = payableInvoices
+        .map((item) => ({ ...item, percentage: Number(incomeExpensePercentages[item.expense.id]) || 0 }))
+        .filter((item) => item.percentage > 0.005);
+      const requestedPercentage = selectedPercentages.reduce((sum, item) => sum + item.percentage, 0);
+      const alreadyApplied = cashFlows
+        .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForAllocation.id}-`))
+        .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
+      const availableAmount = Math.max(0, incomeForAllocation.amount - alreadyApplied);
+
+      if (selectedPercentages.length === 0) {
+        alert('Indicá el porcentaje del ingreso que querés aplicar a al menos un gasto.');
+        return;
+      }
+      if (requestedPercentage > 100.001) {
+        alert('La suma de los porcentajes no puede superar el 100% del ingreso.');
+        return;
+      }
+      const requestedAmount = Math.round((incomeForAllocation.amount * requestedPercentage / 100) * 100) / 100;
+      if (requestedAmount > availableAmount + 0.01) {
+        alert(`De este ingreso quedan $${availableAmount.toLocaleString()} ARS disponibles para aplicar.`);
+        return;
+      }
+      if (selectedPercentages.some((item) => (incomeForAllocation.amount * item.percentage / 100) > item.pendingAmount + 0.01)) {
+        alert('El porcentaje elegido supera el saldo pendiente de al menos uno de los gastos.');
+        return;
+      }
       for (const ledger of existing) {
         if (!await storageService.deleteCashFlowTransaction(ledger.id)) {
           alert('La base de datos no confirmó el cambio de destino del ingreso.');
@@ -526,7 +546,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         }
       }
       setIncomeForAllocation(null);
-      openInvoicePaymentModal(incomeForAllocation);
+      setInvoicePaymentAmounts(Object.fromEntries(selectedPercentages.map((item) => [
+        item.expense.id,
+        Math.round((incomeForAllocation.amount * item.percentage / 100) * 100) / 100,
+      ])));
+      setInvoicePaymentDate(new Date().toISOString().split('T')[0]);
+      setInvoicePaymentNotes('');
+      setIncomeForExpensePayment(incomeForAllocation);
+      setIsInvoicePaymentModalOpen(true);
       return;
     }
     if (incomeAllocationMode === 'one' && !incomeAllocationUserId) {
@@ -1790,11 +1817,50 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               <label className={`block border p-3 cursor-pointer ${incomeAllocationMode === 'expenses' ? 'border-[#1B3B2B] bg-emerald-50' : 'border-[#DDD5BF] bg-[#FAF8F5]'}`}>
                 <input type="radio" checked={incomeAllocationMode === 'expenses'} onChange={() => setIncomeAllocationMode('expenses')} className="mr-2 accent-[#1B3B2B]" />
                 <strong>Aplicar a gastos registrados</strong>
-                <span className="block ml-5 mt-1 text-[#637568]">Abre los gastos/facturas cargados para decidir qué importe aplicar, total o parcial.</span>
+                <span className="block ml-5 mt-1 text-[#637568]">Definí ahora qué porcentaje de este ingreso se destina a cada gasto cargado.</span>
               </label>
+              {incomeAllocationMode === 'expenses' && (() => {
+                const selectedPct = Object.values(incomeExpensePercentages).reduce((sum, percentage) => sum + (Number(percentage) || 0), 0);
+                const alreadyApplied = cashFlows
+                  .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForAllocation.id}-`))
+                  .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
+                const availableAmount = Math.max(0, incomeForAllocation.amount - alreadyApplied);
+                const remainingPct = incomeForAllocation.amount > 0 ? Math.max(0, (availableAmount / incomeForAllocation.amount) * 100) : 0;
+                return (
+                  <div className="border border-blue-200 bg-blue-50 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-bold text-[#163323]">Asignación del ingreso a gastos</span>
+                      <span className={`font-mono font-bold ${selectedPct > remainingPct + 0.01 ? 'text-red-700' : 'text-blue-900'}`}>{selectedPct.toFixed(2)}% elegido · ${(incomeForAllocation.amount * selectedPct / 100).toLocaleString()} ARS</span>
+                    </div>
+                    <p className="text-[11px] text-[#526657]">Disponible de este ingreso: ${availableAmount.toLocaleString()} ARS ({remainingPct.toFixed(2)}%). El porcentaje no asignado queda como dinero general en Caja.</p>
+                    {payableInvoices.length === 0 ? (
+                      <p className="text-[11px] text-[#637568] py-2">No hay gastos cargados con saldo pendiente.</p>
+                    ) : payableInvoices.map(({ expense, pendingAmount }) => {
+                      const percentage = Number(incomeExpensePercentages[expense.id]) || 0;
+                      const amount = Math.round((incomeForAllocation.amount * percentage / 100) * 100) / 100;
+                      const maxPctForExpense = incomeForAllocation.amount > 0 ? Math.min(100, (pendingAmount / incomeForAllocation.amount) * 100) : 0;
+                      return (
+                        <div key={expense.id} className="grid grid-cols-[1fr_105px] gap-3 items-center bg-white border border-blue-100 p-2.5">
+                          <div>
+                            <strong className="block text-[#163323]">{expense.concept}</strong>
+                            <span className="block text-[10px] text-[#637568]">Pendiente: ${pendingAmount.toLocaleString()} ARS · Asignado: ${amount.toLocaleString()} ARS</span>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#526657] uppercase mb-1">% del ingreso</label>
+                            <div className="flex items-center gap-1">
+                              <input type="number" min="0" max={maxPctForExpense} step="0.01" value={percentage || ''} onChange={(e) => setIncomeExpensePercentages({ ...incomeExpensePercentages, [expense.id]: Math.max(0, Number(e.target.value) || 0) })} className="w-full p-2 border border-[#DCD4C0] bg-[#FAF8F5] font-mono font-bold focus:outline-none" placeholder="0" />
+                              <span className="text-[#637568]">%</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               <div className="pt-3 border-t border-[#EFEAE0] flex justify-end gap-3">
                 <button type="button" onClick={() => setIncomeForAllocation(null)} className="px-4 py-2 text-xs font-semibold text-[#637568] cursor-pointer">Cancelar</button>
-                <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer">Guardar decisión</button>
+                <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer">{incomeAllocationMode === 'expenses' ? 'Revisar y aplicar gastos' : 'Guardar decisión'}</button>
               </div>
             </form>
           </div>
