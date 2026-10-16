@@ -108,7 +108,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [incomeForAllocation, setIncomeForAllocation] = useState<CashFlowTransaction | null>(null);
   const [incomeAllocationMode, setIncomeAllocationMode] = useState<'general' | 'all' | 'one' | 'expenses'>('general');
   const [incomeAllocationUserId, setIncomeAllocationUserId] = useState('');
-  const [incomeExpenseEntryMode, setIncomeExpenseEntryMode] = useState<'percentage' | 'amount'>('percentage');
+  const [incomeExpenseEntryMode, setIncomeExpenseEntryMode] = useState<'percentage' | 'amount'>('amount');
   const [incomeExpensePercentages, setIncomeExpensePercentages] = useState<Record<string, number>>({});
   const [incomeRemainderMode, setIncomeRemainderMode] = useState<'general' | 'all' | 'one'>('general');
   const [incomeRemainderUserId, setIncomeRemainderUserId] = useState('');
@@ -530,7 +530,10 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     setIncomeForAllocation(income);
     setIncomeAllocationMode(existing.length === 0 ? 'general' : existing.length === 1 ? 'one' : 'all');
     setIncomeAllocationUserId(existing.length === 1 ? existing[0].userId || '' : '');
-    setIncomeExpenseEntryMode('percentage');
+    // El monto en pesos es el modo natural al asignar pagos. El porcentaje
+    // sigue disponible como alternativa, pero no debe interpretar $25.000
+    // como si fuera 25.000%.
+    setIncomeExpenseEntryMode('amount');
     setIncomeExpensePercentages(initialPercentages);
     setIncomeRemainderMode('general');
     setIncomeRemainderUserId('');
@@ -1954,19 +1957,19 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[#526657]">Cargar cada gasto por:</span>
                       <button
                         type="button"
-                        onClick={() => setIncomeExpenseEntryMode('percentage')}
-                        className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'percentage' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
-                      >
-                        Porcentaje (%)
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => setIncomeExpenseEntryMode('amount')}
                         className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'amount' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
                       >
                         Monto (ARS)
                       </button>
-                      <span className="text-[10px] text-[#637568]">Podés cambiar de modalidad sin perder los valores cargados.</span>
+                      <button
+                        type="button"
+                        onClick={() => setIncomeExpenseEntryMode('percentage')}
+                        className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'percentage' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
+                      >
+                        Porcentaje (%)
+                      </button>
+                      <span className="text-[10px] text-[#637568]">Ejemplo: para pagar veinticinco mil, escribí 25000 en Monto (ARS).</span>
                     </div>
                     {payableInvoices.length === 0 ? (
                       <p className="text-[11px] text-[#637568] py-2">No hay gastos cargados con saldo pendiente.</p>
@@ -1983,8 +1986,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                             <strong className="block text-[#163323]">{expense.concept}</strong>
                             <span className="block mt-1 text-[10px] text-[#637568]">{isOwnerAdvance ? `Adelanto de ${expense.userName || 'copropietario'} a reintegrar` : 'Factura de gasto'}</span>
                             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                              <span className="text-amber-800">Pendiente: <strong>${pendingAmount.toLocaleString()} ARS</strong></span>
-                              <span className="text-emerald-800">Asignado: <strong>${amount.toLocaleString()} ARS</strong></span>
+                              <span className="text-amber-800">Pendiente: <strong>${pendingAmount.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS</strong></span>
+                              <span className="text-emerald-800">Asignado: <strong>${amount.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS</strong></span>
                             </div>
                           </div>
                           <div>
@@ -1994,7 +1997,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                 type="number"
                                 min="0"
                                 max={isAmountEntry ? maxAmountForExpense : maxPctForExpense}
-                                step="0.01"
+                                step={isAmountEntry ? '1' : '0.01'}
                                 value={displayedValue || ''}
                                 onChange={(e) => {
                                   const enteredValue = Math.max(0, Number(e.target.value) || 0);
@@ -2012,7 +2015,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                               />
                               <span className="text-[#637568]">{isAmountEntry ? 'ARS' : '%'}</span>
                             </div>
-                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo: ${maxAmountForExpense.toLocaleString()} ARS ({maxPctForExpense.toFixed(2)}%)</span>
+                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo: ${maxAmountForExpense.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS ({maxPctForExpense.toFixed(2)}%)</span>
                           </div>
                         </div>
                       );
