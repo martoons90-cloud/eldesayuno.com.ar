@@ -756,14 +756,14 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* SELECTOR DE MESES: MES ACTUAL + PRÓXIMOS 6 MESES           */}
+      {/* DETALLE DEL MES ACTUAL                                     */}
       {/* ========================================================= */}
       <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E3DFC8] pb-2">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-[#BFA270]" />
             <span className="text-xs font-bold text-[#163323] uppercase tracking-wider">
-              Mes Actual y Próximos 6 Meses Posteriores
+              Detalle de Gastos y Cobranzas del Mes Actual
             </span>
           </div>
           <button
@@ -771,7 +771,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
             onClick={() => setShowScheduleBreakdown(!showScheduleBreakdown)}
             className="text-[11px] text-[#2563EB] hover:underline font-semibold flex items-center gap-1 cursor-pointer self-start sm:self-auto"
           >
-            <span>{showScheduleBreakdown ? 'Ocultar cronograma detallado' : 'Ver cronograma detallado de cuotas'}</span>
+            <span>{showScheduleBreakdown ? 'Ocultar detalle del mes' : 'Ver gastos y cobranzas del mes'}</span>
             {showScheduleBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
         </div>
@@ -848,26 +848,18 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           </button>
         </div>
 
-        {/* Desglose de Cronograma de los Próximos 6 Meses */}
+        {/* Solo los gastos/cobranzas emitidos para el mes actual. */}
         {showScheduleBreakdown && (
           <div className="mt-3 pt-3 border-t border-[#E3DFC8] animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-              <p className="text-xs font-bold text-[#163323]">
-                Cronograma Proyectado de Pagos ({upcomingMonths[0]?.label} y 6 Meses Posteriores):
-              </p>
-              {!isAdmin && (
-                <div className="text-xs text-[#56685B]">
-                  Total a pagar próximos 6 meses: <strong className="text-[#163323] font-mono">${myFuture6MonthsPending.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
-                </div>
-              )}
-            </div>
+            <p className="text-xs font-bold text-[#163323] mb-2">
+              Gastos y cobranzas emitidos en {currentMonthData?.label || 'el mes actual'}:
+            </p>
 
             <div className="overflow-x-auto border border-[#E3DFC8] rounded bg-white">
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#FAF8F5] text-[#163323] border-b border-[#E3DFC8] font-bold text-[11px]">
                   <tr>
-                    <th className="py-2 px-3">Período</th>
-                    <th className="py-2 px-3">Concepto / Cuota</th>
+                    <th className="py-2 px-3">Gasto / Cobranza</th>
                     <th className="py-2 px-3">Vencimiento</th>
                     <th className="py-2 px-3 text-right">{isAdmin ? 'Total Emisión' : 'Mi Cuota'}</th>
                     <th className="py-2 px-3 text-center">Estado</th>
@@ -875,83 +867,50 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E3DFC8]">
-                  {upcomingMonths.map((m) => {
-                    const firstItem = m.items[0];
-                    const isSelected = selectedMonthKey === m.key;
-
-                    return (
-                      <tr
-                        key={m.key}
-                        className={`hover:bg-[#FAF8F5] transition-colors ${
-                          isSelected ? 'bg-amber-50/70 font-medium' : m.isCurrent ? 'bg-emerald-50/40' : ''
-                        }`}
-                      >
-                        <td className="py-2.5 px-3 font-semibold text-[#163323]">
-                          <span className="flex items-center gap-1.5">
-                            {m.isCurrent && (
-                              <span className="px-1.5 py-0.2 bg-[#1B3B2B] text-white text-[9px] font-bold uppercase rounded">
-                                Actual
-                              </span>
+                  {(currentMonthData?.items || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-5 px-3 text-center text-neutral-500 italic">
+                        No hay gastos ni cobranzas emitidos para este mes.
+                      </td>
+                    </tr>
+                  ) : (
+                    (currentMonthData?.items || []).map(({ collection, allocation }) => {
+                      const amount = isAdmin ? collection.totalAmount : (allocation?.assignedAmount || 0);
+                      const pending = Math.max(0, amount - (allocation?.paidAmount || 0));
+                      const isPaid = isAdmin
+                        ? collection.status === 'completed'
+                        : allocation?.status === 'paid';
+                      return (
+                        <tr key={collection.id} className="bg-emerald-50/40 hover:bg-[#FAF8F5] transition-colors">
+                          <td className="py-2.5 px-3 text-[#56685B] font-semibold">{collection.concept}</td>
+                          <td className="py-2.5 px-3 font-mono text-[#637568]">{collection.dueDate || '-'}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
+                            ${amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            {isPaid ? (
+                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-full">Pagado</span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider rounded-full">Pendiente</span>
                             )}
-                            <span>{m.label}</span>
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-[#56685B]">
-                          {firstItem?.collection?.concept || (
-                            <span className="text-neutral-400 italic">Sin cuotas programadas</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-[#637568]">
-                          {firstItem?.collection?.dueDate || '-'}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
-                          {m.userAmount > 0
-                            ? `$${m.userAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
-                            : '$0.00'}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          {m.userAmount === 0 ? (
-                            <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-[10px] font-medium rounded-full">
-                              Al día
-                            </span>
-                          ) : m.userPending === 0 ? (
-                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-full">
-                              Pagado
-                            </span>
-                          ) : m.isCurrent ? (
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider rounded-full">
-                              Pendiente
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold uppercase rounded-full">
-                              Próximo
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          {m.isCurrent && m.userPending > 0 && firstItem?.allocation ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenRecordPayment(firstItem.collection.id, firstItem.allocation!)}
-                              className="px-2.5 py-1 bg-[#2563EB] hover:bg-blue-700 text-white text-[11px] font-bold uppercase rounded transition-colors cursor-pointer"
-                            >
-                              Pagar
-                            </button>
-                          ) : m.hasCollection ? (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedMonthKey(m.key)}
-                              className="px-2.5 py-1 bg-[#FAF8F5] hover:bg-[#EFE9DB] border border-[#DDD5BF] text-[11px] font-semibold text-[#163323] rounded transition-colors cursor-pointer"
-                            >
-                              Ver mes
-                            </button>
-                          ) : (
-                            <span className="text-neutral-300">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {!isAdmin && pending > 0 && allocation ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRecordPayment(collection.id, allocation)}
+                                className="px-2.5 py-1 bg-[#2563EB] hover:bg-blue-700 text-white text-[11px] font-bold uppercase rounded transition-colors cursor-pointer"
+                              >
+                                Pagar
+                              </button>
+                            ) : (
+                              <span className="text-neutral-300">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
