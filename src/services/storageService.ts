@@ -139,10 +139,10 @@ class StorageService {
   private init() {
     if (typeof window === 'undefined') return;
 
-    // No reutilizamos el caché anterior: la base es la única fuente de verdad.
-    [USERS_KEY, BOOKINGS_KEY, BLOCKS_KEY, SETTINGS_KEY, RULES_KEY, CONTACTS_KEY,
-      DOCUMENTS_KEY, INVENTORY_KEY, INCIDENTS_KEY, NOTIFICATIONS_KEY, FEES_KEY,
-      EXPENSES_KEY, CASH_FLOW_KEY].forEach((key) => localStorage.setItem(key, key === SETTINGS_KEY ? JSON.stringify(DEFAULT_SETTINGS) : '[]'));
+    // La base es la única fuente de verdad. Conservamos la última vista únicamente
+    // hasta que Supabase confirme una respuesta completa: vaciarla antes de leer
+    // provocaba que la pantalla mostrara datos inexistentes cuando había demora o
+    // un error transitorio de red.
 
     // Hydrate server state and settings directly from database for cross-browser synchronization
     this.fetchLatestSettingsFromDatabase();
@@ -261,6 +261,20 @@ class StorageService {
         if (data.data.settings && typeof data.data.settings === 'object') {
           const currentSettings = this.getSettings();
           const serverNormalized = normalizeSettings(data.data.settings);
+          // Si una tabla auxiliar de categorías falló, no sustituir la última
+          // configuración confirmada por una lista vacía.
+          if (!Object.prototype.hasOwnProperty.call(data.data.settings, 'expenseCategories')) {
+            serverNormalized.expenseCategories = currentSettings.expenseCategories;
+          }
+          if (!Object.prototype.hasOwnProperty.call(data.data.settings, 'cashFlowCategories')) {
+            serverNormalized.cashFlowCategories = currentSettings.cashFlowCategories;
+          }
+          if (!Object.prototype.hasOwnProperty.call(data.data.settings, 'feeCategories')) {
+            serverNormalized.feeCategories = currentSettings.feeCategories;
+          }
+          if (!Object.prototype.hasOwnProperty.call(data.data.settings, 'inventoryCategories')) {
+            serverNormalized.inventoryCategories = currentSettings.inventoryCategories;
+          }
 
           // Deep comparison of all setting fields
           let isDifferent = false;
@@ -1719,7 +1733,8 @@ class StorageService {
     } catch (err) {
       console.warn('Error fetching expenses from database:', err);
     }
-    return [];
+    // Nunca interpretar una falla de red como una base de datos vacía.
+    return this.getExpenses();
   }
 
   public async fetchCashFlowFromDatabase(): Promise<CashFlowTransaction[]> {
@@ -1734,7 +1749,7 @@ class StorageService {
     } catch (err) {
       console.warn('Error fetching cash flow from database:', err);
     }
-    return [];
+    return this.getCashFlows();
   }
 
   public async fetchFeesFromDatabase(): Promise<FeeCollection[]> {
@@ -1749,7 +1764,7 @@ class StorageService {
     } catch (err) {
       console.warn('Error fetching fees from database:', err);
     }
-    return [];
+    return this.getFeeCollections();
   }
 
   // Get complete package of local data for D1 push & backup

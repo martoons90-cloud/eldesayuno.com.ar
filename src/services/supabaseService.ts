@@ -23,6 +23,7 @@ export const DEFAULT_SUPABASE_CONFIG: SupabaseConfig = {
 class SupabaseService {
   private config: SupabaseConfig;
   private client: SupabaseClient | null = null;
+  private pullInFlight: Promise<{ success: boolean; data?: Record<string, any>; message: string }> | null = null;
 
   constructor() {
     this.config = this.loadConfig();
@@ -461,8 +462,23 @@ class SupabaseService {
     }
   }
 
-  // Pull complete app state directly from Supabase relational tables
-  public async pullDataFromSupabase(): Promise<{
+  // Pull complete app state directly from Supabase relational tables. Todas las
+  // vistas comparten la misma consulta en curso para evitar decenas de lecturas
+  // simultáneas al abrir la aplicación.
+  public pullDataFromSupabase(): Promise<{
+    success: boolean;
+    data?: Record<string, any>;
+    message: string;
+  }> {
+    if (!this.pullInFlight) {
+      this.pullInFlight = this.pullDataFromSupabaseOnce().finally(() => {
+        this.pullInFlight = null;
+      });
+    }
+    return this.pullInFlight;
+  }
+
+  private async pullDataFromSupabaseOnce(): Promise<{
     success: boolean;
     data?: Record<string, any>;
     message: string;
@@ -512,10 +528,27 @@ class SupabaseService {
         this.client.from('notifications').select('*'),
       ]);
 
-      const data: Record<string, any> = {
-        users: [], bookings: [], blocks: [], settings: {}, rules: [], contacts: [], documents: [],
-        inventory: [], incidents: [], notifications: [], fees: [], expenses: [], cashFlow: [],
-      };
+      const essentialFailures = [
+        ['usuarios', usersRes.error],
+        ['gastos', expensesRes.error],
+        ['caja', cashFlowRes.error],
+        ['cobranzas', feesRes.error],
+        ['reservas', bookingsRes.error],
+        ['inventario', inventoryRes.error],
+        ['incidentes', incidentsRes.error],
+        ['ajustes', settingsRes.error],
+      ].filter(([, error]) => Boolean(error));
+      if (essentialFailures.length > 0) {
+        const detail = essentialFailures
+          .map(([name, error]) => `${name}: ${(error as { message?: string })?.message || 'sin detalle'}`)
+          .join(' | ');
+        return {
+          success: false,
+          message: `No se reemplazó la pantalla porque Supabase no confirmó una lectura completa. ${detail}`,
+        };
+      }
+
+      const data: Record<string, any> = {};
 
       if (!usersRes.error && Array.isArray(usersRes.data)) {
         data.users = usersRes.data.map((u: any) => ({
@@ -641,7 +674,7 @@ class SupabaseService {
         };
       }
 
-      if (!data.settings) data.settings = {};
+      if (!settingsRes.error && !data.settings) data.settings = {};
 
       // Parse dedicated category tables first
       const expCats: Array<{ id: string; name: string }> = [];
@@ -673,10 +706,13 @@ class SupabaseService {
         });
       }
 
-      data.settings.expenseCategories = expCats.length > 0 ? expCats : (DEFAULT_EXPENSE_CATEGORIES);
-      data.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : (DEFAULT_CASHFLOW_CATEGORIES);
-      data.settings.feeCategories = feeCats.length > 0 ? feeCats : (DEFAULT_FEE_CATEGORIES);
-      data.settings.inventoryCategories = invCats.length > 0 ? invCats : (DEFAULT_INVENTORY_CATEGORIES);
+      const categoriesReadSuccessfully = !expCatRes.error && !cfCatRes.error && !feeCatRes.error && !invCatRes.error && !opCatsRes.error;
+      if (categoriesReadSuccessfully && data.settings) {
+        data.settings.expenseCategories = expCats.length > 0 ? expCats : DEFAULT_EXPENSE_CATEGORIES;
+        data.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : DEFAULT_CASHFLOW_CATEGORIES;
+        data.settings.feeCategories = feeCats.length > 0 ? feeCats : DEFAULT_FEE_CATEGORIES;
+        data.settings.inventoryCategories = invCats.length > 0 ? invCats : DEFAULT_INVENTORY_CATEGORIES;
+      }
 
       if (!blocksRes.error && Array.isArray(blocksRes.data)) {
         data.blocks = blocksRes.data.map((block: any) => ({
