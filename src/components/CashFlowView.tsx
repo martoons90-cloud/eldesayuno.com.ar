@@ -104,6 +104,9 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [invoicePaymentAmounts, setInvoicePaymentAmounts] = useState<Record<string, number>>({});
   const [invoicePaymentDate, setInvoicePaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invoicePaymentNotes, setInvoicePaymentNotes] = useState('');
+  const [incomeForAllocation, setIncomeForAllocation] = useState<CashFlowTransaction | null>(null);
+  const [incomeAllocationMode, setIncomeAllocationMode] = useState<'general' | 'all' | 'one' | 'expenses'>('general');
+  const [incomeAllocationUserId, setIncomeAllocationUserId] = useState('');
 
   // Expense Submission Modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -181,13 +184,6 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     return 6.25; // 100% / 16 copropietarios
   };
 
-  // Common Incomes (no specific user linked -> distributed proportionally)
-  const commonIncomes = useMemo(() => {
-    return effectiveCashFlows.filter(
-      (t) => t.type === 'ingreso' && (!t.userId || t.userId === '')
-    );
-  }, [effectiveCashFlows]);
-
   // Global cash totals (for General Account)
   const totalIngresosGeneral = effectiveCashFlows
     .filter((t) => t.type === 'ingreso')
@@ -238,6 +234,17 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   // Compute particular account details for all eligible owners
   const activeOwners = users.filter((u) => u.active !== false && u.role !== 'intendente');
+  const incomeDistributionBySource = useMemo(() => {
+    const distributions = new Map<string, CashFlowTransaction[]>();
+    cashFlows
+      .filter((transaction) => transaction.id.startsWith('ledger-income-share-'))
+      .forEach((transaction) => {
+        const parts = transaction.id.slice('ledger-income-share-'.length).split('--');
+        const sourceId = parts[0];
+        if (sourceId) distributions.set(sourceId, [...(distributions.get(sourceId) || []), transaction]);
+      });
+    return distributions;
+  }, [cashFlows]);
   const paidFromCajaByExpense = useMemo(() => {
     const totals = new Map<string, number>();
     cashFlows
@@ -282,11 +289,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const accountsSummary = finalOwners.map((u) => {
     const sharePct = getOwnerSharePct(u);
 
-    // 1. Proportional share from common incomes (e.g. 6.25% of 1,000,000 = 62,500)
-    const distributedIncome = commonIncomes.reduce(
-      (sum, t) => sum + Math.round(t.amount * (sharePct / 100)),
-      0
-    );
+    // 1. Sólo los ingresos que Administración decidió distribuir se acreditan
+    // en la cuenta particular. Los ingresos generales siguen en Caja.
+    const distributedIncome = cashFlows
+      .filter((t) => t.id.startsWith('ledger-income-share-') && t.userId === u.id)
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
     // 2. Direct personal incomes
     const directIncomes = cashFlows.filter(
@@ -476,7 +483,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     if (txType === 'ingreso' && !linkedUser) {
       alert(
         `Ingreso común de $${Number(txAmount).toLocaleString()} ARS registrado con éxito.\n\n` +
-        `Quedó acreditado proporcionalmente en las cuentas de los copropietarios. Ahora podés decidir qué facturas pagar desde el botón “Pagar Facturas”; no se aplicó ningún débito automático.`
+        `Quedó como dinero general en Caja. Desde su propia fila podés decidir después si se distribuye, se acredita a un socio o se aplica a gastos.`
       );
     }
 
@@ -495,6 +502,94 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     setInvoicePaymentDate(new Date().toISOString().split('T')[0]);
     setInvoicePaymentNotes('');
     setIsInvoicePaymentModalOpen(true);
+  };
+
+  const openIncomeAllocation = (income: CashFlowTransaction) => {
+    const existing = incomeDistributionBySource.get(income.id) || [];
+    setIncomeForAllocation(income);
+    setIncomeAllocationMode(existing.length === 0 ? 'general' : existing.length === 1 ? 'one' : 'all');
+    setIncomeAllocationUserId(existing.length === 1 ? existing[0].userId || '' : '');
+  };
+
+  const handleIncomeAllocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!incomeForAllocation) return;
+    const existing = incomeDistributionBySource.get(incomeForAllocation.id) || [];
+    if (incomeAllocationMode === 'expenses') {
+      for (const ledger of existing) {
+        if (!await storageService.deleteCashFlowTransaction(ledger.id)) {
+          alert('La base de datos no confirmó el cambio de destino del ingreso.');
+          await syncData();
+          return;
+        }
+      }
+      setIncomeForAllocation(null);
+      openInvoicePaymentModal();
+      return;
+    }
+    if (incomeAllocationMode === 'one' && !incomeAllocationUserId) {
+      alert('Seleccioná el copropietario al que querés acreditar este ingreso.');
+      return;
+    }
+
+    for (const ledger of existing) {
+      if (!await storageService.deleteCashFlowTransaction(ledger.id)) {
+        alert('La base de datos no confirmó el cambio de destino del ingreso.');
+        await syncData();
+        return;
+      }
+    }
+
+    if (incomeAllocationMode === 'general') {
+      setIncomeForAllocation(null);
+      await syncData();
+      return;
+    }
+
+    const recipients = incomeAllocationMode === 'all'
+      ? activeOwners.map((owner) => ({ owner, amount: Math.round(incomeForAllocation.amount * (getOwnerSharePct(owner) / 100) * 100) / 100 }))
+      : activeOwners.filter((owner) => owner.id === incomeAllocationUserId).map((owner) => ({ owner, amount: incomeForAllocation.amount }));
+    if (recipients.length === 0) {
+      alert('No se encontró el copropietario seleccionado.');
+      return;
+    }
+    const distributed = recipients.reduce((sum, recipient) => sum + recipient.amount, 0);
+    if (incomeAllocationMode === 'all') {
+      recipients[recipients.length - 1].amount = Math.round((recipients[recipients.length - 1].amount + incomeForAllocation.amount - distributed) * 100) / 100;
+    }
+
+    const savedLedgerIds: string[] = [];
+    for (const { owner, amount } of recipients) {
+      const ledgerId = `ledger-income-share-${incomeForAllocation.id}--${owner.id}`;
+      const saved = await storageService.saveCashFlowTransaction({
+        id: ledgerId,
+        type: 'ingreso',
+        category: 'otro_ingreso',
+        concept: incomeAllocationMode === 'all'
+          ? `Parte proporcional de ingreso: ${incomeForAllocation.concept}`
+          : `Ingreso acreditado por Administración: ${incomeForAllocation.concept}`,
+        amount,
+        currency: incomeForAllocation.currency,
+        date: incomeForAllocation.date,
+        userId: owner.id,
+        userName: owner.name,
+        partName: owner.partName,
+        notes: incomeAllocationMode === 'all'
+          ? `Distribución ${getOwnerSharePct(owner).toFixed(2)}% del ingreso ${incomeForAllocation.id}.`
+          : `Acreditación individual del ingreso ${incomeForAllocation.id}.`,
+        createdBy: `${currentUser.name} (Administración)`,
+        createdAt: new Date().toISOString(),
+      });
+      if (!saved) {
+        await Promise.all(savedLedgerIds.map((id) => storageService.deleteCashFlowTransaction(id)));
+        alert('La base de datos no confirmó la distribución. No se aplicaron créditos parciales.');
+        await syncData();
+        return;
+      }
+      savedLedgerIds.push(ledgerId);
+    }
+    setIncomeForAllocation(null);
+    await syncData();
   };
 
   const handlePayInvoicesFromCaja = async (e: React.FormEvent) => {
@@ -724,16 +819,19 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   // 6. Proportional shares of invoices paid from Caja
   const personalMovements = [
     // Common incomes distributed
-    ...commonIncomes.map((t) => {
-      const shareAmount = Math.round(t.amount * (myAccount.sharePct / 100));
+    ...cashFlows
+      .filter((t) => t.id.startsWith('ledger-income-share-') && t.userId === currentUser.id)
+      .map((t) => {
+      const sourceId = t.id.slice('ledger-income-share-'.length).split('--')[0];
+      const source = cashFlows.find((flow) => flow.id === sourceId);
       return {
-        id: `dist-${t.id}`,
+        id: t.id,
         date: t.date,
         type: 'ingreso' as CashFlowType,
         category: 'Ingreso Común Distribuido',
-        concept: `Participación ${myAccount.sharePct.toFixed(2)}%: ${t.concept}`,
-        amount: shareAmount,
-        notes: `Total ingresado a caja común: $${t.amount.toLocaleString()} ARS`,
+        concept: t.concept,
+        amount: t.amount,
+        notes: source ? `Distribución del ingreso general: ${source.concept}` : (t.notes || 'Ingreso distribuido por Administración'),
         isCommonShare: true,
       };
     }),
@@ -858,22 +956,13 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           )}
 
           {fullAdmin && (
-            <>
-              <button
-                onClick={openInvoicePaymentModal}
-                className="px-4 py-2.5 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#DDD5BF] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-              >
-                <Receipt className="w-4 h-4 text-[#8C7A53]" />
-                <span>Pagar Facturas ({payableInvoices.length})</span>
-              </button>
-              <button
+            <button
                 onClick={() => setIsTransactionModalOpen(true)}
                 className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-2xs"
               >
                 <Plus className="w-4 h-4 text-[#BFA270]" />
                 <span>+ Registrar Ingreso / Movimiento</span>
               </button>
-            </>
           )}
         </div>
       </div>
@@ -1237,43 +1326,6 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             Los adelantos son gastos reales pagados por copropietarios. No reducen Caja hasta que se emite un reintegro; por eso se muestran como compromiso pendiente y ajustan el saldo neto.
           </p>
 
-          <div className="bg-white border border-[#E3DFC8] shadow-xs overflow-hidden">
-            <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3DFC8] bg-[#FAF8F5]">
-              <div>
-                <h3 className="text-sm font-bold text-[#163323] flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-[#BFA270]" />
-                  <span>Facturas Pendientes de Pago desde Caja</span>
-                </h3>
-                <p className="text-[11px] text-[#637568] mt-1">Registrá un ingreso, elegí qué facturas pagar y definí el importe total o parcial. El sistema asienta cada parte proporcional en las cuentas de los copropietarios.</p>
-              </div>
-              {fullAdmin && (
-                <button onClick={openInvoicePaymentModal} className="px-3 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-[11px] font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 shrink-0">
-                  <Check className="w-3.5 h-3.5 text-[#BFA270]" />
-                  Aplicar Pago
-                </button>
-              )}
-            </div>
-            {payableInvoices.length === 0 ? (
-              <p className="px-4 py-5 text-xs text-[#637568]">No hay facturas pendientes de pago desde Caja.</p>
-            ) : (
-              <div className="divide-y divide-[#EFEAE0]">
-                {payableInvoices.slice(0, 5).map(({ expense, paidAmount, pendingAmount }) => (
-                  <div key={expense.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                    <div>
-                      <strong className="text-[#163323]">{expense.concept}</strong>
-                      <span className="block text-[11px] text-[#7A8E7E]">{expense.provider || 'Proveedor no informado'}{expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}</span>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="block text-[10px] uppercase text-[#7A8E7E]">Pagado ${paidAmount.toLocaleString()} · Pendiente</span>
-                      <strong className="font-mono text-amber-800">${pendingAmount.toLocaleString()} ARS</strong>
-                    </div>
-                  </div>
-                ))}
-                {payableInvoices.length > 5 && <p className="px-4 py-2 text-[11px] text-[#637568]">Y {payableInvoices.length - 5} factura(s) más pendientes.</p>}
-              </div>
-            )}
-          </div>
-
           {/* LIBRO DIARIO GENERAL DE CAJA */}
           <div className="space-y-4">
             <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1332,6 +1384,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     filteredGeneralCashFlows.map((tx) => {
                       const isIngreso = tx.type === 'ingreso';
                       const isCommon = isIngreso && (!tx.userId || tx.userId === '');
+                      const incomeDistribution = incomeDistributionBySource.get(tx.id) || [];
                       const isExpanded = expandedTxId === tx.id;
                       return (
                         <React.Fragment key={tx.id}>
@@ -1355,25 +1408,16 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                             <td className="py-3.5 px-4 font-semibold text-[#163323]">
                               <span>{tx.concept}</span>
                               {isCommon && (
-                                <div className="mt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleExpandTx(tx.id)}
-                                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-2xs text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
-                                      isExpanded
-                                        ? 'bg-emerald-800 text-white border-emerald-900 shadow-2xs'
-                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-300'
-                                    }`}
-                                    title="Ver distribución por porcentaje entre los 16 socios"
-                                  >
-                                    <Coins className="w-3 h-3 text-[#BFA270]" />
-                                    <span>Distribuido entre los 16 copropietarios por porcentaje</span>
-                                    {isExpanded ? (
-                                      <ChevronUp className="w-3.5 h-3.5 ml-0.5" />
-                                    ) : (
-                                      <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
-                                    )}
-                                  </button>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                  <span className={`inline-flex px-2 py-1 rounded-2xs text-[10px] font-bold uppercase tracking-wider border ${incomeDistribution.length > 0 ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : 'bg-[#FAF8F5] text-[#637568] border-[#DDD5BF]'}`}>
+                                    {incomeDistribution.length > 0 ? `Acreditado a ${incomeDistribution.length} socio(s)` : 'Ingreso general sin destino asignado'}
+                                  </span>
+                                  {incomeDistribution.length > 0 && (
+                                    <button type="button" onClick={() => toggleExpandTx(tx.id)} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1B3B2B] hover:underline cursor-pointer">
+                                      <span>{isExpanded ? 'Ocultar detalle' : 'Ver detalle'}</span>
+                                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                    </button>
+                                  )}
                                 </div>
                               )}
                               {tx.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal mt-0.5">{tx.notes}</span>}
@@ -1389,7 +1433,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                               {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
                             </td>
                             {fullAdmin && (
-                              <td className="py-3.5 px-3 text-right">
+                              <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                                {isCommon && (
+                                  <button onClick={() => openIncomeAllocation(tx)} className="mr-2 px-2 py-1 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-[10px] font-bold uppercase tracking-wider cursor-pointer" title="Decidir qué hacer con este ingreso">
+                                    Decidir destino
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     if (confirm('¿Eliminar este movimiento de caja?')) {
@@ -1406,7 +1455,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                           </tr>
 
                           {/* DESPLEGABLE CON LA TABLA DE DISTRIBUCIÓN POR COPROPIETARIO */}
-                          {isCommon && isExpanded && (
+                          {isCommon && incomeDistribution.length > 0 && isExpanded && (
                             <tr key={`${tx.id}-breakdown`} className="bg-[#FAF8F5]">
                               <td colSpan={fullAdmin ? 7 : 6} className="p-3 sm:p-4 border-b border-[#E3DFC8]">
                                 <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs space-y-3">
@@ -1417,7 +1466,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                         <span>Distribución de este Ingreso ({tx.concept}) entre los Copropietarios</span>
                                       </h4>
                                       <p className="text-[11px] text-[#637568]">
-                                        Acreditación porcentual automática según las acciones de cada uno de los 16 copropietarios:
+                                        Destino registrado para este ingreso. Sólo los socios acreditados aquí lo ven en su cuenta corriente:
                                       </p>
                                     </div>
                                     <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 border border-emerald-200">
@@ -1439,7 +1488,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                       </thead>
                                       <tbody className="divide-y divide-[#EFEAE0]">
                                         {accountsSummary.map((acc) => {
-                                          const shareThisTx = Math.round(tx.amount * (acc.sharePct / 100));
+                                          const shareThisTx = incomeDistribution.find((entry) => entry.userId === acc.userId)?.amount || 0;
                                           return (
                                             <tr key={acc.userId} className="hover:bg-[#FAF8F5]">
                                               <td className="py-2.5 px-3 font-semibold text-[#163323]">{acc.userName}</td>
@@ -1683,14 +1732,63 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* MODAL: APLICAR DINERO DE CAJA A FACTURAS                 */}
+      {/* MODAL: DECIDIR DESTINO DE UN INGRESO GENERAL             */}
+      {/* ========================================================= */}
+      {incomeForAllocation && fullAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-lg border border-[#DCD4C0] shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>¿Qué hacemos con este ingreso?</h3>
+                <p className="text-[11px] text-[#C9D6CC] mt-0.5">{incomeForAllocation.concept} · ${incomeForAllocation.amount.toLocaleString()} ARS</p>
+              </div>
+              <button onClick={() => setIncomeForAllocation(null)} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleIncomeAllocation} className="p-6 space-y-3 text-xs">
+              <label className={`block border p-3 cursor-pointer ${incomeAllocationMode === 'general' ? 'border-[#1B3B2B] bg-emerald-50' : 'border-[#DDD5BF] bg-[#FAF8F5]'}`}>
+                <input type="radio" checked={incomeAllocationMode === 'general'} onChange={() => setIncomeAllocationMode('general')} className="mr-2 accent-[#1B3B2B]" />
+                <strong>Dejar como ingreso general</strong>
+                <span className="block ml-5 mt-1 text-[#637568]">Permanece íntegro en Caja. No se acredita a ningún copropietario ni se aplica a gastos.</span>
+              </label>
+              <label className={`block border p-3 cursor-pointer ${incomeAllocationMode === 'all' ? 'border-[#1B3B2B] bg-emerald-50' : 'border-[#DDD5BF] bg-[#FAF8F5]'}`}>
+                <input type="radio" checked={incomeAllocationMode === 'all'} onChange={() => setIncomeAllocationMode('all')} className="mr-2 accent-[#1B3B2B]" />
+                <strong>Dividir entre todos los copropietarios</strong>
+                <span className="block ml-5 mt-1 text-[#637568]">Acredita el importe proporcional según el porcentaje de participación de cada uno.</span>
+              </label>
+              <label className={`block border p-3 cursor-pointer ${incomeAllocationMode === 'one' ? 'border-[#1B3B2B] bg-emerald-50' : 'border-[#DDD5BF] bg-[#FAF8F5]'}`}>
+                <input type="radio" checked={incomeAllocationMode === 'one'} onChange={() => setIncomeAllocationMode('one')} className="mr-2 accent-[#1B3B2B]" />
+                <strong>Acreditar a un solo copropietario</strong>
+                <span className="block ml-5 mt-1 text-[#637568]">El ingreso se registra completo en la cuenta corriente de la persona elegida.</span>
+              </label>
+              {incomeAllocationMode === 'one' && (
+                <select value={incomeAllocationUserId} onChange={(e) => setIncomeAllocationUserId(e.target.value)} className="w-full p-2.5 bg-white border border-[#DCD4C0] font-semibold focus:outline-none">
+                  <option value="">Seleccionar copropietario…</option>
+                  {activeOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name} ({owner.partName})</option>)}
+                </select>
+              )}
+              <label className={`block border p-3 cursor-pointer ${incomeAllocationMode === 'expenses' ? 'border-[#1B3B2B] bg-emerald-50' : 'border-[#DDD5BF] bg-[#FAF8F5]'}`}>
+                <input type="radio" checked={incomeAllocationMode === 'expenses'} onChange={() => setIncomeAllocationMode('expenses')} className="mr-2 accent-[#1B3B2B]" />
+                <strong>Aplicar a gastos registrados</strong>
+                <span className="block ml-5 mt-1 text-[#637568]">Abre los gastos/facturas cargados para decidir qué importe aplicar, total o parcial.</span>
+              </label>
+              <div className="pt-3 border-t border-[#EFEAE0] flex justify-end gap-3">
+                <button type="button" onClick={() => setIncomeForAllocation(null)} className="px-4 py-2 text-xs font-semibold text-[#637568] cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer">Guardar decisión</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: APLICAR DINERO DE CAJA A GASTOS REGISTRADOS       */}
       {/* ========================================================= */}
       {isInvoicePaymentModalOpen && fullAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div className="bg-white w-full max-w-3xl border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
               <div>
-                <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>Aplicar Dinero de Caja a Facturas</h3>
+                <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>Aplicar Dinero de Caja a Gastos Registrados</h3>
                 <p className="text-[11px] text-[#C9D6CC] mt-0.5">Caja disponible: ${cajaBalanceGeneral.toLocaleString()} ARS · Podés pagar en forma total o parcial.</p>
               </div>
               <button onClick={() => setIsInvoicePaymentModalOpen(false)} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer"><X className="w-5 h-5" /></button>
@@ -1698,7 +1796,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
             <form onSubmit={handlePayInvoicesFromCaja} className="p-5 sm:p-6 space-y-4 overflow-y-auto text-xs">
               {payableInvoices.length === 0 ? (
-                <div className="py-10 text-center text-[#637568]">No hay facturas pendientes de pago desde Caja.</div>
+                <div className="py-10 text-center text-[#637568]">No hay gastos registrados con saldo pendiente para aplicar.</div>
               ) : (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
