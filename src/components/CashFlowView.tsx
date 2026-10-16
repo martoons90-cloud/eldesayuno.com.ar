@@ -104,6 +104,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [invoicePaymentAmounts, setInvoicePaymentAmounts] = useState<Record<string, number>>({});
   const [invoicePaymentDate, setInvoicePaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invoicePaymentNotes, setInvoicePaymentNotes] = useState('');
+  const [incomeForExpensePayment, setIncomeForExpensePayment] = useState<CashFlowTransaction | null>(null);
   const [incomeForAllocation, setIncomeForAllocation] = useState<CashFlowTransaction | null>(null);
   const [incomeAllocationMode, setIncomeAllocationMode] = useState<'general' | 'all' | 'one' | 'expenses'>('general');
   const [incomeAllocationUserId, setIncomeAllocationUserId] = useState('');
@@ -495,12 +496,13 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     await syncData();
   };
 
-  const openInvoicePaymentModal = () => {
+  const openInvoicePaymentModal = (sourceIncome: CashFlowTransaction | null = null) => {
     const initialAmounts: Record<string, number> = {};
     payableInvoices.forEach(({ expense }) => { initialAmounts[expense.id] = 0; });
     setInvoicePaymentAmounts(initialAmounts);
     setInvoicePaymentDate(new Date().toISOString().split('T')[0]);
     setInvoicePaymentNotes('');
+    setIncomeForExpensePayment(sourceIncome);
     setIsInvoicePaymentModalOpen(true);
   };
 
@@ -524,7 +526,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         }
       }
       setIncomeForAllocation(null);
-      openInvoicePaymentModal();
+      openInvoicePaymentModal(incomeForAllocation);
       return;
     }
     if (incomeAllocationMode === 'one' && !incomeAllocationUserId) {
@@ -611,12 +613,26 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       alert(`El total a pagar ($${totalPayment.toLocaleString()} ARS) supera la Caja disponible ($${cajaBalanceGeneral.toLocaleString()} ARS).`);
       return;
     }
+    const alreadyAppliedFromSource = incomeForExpensePayment
+      ? cashFlows
+          .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForExpensePayment.id}-`))
+          .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0)
+      : 0;
+    const sourceAvailable = incomeForExpensePayment
+      ? Math.max(0, incomeForExpensePayment.amount - alreadyAppliedFromSource)
+      : cajaBalanceGeneral;
+    if (totalPayment > sourceAvailable + 0.01) {
+      alert(`Este ingreso tiene $${sourceAvailable.toLocaleString()} ARS disponibles para aplicar. No podés asignar un importe mayor.`);
+      return;
+    }
 
     const persistedIds: string[] = [];
     const paymentBatchId = Date.now().toString();
     try {
       for (const { expense, paymentAmount, paidAmount } of selected) {
-        const paymentId = `cf-invoice-payment-${expense.id}-${paymentBatchId}`;
+        const paymentId = incomeForExpensePayment
+          ? `cf-income-spend-${incomeForExpensePayment.id}-${expense.id}-${paymentBatchId}`
+          : `cf-invoice-payment-${expense.id}-${paymentBatchId}`;
         const savedPayment = await storageService.saveCashFlowTransaction({
           id: paymentId,
           type: 'egreso',
@@ -626,7 +642,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           currency: expense.currency || 'ARS',
           date: invoicePaymentDate,
           expenseId: expense.id,
-          notes: [expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : '', invoicePaymentNotes.trim()].filter(Boolean).join(' · '),
+          notes: [
+            incomeForExpensePayment ? `Aplicado desde ingreso: ${incomeForExpensePayment.concept} (${incomeForExpensePayment.id})` : '',
+            expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : '',
+            invoicePaymentNotes.trim(),
+          ].filter(Boolean).join(' · '),
           createdBy: `${currentUser.name} (Administración)`,
           createdAt: new Date().toISOString(),
         });
@@ -650,7 +670,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             id: ledgerId,
             type: 'egreso',
             category: 'pago_proveedor',
-            concept: `Parte proporcional de factura pagada: ${expense.concept}`,
+            concept: `${incomeForExpensePayment ? `Ingreso “${incomeForExpensePayment.concept}” aplicado a` : 'Pago de'} factura: ${expense.concept}`,
             amount: share.amount,
             currency: expense.currency || 'ARS',
             date: invoicePaymentDate,
@@ -658,7 +678,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             userName: share.owner.name,
             partName: share.owner.partName,
             expenseId: expense.id,
-            notes: `Pago de Caja ${paymentId}. Participación ${getOwnerSharePct(share.owner).toFixed(2)}%.`,
+            notes: `${incomeForExpensePayment ? `Ingreso ${incomeForExpensePayment.id}` : `Pago de Caja ${paymentId}`}. Participación ${getOwnerSharePct(share.owner).toFixed(2)}%.`,
             createdBy: `${currentUser.name} (Administración)`,
             createdAt: new Date().toISOString(),
           });
@@ -676,6 +696,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         if (!savedExpense) throw new Error('No se pudo actualizar el estado de la factura.');
       }
       setIsInvoicePaymentModalOpen(false);
+      setIncomeForExpensePayment(null);
       alert(`Pago de $${totalPayment.toLocaleString()} ARS registrado en Caja. Cada cuenta de copropietario recibió su parte proporcional.`);
       await syncData();
     } catch (error) {
@@ -1789,9 +1810,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>Aplicar Dinero de Caja a Gastos Registrados</h3>
-                <p className="text-[11px] text-[#C9D6CC] mt-0.5">Caja disponible: ${cajaBalanceGeneral.toLocaleString()} ARS · Podés pagar en forma total o parcial.</p>
+                <p className="text-[11px] text-[#C9D6CC] mt-0.5">
+                  {incomeForExpensePayment
+                    ? `Origen: ${incomeForExpensePayment.concept} · $${incomeForExpensePayment.amount.toLocaleString()} ARS`
+                    : `Caja disponible: $${cajaBalanceGeneral.toLocaleString()} ARS`}
+                  {' · '}Podés aplicar importes totales o parciales.
+                </p>
               </div>
-              <button onClick={() => setIsInvoicePaymentModalOpen(false)} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+              <button onClick={() => { setIsInvoicePaymentModalOpen(false); setIncomeForExpensePayment(null); }} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
             <form onSubmit={handlePayInvoicesFromCaja} className="p-5 sm:p-6 space-y-4 overflow-y-auto text-xs">
@@ -1809,6 +1835,13 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       <span className="font-mono font-bold text-lg text-emerald-800">${Object.values(invoicePaymentAmounts).reduce((sum, amount) => sum + (Number(amount) || 0), 0).toLocaleString()} ARS</span>
                     </div>
                   </div>
+                  {incomeForExpensePayment && (() => {
+                    const alreadyUsed = cashFlows
+                      .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForExpensePayment.id}-`))
+                      .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
+                    const available = Math.max(0, incomeForExpensePayment.amount - alreadyUsed);
+                    return <p className="text-[11px] text-blue-900 bg-blue-50 border border-blue-200 px-3 py-2">De este ingreso quedan <strong>${available.toLocaleString()} ARS</strong> disponibles para aplicar a gastos. El remanente seguirá como dinero general en Caja.</p>;
+                  })()}
 
                   <div className="border border-[#E3DFC8] divide-y divide-[#EFEAE0]">
                     {payableInvoices.map(({ expense, paidAmount, pendingAmount }) => {
@@ -1849,7 +1882,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 </>
               )}
               <div className="pt-3 border-t border-[#EFEAE0] flex items-center justify-end gap-3">
-                <button type="button" onClick={() => setIsInvoicePaymentModalOpen(false)} className="px-4 py-2 text-xs font-semibold text-[#637568] hover:text-[#163323] cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => { setIsInvoicePaymentModalOpen(false); setIncomeForExpensePayment(null); }} className="px-4 py-2 text-xs font-semibold text-[#637568] hover:text-[#163323] cursor-pointer">Cancelar</button>
                 {payableInvoices.length > 0 && <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer flex items-center gap-2 shadow-xs"><Check className="w-4 h-4 text-[#BFA270]" /><span>Confirmar Pagos</span></button>}
               </div>
             </form>
@@ -1955,7 +1988,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs focus:outline-none"
                 >
                   <option value="">
-                    🏛️ Ingreso Común General (Se divide por % entre los 16 copropietarios)
+                    🏛️ Ingreso General de Caja (sin destino asignado)
                   </option>
                   {users
                     .filter((u) => u.active !== false && u.role !== 'intendente')
@@ -1966,7 +1999,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     ))}
                 </select>
                 <span className="block text-[11px] text-[#7A8E7E] mt-1">
-                  💡 Si seleccionás "Ingreso Común General", se acreditará a cada copropietario según su porcentaje (ej. 6.25%) y cancelará automáticamente cuotas pendientes con débito automático activo.
+                  💡 El ingreso general queda en Caja sin distribuir. Después, desde su fila en el libro diario, Administración puede decidir si lo deja general, lo reparte, lo acredita a una persona o lo aplica a gastos cargados.
                 </span>
               </div>
 
