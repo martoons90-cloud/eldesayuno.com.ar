@@ -109,6 +109,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [incomeAllocationMode, setIncomeAllocationMode] = useState<'general' | 'all' | 'one' | 'expenses'>('general');
   const [incomeAllocationUserId, setIncomeAllocationUserId] = useState('');
   const [incomeExpensePercentages, setIncomeExpensePercentages] = useState<Record<string, number>>({});
+  const [incomeRemainderMode, setIncomeRemainderMode] = useState<'general' | 'all' | 'one'>('general');
+  const [incomeRemainderUserId, setIncomeRemainderUserId] = useState('');
+  const [pendingRemainderAllocation, setPendingRemainderAllocation] = useState<{
+    income: CashFlowTransaction;
+    amount: number;
+    mode: 'general' | 'all' | 'one';
+    userId: string;
+  } | null>(null);
 
   // Expense Submission Modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -509,6 +517,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     setIncomeAllocationMode(existing.length === 0 ? 'general' : existing.length === 1 ? 'one' : 'all');
     setIncomeAllocationUserId(existing.length === 1 ? existing[0].userId || '' : '');
     setIncomeExpensePercentages(initialPercentages);
+    setIncomeRemainderMode('general');
+    setIncomeRemainderUserId('');
   };
 
   const handleIncomeAllocation = async (e: React.FormEvent) => {
@@ -542,6 +552,10 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         alert('El porcentaje elegido supera el saldo pendiente de al menos uno de los gastos.');
         return;
       }
+      if (incomeRemainderMode === 'one' && !incomeRemainderUserId) {
+        alert('Seleccioná el copropietario que recibirá el saldo restante.');
+        return;
+      }
       for (const ledger of existing) {
         if (!await storageService.deleteCashFlowTransaction(ledger.id)) {
           alert('La base de datos no confirmó el cambio de destino del ingreso.');
@@ -557,6 +571,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       setInvoicePaymentDate(new Date().toISOString().split('T')[0]);
       setInvoicePaymentNotes('');
       setIncomeForExpensePayment(incomeForAllocation);
+      setPendingRemainderAllocation({
+        income: incomeForAllocation,
+        amount: Math.round((availableAmount - requestedAmount) * 100) / 100,
+        mode: incomeRemainderMode,
+        userId: incomeRemainderUserId,
+      });
       setIsInvoicePaymentModalOpen(true);
       return;
     }
@@ -739,13 +759,53 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             });
         if (!savedExpense) throw new Error('No se pudo actualizar el estado de la factura.');
       }
+
+      // El mismo ingreso puede financiar gastos y, a la vez, acreditar su
+      // saldo restante. Se calcula al confirmar para respetar cualquier ajuste
+      // de importe realizado en la pantalla de revisión.
+      const remainderAmount = Math.max(0, Math.round((sourceAvailable - totalPayment) * 100) / 100);
+      if (pendingRemainderAllocation && remainderAmount > 0.01 && pendingRemainderAllocation.mode !== 'general') {
+        const remainderRecipients = pendingRemainderAllocation.mode === 'all'
+          ? activeOwners.map((owner) => ({ owner, amount: Math.round(remainderAmount * (getOwnerSharePct(owner) / 100) * 100) / 100 }))
+          : activeOwners.filter((owner) => owner.id === pendingRemainderAllocation.userId).map((owner) => ({ owner, amount: remainderAmount }));
+        if (remainderRecipients.length === 0) throw new Error('No se encontró el destino del saldo restante.');
+        const remainderDistributed = remainderRecipients.reduce((sum, item) => sum + item.amount, 0);
+        if (pendingRemainderAllocation.mode === 'all') {
+          remainderRecipients[remainderRecipients.length - 1].amount = Math.round((remainderRecipients[remainderRecipients.length - 1].amount + remainderAmount - remainderDistributed) * 100) / 100;
+        }
+        for (const { owner, amount } of remainderRecipients) {
+          if (amount <= 0) continue;
+          const ledgerId = `ledger-income-share-${pendingRemainderAllocation.income.id}--${owner.id}`;
+          const savedRemainder = await storageService.saveCashFlowTransaction({
+            id: ledgerId,
+            type: 'ingreso',
+            category: 'otro_ingreso',
+            concept: pendingRemainderAllocation.mode === 'all'
+              ? `Saldo restante distribuido: ${pendingRemainderAllocation.income.concept}`
+              : `Saldo restante acreditado: ${pendingRemainderAllocation.income.concept}`,
+            amount,
+            currency: pendingRemainderAllocation.income.currency,
+            date: invoicePaymentDate,
+            userId: owner.id,
+            userName: owner.name,
+            partName: owner.partName,
+            notes: `Saldo luego de aplicar $${totalPayment.toLocaleString()} ARS a gastos del ingreso ${pendingRemainderAllocation.income.id}.`,
+            createdBy: `${currentUser.name} (Administración)`,
+            createdAt: new Date().toISOString(),
+          });
+          if (!savedRemainder) throw new Error('No se pudo acreditar el saldo restante.');
+          persistedIds.push(ledgerId);
+        }
+      }
       setIsInvoicePaymentModalOpen(false);
       setIncomeForExpensePayment(null);
-      alert(`Pago de $${totalPayment.toLocaleString()} ARS registrado en Caja. Cada cuenta de copropietario recibió su parte proporcional.`);
+      setPendingRemainderAllocation(null);
+      alert(`Se aplicaron $${totalPayment.toLocaleString()} ARS a gastos. El saldo restante quedó ${pendingRemainderAllocation?.mode === 'all' ? 'distribuido entre los copropietarios' : pendingRemainderAllocation?.mode === 'one' ? 'acreditado al copropietario elegido' : 'como ingreso general en Caja'}.`);
       await syncData();
     } catch (error) {
       // Evita dejar asientos sueltos si la base rechaza cualquier parte del pago.
       await Promise.all(persistedIds.map((id) => storageService.deleteCashFlowTransaction(id)));
+      setPendingRemainderAllocation(null);
       await syncData();
       alert('La base de datos no confirmó el pago completo. No se aplicaron movimientos parciales.');
     }
@@ -1872,6 +1932,30 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                         </div>
                       );
                     })}
+                    {(() => {
+                      const selectedAmount = Math.round((incomeForAllocation.amount * selectedPct / 100) * 100) / 100;
+                      const remainderAmount = Math.max(0, Math.round((availableAmount - selectedAmount) * 100) / 100);
+                      return (
+                        <div className="mt-3 border-t border-blue-200 pt-3 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <strong className="text-[#163323]">Saldo restante luego de gastos</strong>
+                            <span className={`font-mono font-bold ${selectedAmount > availableAmount + 0.01 ? 'text-red-700' : 'text-emerald-800'}`}>${remainderAmount.toLocaleString()} ARS</span>
+                          </div>
+                          <p className="text-[11px] text-[#526657]">Elegí qué hacer con el saldo que no se destine a facturas o adelantos en esta misma operación.</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <label className={`border p-2 cursor-pointer text-[11px] ${incomeRemainderMode === 'general' ? 'bg-white border-[#1B3B2B]' : 'bg-blue-50 border-blue-100'}`}><input type="radio" checked={incomeRemainderMode === 'general'} onChange={() => setIncomeRemainderMode('general')} className="mr-1 accent-[#1B3B2B]" /><strong>Dejar general</strong></label>
+                            <label className={`border p-2 cursor-pointer text-[11px] ${incomeRemainderMode === 'all' ? 'bg-white border-[#1B3B2B]' : 'bg-blue-50 border-blue-100'}`}><input type="radio" checked={incomeRemainderMode === 'all'} onChange={() => setIncomeRemainderMode('all')} className="mr-1 accent-[#1B3B2B]" /><strong>Dividir saldo</strong></label>
+                            <label className={`border p-2 cursor-pointer text-[11px] ${incomeRemainderMode === 'one' ? 'bg-white border-[#1B3B2B]' : 'bg-blue-50 border-blue-100'}`}><input type="radio" checked={incomeRemainderMode === 'one'} onChange={() => setIncomeRemainderMode('one')} className="mr-1 accent-[#1B3B2B]" /><strong>Acreditar a uno</strong></label>
+                          </div>
+                          {incomeRemainderMode === 'one' && (
+                            <select value={incomeRemainderUserId} onChange={(e) => setIncomeRemainderUserId(e.target.value)} className="w-full p-2 bg-white border border-[#DCD4C0] text-xs font-semibold focus:outline-none">
+                              <option value="">Seleccionar copropietario para el saldo…</option>
+                              {activeOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name} ({owner.partName})</option>)}
+                            </select>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}
@@ -1900,7 +1984,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                   {' · '}Podés aplicar importes totales o parciales.
                 </p>
               </div>
-              <button onClick={() => { setIsInvoicePaymentModalOpen(false); setIncomeForExpensePayment(null); }} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+              <button onClick={() => { setIsInvoicePaymentModalOpen(false); setIncomeForExpensePayment(null); setPendingRemainderAllocation(null); }} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
             <form onSubmit={handlePayInvoicesFromCaja} className="p-5 sm:p-6 space-y-4 overflow-y-auto text-xs">
@@ -1965,7 +2049,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 </>
               )}
               <div className="pt-3 border-t border-[#EFEAE0] flex items-center justify-end gap-3">
-                <button type="button" onClick={() => { setIsInvoicePaymentModalOpen(false); setIncomeForExpensePayment(null); }} className="px-4 py-2 text-xs font-semibold text-[#637568] hover:text-[#163323] cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => { setIsInvoicePaymentModalOpen(false); setIncomeForExpensePayment(null); setPendingRemainderAllocation(null); }} className="px-4 py-2 text-xs font-semibold text-[#637568] hover:text-[#163323] cursor-pointer">Cancelar</button>
                 {payableInvoices.length > 0 && <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer flex items-center gap-2 shadow-xs"><Check className="w-4 h-4 text-[#BFA270]" /><span>Confirmar Pagos</span></button>}
               </div>
             </form>
