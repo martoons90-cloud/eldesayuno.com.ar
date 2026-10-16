@@ -262,18 +262,22 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     return totals;
   }, [cashFlows]);
 
-  // Facturas de Caja/Banco con saldo pendiente. Los adelantos personales se
-  // reintegran por su circuito propio y por eso no se ofrecen en este pago.
+  // Incluye tanto facturas pendientes de Caja/Banco como compras adelantadas
+  // por socios. Estas últimas se muestran para reintegrar al socio que pagó,
+  // no para volver a pagar al proveedor.
   const payableInvoices = useMemo(() => expenses
     .filter((expense) =>
       expense.approvalStatus !== 'rejected' &&
-      !storageService.isOwnerAdvanceExpense(expense) &&
       (expense.approvalStatus === 'approved' || expense.status === 'pending' || !expense.approvalStatus)
     )
     .map((expense) => {
-      const paidAmount = paidFromCajaByExpense.get(expense.id) || 0;
+      const isOwnerAdvance = storageService.isOwnerAdvanceExpense(expense);
+      const paidAmount = isOwnerAdvance
+        ? (Number(expense.reimbursedAmount) || 0)
+        : (paidFromCajaByExpense.get(expense.id) || 0);
       return {
         expense,
+        isOwnerAdvance,
         paidAmount,
         pendingAmount: Math.max(0, Math.round((Number(expense.amount) - paidAmount) * 100) / 100),
       };
@@ -656,21 +660,32 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     const persistedIds: string[] = [];
     const paymentBatchId = Date.now().toString();
     try {
-      for (const { expense, paymentAmount, paidAmount } of selected) {
+      for (const { expense, isOwnerAdvance, paymentAmount, paidAmount } of selected) {
+        if (isOwnerAdvance && expense.userId && paymentAmount > storageService.getOwnerAvailableCredit(expense.userId) + 0.01) {
+          throw new Error('El reintegro supera el saldo a favor disponible del copropietario.');
+        }
         const paymentId = incomeForExpensePayment
           ? `cf-income-spend-${incomeForExpensePayment.id}-${expense.id}-${paymentBatchId}`
           : `cf-invoice-payment-${expense.id}-${paymentBatchId}`;
         const savedPayment = await storageService.saveCashFlowTransaction({
           id: paymentId,
           type: 'egreso',
-          category: (expense.category === 'servicios' ? 'servicio' : expense.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as CashFlowCategory,
-          concept: `Pago ${paymentAmount + paidAmount >= Number(expense.amount) - 0.01 ? 'total' : 'parcial'} de factura: ${expense.concept}`,
+          category: isOwnerAdvance
+            ? 'reintegro_gasto'
+            : (expense.category === 'servicios' ? 'servicio' : expense.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as CashFlowCategory,
+          concept: isOwnerAdvance
+            ? `Reintegro ${paymentAmount + paidAmount >= Number(expense.amount) - 0.01 ? 'total' : 'parcial'} a ${expense.userName || 'copropietario'}: ${expense.concept}`
+            : `Pago ${paymentAmount + paidAmount >= Number(expense.amount) - 0.01 ? 'total' : 'parcial'} de factura: ${expense.concept}`,
           amount: paymentAmount,
           currency: expense.currency || 'ARS',
           date: invoicePaymentDate,
           expenseId: expense.id,
+          userId: isOwnerAdvance ? expense.userId : undefined,
+          userName: isOwnerAdvance ? expense.userName : undefined,
+          partName: isOwnerAdvance ? expense.partName : undefined,
           notes: [
             incomeForExpensePayment ? `Aplicado desde ingreso: ${incomeForExpensePayment.concept} (${incomeForExpensePayment.id})` : '',
+            isOwnerAdvance ? 'Compra pagada previamente por el copropietario; este movimiento devuelve su adelanto.' : '',
             expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : '',
             invoicePaymentNotes.trim(),
           ].filter(Boolean).join(' · '),
@@ -697,7 +712,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             id: ledgerId,
             type: 'egreso',
             category: 'pago_proveedor',
-            concept: `${incomeForExpensePayment ? `Ingreso “${incomeForExpensePayment.concept}” aplicado a` : 'Pago de'} factura: ${expense.concept}`,
+            concept: `${incomeForExpensePayment ? `Ingreso “${incomeForExpensePayment.concept}” aplicado a` : 'Pago de'} ${isOwnerAdvance ? 'adelanto' : 'factura'}: ${expense.concept}`,
             amount: share.amount,
             currency: expense.currency || 'ARS',
             date: invoicePaymentDate,
@@ -714,12 +729,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         }
 
         const totalPaid = Math.round((paidAmount + paymentAmount) * 100) / 100;
-        const savedExpense = await storageService.saveExpense({
-          ...expense,
-          status: totalPaid >= Number(expense.amount) - 0.01 ? 'paid' : 'pending',
-          paidAt: invoicePaymentDate,
-          paymentMethod: 'Caja/Banco',
-        });
+        const savedExpense = isOwnerAdvance
+          ? await storageService.applyReimbursementToExpense(expense.id, paymentAmount)
+          : await storageService.saveExpense({
+              ...expense,
+              status: totalPaid >= Number(expense.amount) - 0.01 ? 'paid' : 'pending',
+              paidAt: invoicePaymentDate,
+              paymentMethod: 'Caja/Banco',
+            });
         if (!savedExpense) throw new Error('No se pudo actualizar el estado de la factura.');
       }
       setIsInvoicePaymentModalOpen(false);
@@ -1835,7 +1852,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     <p className="text-[11px] text-[#526657]">Disponible de este ingreso: ${availableAmount.toLocaleString()} ARS ({remainingPct.toFixed(2)}%). El porcentaje no asignado queda como dinero general en Caja.</p>
                     {payableInvoices.length === 0 ? (
                       <p className="text-[11px] text-[#637568] py-2">No hay gastos cargados con saldo pendiente.</p>
-                    ) : payableInvoices.map(({ expense, pendingAmount }) => {
+                    ) : payableInvoices.map(({ expense, isOwnerAdvance, pendingAmount }) => {
                       const percentage = Number(incomeExpensePercentages[expense.id]) || 0;
                       const amount = Math.round((incomeForAllocation.amount * percentage / 100) * 100) / 100;
                       const maxPctForExpense = incomeForAllocation.amount > 0 ? Math.min(100, (pendingAmount / incomeForAllocation.amount) * 100) : 0;
@@ -1843,7 +1860,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                         <div key={expense.id} className="grid grid-cols-[1fr_105px] gap-3 items-center bg-white border border-blue-100 p-2.5">
                           <div>
                             <strong className="block text-[#163323]">{expense.concept}</strong>
-                            <span className="block text-[10px] text-[#637568]">Pendiente: ${pendingAmount.toLocaleString()} ARS · Asignado: ${amount.toLocaleString()} ARS</span>
+                            <span className="block text-[10px] text-[#637568]">{isOwnerAdvance ? `Adelanto de ${expense.userName || 'copropietario'} a reintegrar` : 'Factura de gasto'} · Pendiente: ${pendingAmount.toLocaleString()} ARS · Asignado: ${amount.toLocaleString()} ARS</span>
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-[#526657] uppercase mb-1">% del ingreso</label>
@@ -1875,7 +1892,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           <div className="bg-white w-full max-w-3xl border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
               <div>
-                <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>Aplicar Dinero de Caja a Gastos Registrados</h3>
+                <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>Aplicar Dinero de Caja a Gastos y Adelantos</h3>
                 <p className="text-[11px] text-[#C9D6CC] mt-0.5">
                   {incomeForExpensePayment
                     ? `Origen: ${incomeForExpensePayment.concept} · $${incomeForExpensePayment.amount.toLocaleString()} ARS`
@@ -1910,20 +1927,20 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                   })()}
 
                   <div className="border border-[#E3DFC8] divide-y divide-[#EFEAE0]">
-                    {payableInvoices.map(({ expense, paidAmount, pendingAmount }) => {
+                    {payableInvoices.map(({ expense, isOwnerAdvance, paidAmount, pendingAmount }) => {
                       const selectedAmount = Number(invoicePaymentAmounts[expense.id]) || 0;
                       return (
                         <div key={expense.id} className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-[1fr_170px] gap-3 items-center">
                           <div>
                             <strong className="text-sm text-[#163323]">{expense.concept}</strong>
-                            <span className="block text-[11px] text-[#637568]">{expense.provider || 'Proveedor no informado'}{expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}</span>
-                            <span className="block mt-1 text-[11px] text-amber-800">Total: ${Number(expense.amount).toLocaleString()} · Ya pagado: ${paidAmount.toLocaleString()} · Pendiente: <strong>${pendingAmount.toLocaleString()}</strong></span>
+                            <span className="block text-[11px] text-[#637568]">{isOwnerAdvance ? `Adelanto pagado por ${expense.userName || 'copropietario'} · se reintegra a esa persona` : `${expense.provider || 'Proveedor no informado'}${expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}`}</span>
+                            <span className="block mt-1 text-[11px] text-amber-800">Total: ${Number(expense.amount).toLocaleString()} · {isOwnerAdvance ? 'Reintegrado' : 'Ya pagado'}: ${paidAmount.toLocaleString()} · Pendiente: <strong>${pendingAmount.toLocaleString()}</strong></span>
                             {selectedAmount > 0 && (
                               <span className="block mt-1 text-[10px] text-blue-800">Se repartirá entre los copropietarios según su porcentaje de participación.</span>
                             )}
                           </div>
                           <div>
-                            <label className="block font-semibold uppercase text-[#35483A] mb-1">Pagar ahora (ARS)</label>
+                            <label className="block font-semibold uppercase text-[#35483A] mb-1">{isOwnerAdvance ? 'Reintegrar ahora (ARS)' : 'Pagar ahora (ARS)'}</label>
                             <input
                               type="number"
                               min="0"

@@ -1644,6 +1644,22 @@ class StorageService {
     return remaining <= 0.01;
   }
 
+  /** Aplica un reintegro a un adelanto puntual, sin modificar otros gastos del socio. */
+  public async applyReimbursementToExpense(expenseId: string, amount: number): Promise<boolean> {
+    const expense = this.getExpenses().find((item) => item.id === expenseId);
+    if (!expense || !this.isOwnerAdvanceExpense(expense)) return false;
+    const reimbursed = Number(expense.reimbursedAmount) || 0;
+    const pending = Math.max(0, Number(expense.amount) - reimbursed);
+    const applied = Math.min(pending, Math.max(0, Number(amount) || 0));
+    if (applied <= 0) return false;
+    const totalReimbursed = Math.round((reimbursed + applied) * 100) / 100;
+    return this.saveExpense({
+      ...expense,
+      reimbursedAmount: totalReimbursed,
+      reimbursementStatus: totalReimbursed >= Number(expense.amount) - 0.01 ? 'fully_repaid' : 'partial',
+    });
+  }
+
   public async deleteExpense(expenseId: string): Promise<boolean> {
     const expense = this.getExpenses().find((item) => item.id === expenseId);
     const linkedCollections = this.getFeeCollections().filter(
