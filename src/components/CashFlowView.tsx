@@ -41,6 +41,8 @@ import {
   RefreshCw,
   Zap,
   Users,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface CashFlowViewProps {
@@ -77,6 +79,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isExecutingDebit, setIsExecutingDebit] = useState(false);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
+
+  const toggleExpandTx = (txId: string) => {
+    setExpandedTxId((prev) => (prev === txId ? null : txId));
+  };
 
   // Modals
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -1015,67 +1022,6 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             </div>
           </div>
 
-          {/* MATRIZ DE DISTRIBUCIÓN DE INGRESOS A COPROPIETARIOS */}
-          <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#EFEAE0]">
-              <div>
-                <h3 className="font-bold text-sm text-[#163323] flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-[#BFA270]" />
-                  <span>Distribución de Ingresos Comunes por Porcentaje ({commonIncomes.length} ingresos registrados)</span>
-                </h3>
-                <p className="text-xs text-[#526657] mt-0.5">
-                  Cada ingreso común registrado en el fideicomiso se divide automáticamente entre los copropietarios según sus acciones.
-                </p>
-              </div>
-              <span className="px-3 py-1 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-xs font-bold text-[#163323] shrink-0">
-                Total Común Distribuido: ${commonIncomes.reduce((s, t) => s + t.amount, 0).toLocaleString()} ARS
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-[#FAF8F5] text-[#55695B] uppercase font-bold text-[10px] tracking-wider border-b border-[#E3DFC8]">
-                  <tr>
-                    <th className="py-2.5 px-3">Copropietario</th>
-                    <th className="py-2.5 px-3 text-center">Parte / Cabeza</th>
-                    <th className="py-2.5 px-3 text-center">Acciones (%)</th>
-                    <th className="py-2.5 px-3 text-right">Ingreso Distribuido</th>
-                    <th className="py-2.5 px-3 text-center">Débito Automático</th>
-                    <th className="py-2.5 px-3 text-right">Saldo a Favor</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#EFEAE0]">
-                  {accountsSummary.map((acc) => (
-                    <tr key={acc.userId} className="hover:bg-[#FAF8F5]">
-                      <td className="py-2.5 px-3 font-semibold text-[#163323]">
-                        {acc.userName}
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-[#7A8E7E]">{acc.partName}</td>
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-[#163323]">{acc.sharePct.toFixed(2)}%</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">
-                        ${acc.distributedIncome.toLocaleString()} ARS
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span
-                          className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-2xs ${
-                            acc.isAutoDebitOn
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-neutral-200 text-neutral-600'
-                          }`}
-                        >
-                          {acc.isAutoDebitOn ? '⚡ Activado' : 'Pausado'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
-                        ${acc.netAvailableBalance.toLocaleString()} ARS
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
           {/* LIBRO DIARIO GENERAL DE CAJA */}
           <div className="space-y-4">
             <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1134,59 +1080,147 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     filteredGeneralCashFlows.map((tx) => {
                       const isIngreso = tx.type === 'ingreso';
                       const isCommon = isIngreso && (!tx.userId || tx.userId === '');
+                      const isExpanded = expandedTxId === tx.id;
                       return (
-                        <tr key={tx.id} className="hover:bg-[#FAF8F5] transition-colors">
-                          <td className="py-3.5 px-4 font-mono text-[#637568]">{tx.date}</td>
-                          <td className="py-3.5 px-3">
-                            <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
-                                isIngreso
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                  : 'bg-amber-100 text-amber-900 border border-amber-300'
-                              }`}
-                            >
-                              {isIngreso ? <TrendingUp className="w-3 h-3 text-emerald-700" /> : <TrendingDown className="w-3 h-3 text-amber-700" />}
-                              <span>{tx.type}</span>
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-3 font-medium uppercase text-[10px] text-[#526657]">
-                            {tx.category.replace('_', ' ')}
-                          </td>
-                          <td className="py-3.5 px-4 font-semibold text-[#163323]">
-                            <span>{tx.concept}</span>
-                            {isCommon && (
-                              <span className="block text-[10px] text-emerald-700 font-bold">
-                                🏛️ Distribuido entre los 16 copropietarios por porcentaje
-                              </span>
-                            )}
-                            {tx.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal">{tx.notes}</span>}
-                          </td>
-                          <td className="py-3.5 px-3">
-                            {tx.userName ? (
-                              <span className="font-medium text-[#163323]">{tx.userName} ({tx.partName})</span>
-                            ) : (
-                              <span className="font-medium text-emerald-800">Fideicomiso Común</span>
-                            )}
-                          </td>
-                          <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isIngreso ? 'text-emerald-700' : 'text-amber-900'}`}>
-                            {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
-                          </td>
-                          {fullAdmin && (
-                            <td className="py-3.5 px-3 text-right">
-                              <button
-                                onClick={() => {
-                                  if (confirm('¿Eliminar este movimiento de caja?')) {
-                                    storageService.deleteCashFlowTransaction(tx.id);
-                                  }
-                                }}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
-                                title="Eliminar movimiento"
+                        <React.Fragment key={tx.id}>
+                          <tr className="hover:bg-[#FAF8F5] transition-colors">
+                            <td className="py-3.5 px-4 font-mono text-[#637568]">{tx.date}</td>
+                            <td className="py-3.5 px-3">
+                              <span
+                                className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
+                                  isIngreso
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                }`}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                                {isIngreso ? <TrendingUp className="w-3 h-3 text-emerald-700" /> : <TrendingDown className="w-3 h-3 text-amber-700" />}
+                                <span>{tx.type}</span>
+                              </span>
                             </td>
+                            <td className="py-3.5 px-3 font-medium uppercase text-[10px] text-[#526657]">
+                              {tx.category.replace('_', ' ')}
+                            </td>
+                            <td className="py-3.5 px-4 font-semibold text-[#163323]">
+                              <span>{tx.concept}</span>
+                              {isCommon && (
+                                <div className="mt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleExpandTx(tx.id)}
+                                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-2xs text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
+                                      isExpanded
+                                        ? 'bg-emerald-800 text-white border-emerald-900 shadow-2xs'
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    }`}
+                                    title="Ver distribución por porcentaje entre los 16 socios"
+                                  >
+                                    <Coins className="w-3 h-3 text-[#BFA270]" />
+                                    <span>Distribuido entre los 16 copropietarios por porcentaje</span>
+                                    {isExpanded ? (
+                                      <ChevronUp className="w-3.5 h-3.5 ml-0.5" />
+                                    ) : (
+                                      <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              )}
+                              {tx.notes && <span className="block text-[11px] text-[#7A8E7E] font-normal mt-0.5">{tx.notes}</span>}
+                            </td>
+                            <td className="py-3.5 px-3">
+                              {tx.userName ? (
+                                <span className="font-medium text-[#163323]">{tx.userName} ({tx.partName})</span>
+                              ) : (
+                                <span className="font-medium text-emerald-800">Fideicomiso Común</span>
+                              )}
+                            </td>
+                            <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isIngreso ? 'text-emerald-700' : 'text-amber-900'}`}>
+                              {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
+                            </td>
+                            {fullAdmin && (
+                              <td className="py-3.5 px-3 text-right">
+                                <button
+                                  onClick={() => {
+                                    if (confirm('¿Eliminar este movimiento de caja?')) {
+                                      storageService.deleteCashFlowTransaction(tx.id);
+                                    }
+                                  }}
+                                  className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
+                                  title="Eliminar movimiento"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+
+                          {/* DESPLEGABLE CON LA TABLA DE DISTRIBUCIÓN POR COPROPIETARIO */}
+                          {isCommon && isExpanded && (
+                            <tr key={`${tx.id}-breakdown`} className="bg-[#FAF8F5]">
+                              <td colSpan={fullAdmin ? 7 : 6} className="p-3 sm:p-4 border-b border-[#E3DFC8]">
+                                <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs space-y-3">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-[#EFEAE0]">
+                                    <div>
+                                      <h4 className="font-bold text-xs text-[#163323] flex items-center gap-1.5">
+                                        <Coins className="w-4 h-4 text-[#BFA270]" />
+                                        <span>Distribución de este Ingreso ({tx.concept}) entre los Copropietarios</span>
+                                      </h4>
+                                      <p className="text-[11px] text-[#637568]">
+                                        Acreditación porcentual automática según las acciones de cada uno de los 16 copropietarios:
+                                      </p>
+                                    </div>
+                                    <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 border border-emerald-200">
+                                      Total Ingreso: ${tx.amount.toLocaleString()} ARS
+                                    </span>
+                                  </div>
+
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs text-left">
+                                      <thead className="bg-[#FAF8F5] text-[#55695B] uppercase font-bold text-[10px] tracking-wider border-b border-[#E3DFC8]">
+                                        <tr>
+                                          <th className="py-2.5 px-3">Copropietario</th>
+                                          <th className="py-2.5 px-3 text-center">Parte / Cabeza</th>
+                                          <th className="py-2.5 px-3 text-center">Acciones (%)</th>
+                                          <th className="py-2.5 px-3 text-right">Ingreso Distribuido</th>
+                                          <th className="py-2.5 px-3 text-center">Débito Automático</th>
+                                          <th className="py-2.5 px-3 text-right">Saldo a Favor</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-[#EFEAE0]">
+                                        {accountsSummary.map((acc) => {
+                                          const shareThisTx = Math.round(tx.amount * (acc.sharePct / 100));
+                                          return (
+                                            <tr key={acc.userId} className="hover:bg-[#FAF8F5]">
+                                              <td className="py-2.5 px-3 font-semibold text-[#163323]">{acc.userName}</td>
+                                              <td className="py-2.5 px-3 text-center text-[#7A8E7E]">{acc.partName}</td>
+                                              <td className="py-2.5 px-3 text-center font-mono font-bold text-[#163323]">{acc.sharePct.toFixed(2)}%</td>
+                                              <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">
+                                                ${shareThisTx.toLocaleString()} ARS
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center">
+                                                <span
+                                                  className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-2xs ${
+                                                    acc.isAutoDebitOn
+                                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                                      : 'bg-neutral-200 text-neutral-600'
+                                                  }`}
+                                                >
+                                                  {acc.isAutoDebitOn ? '⚡ Activado' : 'Pausado'}
+                                                </span>
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
+                                                ${acc.netAvailableBalance.toLocaleString()} ARS
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </tr>
+                        </React.Fragment>
                       );
                     })
                   )}
