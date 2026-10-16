@@ -295,7 +295,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       partName: exp.partName || '',
       status: exp.status,
       fundingSource: storageService.isOwnerAdvanceExpense(exp) ? 'owner_advance' : 'project_funds',
-      autoCollectForOthers: Boolean(exp.transferredToFeeCollectionId),
+      autoCollectForOthers: storageService.isOwnerAdvanceExpense(exp) && !exp.transferredToFeeCollectionId,
       paymentMethod: exp.paymentMethod || 'transfer',
       receiptUrl: exp.receiptUrl || '',
       notes: exp.notes || '',
@@ -388,7 +388,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return;
     }
 
-    if (expenseForm.fundingSource === 'owner_advance' && expenseForm.autoCollectForOthers && !editingExpense?.transferredToFeeCollectionId) {
+    if (expenseForm.fundingSource === 'owner_advance' && expenseForm.status === 'paid' && expenseForm.autoCollectForOthers && !editingExpense?.transferredToFeeCollectionId) {
       const collectionSaved = await createAutomaticCollectionForExpense(itemToSave);
       if (!collectionSaved) {
         setDialog({
