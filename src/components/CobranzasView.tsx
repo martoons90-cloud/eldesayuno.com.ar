@@ -147,6 +147,12 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (isAdmin && activeTabFilter === 'my_pending') {
+      setActiveTabFilter('all');
+    }
+  }, [isAdmin, activeTabFilter]);
+
   // Copy helper
   const handleCopyText = (text: string, fieldName: string) => {
     if (!text) return;
@@ -281,6 +287,17 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
   // Open Payment Recording Modal
   const handleOpenRecordPayment = (collectionId: string, alloc: OwnerFeeAllocation) => {
+    if (isAdmin) {
+      setDialog({
+        isOpen: true,
+        title: 'Operación individual no disponible',
+        message: 'Los pagos de cuotas individuales solo se informan desde el rol de copropietario. El administrador puede consultar y gestionar la cobranza general.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
     setRecordPaymentState({
       open: true,
       collectionId,
@@ -1027,25 +1044,17 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
               </p>
             </div>
 
-            {/* KPI 4 Admin: Mi estado personal */}
+            {/* KPI 4 Admin: indicador general, sin cuenta personal */}
             <div className="bg-[#FAF8F5] border border-[#DDD5BF] p-4 shadow-xs">
               <div className="flex items-center justify-between text-xs text-[#163323] font-semibold uppercase tracking-wider mb-2">
-                <span>Mi Estado Personal</span>
+                <span>Cobranzas Activas</span>
                 <Users className="w-4 h-4 text-[#BFA270]" />
               </div>
               <div className="text-xl sm:text-2xl font-bold font-mono text-[#163323]">
-                {myTotalPending > 0 ? (
-                  <span className="text-amber-700">${myTotalPending.toLocaleString()} ARS</span>
-                ) : (
-                  <span className="text-emerald-700 flex items-center gap-1">
-                    <Check className="w-5 h-5 text-emerald-600" /> $0 (Al día)
-                  </span>
-                )}
+                {collectionsInScope.filter((collection) => collection.status === 'active').length}
               </div>
               <p className="text-[11px] text-[#637568] mt-1">
-                {myPendingAllocations.length > 0
-                  ? `${myPendingAllocations.length} cuota(s) pendiente(s)`
-                  : 'Sin cuotas pendientes'}
+                Órdenes de cobranza actualmente en curso
               </p>
             </div>
           </>
@@ -1086,16 +1095,18 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           >
             Completadas ({collectionsInScope.filter((c) => c.status === 'completed').length})
           </button>
-          <button
-            onClick={() => setActiveTabFilter('my_pending')}
-            className={`px-3 py-1.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors cursor-pointer ${
-              activeTabFilter === 'my_pending'
-                ? 'bg-[#2563EB] text-white'
-                : 'text-blue-800 hover:bg-blue-50'
-            }`}
-          >
-            Mis Cuotas Pendientes ({myPendingAllocations.length})
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={() => setActiveTabFilter('my_pending')}
+              className={`px-3 py-1.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors cursor-pointer ${
+                activeTabFilter === 'my_pending'
+                  ? 'bg-[#2563EB] text-white'
+                  : 'text-blue-800 hover:bg-blue-50'
+              }`}
+            >
+              Mis Cuotas Pendientes ({myPendingAllocations.length})
+            </button>
+          )}
         </div>
 
         {/* Search & Category Filter */}
@@ -1303,17 +1314,6 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
                       {/* Action Buttons Admin */}
                       <div className="flex items-center gap-2">
-                        {myAlloc && myAlloc.status !== 'paid' && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenRecordPayment(collection.id, myAlloc)}
-                            className="px-3 py-1.5 bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-1"
-                          >
-                            <CreditCard className="w-3.5 h-3.5" />
-                            <span>Informar Mi Pago (${(myAlloc.assignedAmount - (myAlloc.paidAmount || 0)).toLocaleString()})</span>
-                          </button>
-                        )}
-
                         <button
                           type="button"
                           onClick={() => setExpandedCollectionId(isExpanded ? null : collection.id)}
@@ -1395,7 +1395,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                             <th className="py-2 px-3 text-center">Estado</th>
                             <th className="py-2 px-3">Método / Fecha</th>
                             <th className="py-2 px-3 text-center">Comprobante</th>
-                            <th className="py-2 px-3 text-right">Acciones</th>
+                            {!isAdmin && <th className="py-2 px-3 text-right">Acciones</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#E3DFC8]">
@@ -1406,12 +1406,12 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                               <tr
                                 key={alloc.userId}
                                 className={`hover:bg-[#FAF8F5] transition-colors ${
-                                  isMe ? 'bg-amber-50/60 font-medium' : ''
+                                  !isAdmin && isMe ? 'bg-amber-50/60 font-medium' : ''
                                 }`}
                               >
                                 <td className="py-2 px-3 font-semibold text-[#163323] flex items-center gap-1.5">
                                   <span>{alloc.userName}</span>
-                                  {isMe && (
+                                  {!isAdmin && isMe && (
                                     <span className="px-1.5 py-0.2 bg-[#1B3B2B] text-white text-[9px] uppercase rounded">
                                       Tú
                                     </span>
@@ -1486,16 +1486,18 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                                     <span className="text-neutral-300">-</span>
                                   )}
                                 </td>
-                                <td className="py-2 px-3 text-right">
-                                  {(isAdmin || isMe) && (
-                                    <button
-                                      onClick={() => handleOpenRecordPayment(collection.id, alloc)}
-                                      className="px-2 py-1 bg-white border border-[#DDD5BF] hover:border-[#1B3B2B] text-[11px] font-semibold text-[#163323] transition-colors cursor-pointer"
-                                    >
-                                      {isAdmin ? 'Editar Pago' : 'Cargar Pago'}
-                                    </button>
-                                  )}
-                                </td>
+                                {!isAdmin && (
+                                  <td className="py-2 px-3 text-right">
+                                    {isMe && (
+                                      <button
+                                        onClick={() => handleOpenRecordPayment(collection.id, alloc)}
+                                        className="px-2 py-1 bg-white border border-[#DDD5BF] hover:border-[#1B3B2B] text-[11px] font-semibold text-[#163323] transition-colors cursor-pointer"
+                                      >
+                                        Cargar Pago
+                                      </button>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
                             );
                           })}

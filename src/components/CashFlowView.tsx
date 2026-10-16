@@ -71,6 +71,9 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const canViewGeneral = canViewGeneralProp !== undefined
     ? canViewGeneralProp
     : canViewGeneralFinancialAccount(currentUser);
+  // Las operaciones personales solo se habilitan dentro de una sesión de
+  // copropietario. Un administrador ve y administra el conjunto, no su cuenta.
+  const canUsePersonalAccount = !fullAdmin;
   const canUpload = canUploadExpenses(currentUser);
 
   // Sub-tabs: if user cannot view general, force to 'mi_cuenta'
@@ -147,10 +150,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   // Ensure tab matches permission if switched
   useEffect(() => {
-    if (!canViewGeneral && activeTabSub !== 'mi_cuenta') {
+    if (canViewGeneral && !canUsePersonalAccount && activeTabSub === 'mi_cuenta') {
+      setActiveTabSub('caja');
+    } else if (!canViewGeneral && activeTabSub !== 'mi_cuenta') {
       setActiveTabSub('mi_cuenta');
     }
-  }, [canViewGeneral, activeTabSub]);
+  }, [canViewGeneral, canUsePersonalAccount, activeTabSub]);
 
   // Combine registered cash flows with all approved/paid expenses from Gastos
   const effectiveCashFlows = useMemo(() => {
@@ -347,6 +352,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   // Toggle Auto Debit
   const handleToggleAutoDebit = (userId: string) => {
+    if (!canUsePersonalAccount || userId !== currentUser.id) return;
     const current = storageService.isAutoDebitEnabled(userId);
     const nextVal = !current;
     storageService.setAutoDebitEnabled(userId, nextVal);
@@ -358,6 +364,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   // Execute Auto Debit Manually for an owner
   const handleExecuteAutoDebitNow = async (userId: string, availableBalance: number) => {
+    if (!canUsePersonalAccount || userId !== currentUser.id) return;
     setIsExecutingDebit(true);
     try {
       const res = await storageService.executeAutoDebitForUser(userId, availableBalance);
@@ -700,7 +707,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             <span>·</span>
             <span>
               {canViewGeneral
-                ? 'Gestión Integral de Caja, Cuentas Generales y Particulares'
+                ? 'Gestión Integral de Caja y Cuentas de Copropietarios'
                 : 'Mi Cuenta Particular, Ingresos Distribuidos y Débito Automático'}
             </span>
           </div>
@@ -717,7 +724,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           </h2>
           <p className="text-xs text-[#526657] mt-1 max-w-3xl leading-relaxed">
             {canViewGeneral
-              ? 'Panel reservado para Administrador, Intendente y Fiduciario. Control de caja común, distribución de ingresos por porcentaje accionario, débitos automáticos y cuentas particulares.'
+              ? 'Panel reservado para Administrador, Intendente y Fiduciario. Control de caja común, distribución de ingresos y cuentas de los copropietarios.'
               : 'Consultá tu porcentaje de participación, los ingresos comunes distribuidos a tu favor, tus gastos adelantados y el estado del débito automático de tus cuotas mensuales.'}
           </p>
         </div>
@@ -761,17 +768,19 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             <span>🏛️ Cuenta General (Caja Común)</span>
           </button>
 
-          <button
-            onClick={() => setActiveTabSub('mi_cuenta')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
-              activeTabSub === 'mi_cuenta'
-                ? 'border-[#1B3B2B] text-[#163323]'
-                : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
-            }`}
-          >
-            <UserCheck className="w-4 h-4 text-[#BFA270]" />
-            <span>👤 Mi Cuenta Particular</span>
-          </button>
+          {canUsePersonalAccount && (
+            <button
+              onClick={() => setActiveTabSub('mi_cuenta')}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
+                activeTabSub === 'mi_cuenta'
+                  ? 'border-[#1B3B2B] text-[#163323]'
+                  : 'border-transparent text-[#7A8E7E] hover:text-[#163323]'
+              }`}
+            >
+              <UserCheck className="w-4 h-4 text-[#BFA270]" />
+              <span>👤 Mi Cuenta Particular</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTabSub('cuentas_socios')}
@@ -807,7 +816,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       {/* ========================================================= */}
       {/* 1. VISTA: MI CUENTA PARTICULAR (PARA TODOS LOS COPROPIETARIOS) */}
       {/* ========================================================= */}
-      {activeTabSub === 'mi_cuenta' && (
+      {canUsePersonalAccount && activeTabSub === 'mi_cuenta' && (
         <div className="space-y-6">
           {/* KPI Summary Cards: Copropietario Particular */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
