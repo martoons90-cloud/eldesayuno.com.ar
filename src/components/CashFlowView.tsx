@@ -245,6 +245,9 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     const directIncomes = cashFlows.filter(
       (t) =>
         t.type === 'ingreso' &&
+        // Los adelantos se muestran por separado y no son ingresos cobrados:
+        // representan una deuda del fideicomiso con el copropietario.
+        !t.id.startsWith('ledger-') &&
         Boolean(t.userId && (t.userId === u.id || (t.userName && t.userName.toLowerCase() === u.name.toLowerCase())))
     );
     const totalDirectIncome = directIncomes.reduce((sum, t) => sum + t.amount, 0);
