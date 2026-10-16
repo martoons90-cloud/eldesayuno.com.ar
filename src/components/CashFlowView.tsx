@@ -221,6 +221,43 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   const cajaBalanceGeneral = totalIngresosGeneral - totalEgresosGeneral;
 
+  // Compromisos pendientes por compras pagadas personalmente por un
+  // copropietario. Son gastos reales, aunque el efectivo no haya salido de
+  // Caja/Banco todavía.
+  const totalAdelantosPendientes = useMemo(() => {
+    const advancesByOwner = new Map<string, number>();
+    const reimbursedByOwner = new Map<string, number>();
+    const autoDebitedByOwner = new Map<string, number>();
+
+    cashFlows
+      .filter((transaction) => transaction.id.startsWith('ledger-advance-') && transaction.userId)
+      .forEach((transaction) => {
+        const userId = transaction.userId!;
+        advancesByOwner.set(userId, (advancesByOwner.get(userId) || 0) + (Number(transaction.amount) || 0));
+      });
+    cashFlows
+      .filter((transaction) => transaction.category === 'reintegro_gasto' && transaction.userId)
+      .forEach((transaction) => {
+        const userId = transaction.userId!;
+        reimbursedByOwner.set(userId, (reimbursedByOwner.get(userId) || 0) + (Number(transaction.amount) || 0));
+      });
+    feeCollections.flatMap((collection) => collection.allocations || [])
+      .filter((allocation) => allocation.paymentMethod === 'auto_debit' && allocation.userId)
+      .forEach((allocation) => {
+        autoDebitedByOwner.set(
+          allocation.userId,
+          (autoDebitedByOwner.get(allocation.userId) || 0) + (Number(allocation.paidAmount) || 0)
+        );
+      });
+
+    return Array.from(advancesByOwner.entries()).reduce((total, [userId, advanced]) => {
+      const pending = advanced - (reimbursedByOwner.get(userId) || 0) - (autoDebitedByOwner.get(userId) || 0);
+      return total + Math.max(0, pending);
+    }, 0);
+  }, [cashFlows, feeCollections]);
+
+  const saldoNetoComprometido = cajaBalanceGeneral - totalAdelantosPendientes;
+
   // Compute particular account details for all eligible owners
   const activeOwners = users.filter((u) => u.active !== false && u.role !== 'intendente');
   const targetOwners = canViewGeneral
@@ -1048,17 +1085,17 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       {activeTabSub === 'caja' && canViewGeneral && (
         <div className="space-y-6">
           {/* Global KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
             <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-[#1B3B2B]">
               <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
-                Saldo Total en Caja Común
+                Caja Disponible
               </span>
               <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
                 ${cajaBalanceGeneral.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
               </div>
               <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                <span>Total ingresos generales menos egresos ejecutados</span>
+                <span>Dinero físico disponible en Caja/Banco</span>
               </p>
             </div>
 
@@ -1085,7 +1122,35 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 Gastos operativos, facturas y reintegros
               </p>
             </div>
+
+            <div className="bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 border-l-blue-700">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Adelantos a Reintegrar
+              </span>
+              <div className="text-2xl font-bold font-mono text-blue-900 mt-1">
+                ${totalAdelantosPendientes.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-blue-800 mt-1">
+                Compras personales pendientes de devolución
+              </p>
+            </div>
+
+            <div className={`bg-white border border-[#E3DFC8] p-5 shadow-xs border-l-4 ${saldoNetoComprometido < 0 ? 'border-l-red-700' : 'border-l-emerald-700'}`}>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
+                Saldo Neto Comprometido
+              </span>
+              <div className={`text-2xl font-bold font-mono mt-1 ${saldoNetoComprometido < 0 ? 'text-red-800' : 'text-emerald-800'}`}>
+                ${saldoNetoComprometido.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              </div>
+              <p className="text-[11px] text-[#526657] mt-1">
+                Caja disponible menos adelantos pendientes
+              </p>
+            </div>
           </div>
+
+          <p className="text-[11px] text-[#526657] bg-blue-50 border border-blue-200 px-3 py-2">
+            Los adelantos son gastos reales pagados por copropietarios. No reducen Caja hasta que se emite un reintegro; por eso se muestran como compromiso pendiente y ajustan el saldo neto.
+          </p>
 
           {/* LIBRO DIARIO GENERAL DE CAJA */}
           <div className="space-y-4">
