@@ -1559,7 +1559,14 @@ class StorageService {
     return Boolean(expense.userId) && expense.reimbursementStatus !== 'not_applicable';
   }
 
-  /** Mantiene un único movimiento económico por gasto, según su fuente de financiación. */
+  /**
+   * Mantiene el asiento de adelanto de un socio.
+   *
+   * Los gastos financiados por Caja/Banco ya no crean un egreso al guardar la
+   * factura: ese dinero sólo sale cuando Administración registra un pago
+   * concreto (total o parcial) desde Caja. Así la factura y el efectivo no se
+   * confunden.
+   */
   public async syncExpenseFunding(expense: ExpenseItem): Promise<boolean> {
     const cashExpenseId = `cf-exp-${expense.id}`;
     const advanceLedgerId = `ledger-advance-${expense.id}`;
@@ -1568,7 +1575,10 @@ class StorageService {
     const isApprovedAndPaid = expense.status === 'paid' && expense.approvalStatus !== 'rejected';
 
     if (!isApprovedAndPaid) {
-      return (await removeIfExists(cashExpenseId)) && (await removeIfExists(advanceLedgerId));
+      // No se elimina un pago físico ya asentado. Una factura puede volver a
+      // quedar pendiente de forma parcial y los movimientos de Caja deben
+      // conservar su trazabilidad.
+      return removeIfExists(advanceLedgerId);
     }
 
     if (this.isOwnerAdvanceExpense(expense)) {
@@ -1591,20 +1601,10 @@ class StorageService {
       });
     }
 
-    if (!await removeIfExists(advanceLedgerId)) return false;
-    return this.saveCashFlowTransaction({
-      id: cashExpenseId,
-      type: 'egreso',
-      category: (expense.category === 'servicios' ? 'servicio' : expense.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as any,
-      concept: `${expense.concept}${expense.provider ? ` (${expense.provider})` : ''}`,
-      amount: Number(expense.amount),
-      currency: expense.currency || 'ARS',
-      date: expense.date,
-      expenseId: expense.id,
-      notes: expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : (expense.notes || 'Gasto pagado desde Caja/Banco'),
-      createdBy: expense.createdBy || 'Sistema Gastos',
-      createdAt: expense.createdAt || new Date().toISOString(),
-    });
+    // Los movimientos con id cf-exp-* corresponden a pagos históricos ya
+    // realizados. Los nuevos pagos se registran explícitamente desde Caja
+    // como cf-invoice-payment-* para admitir pagos parciales y múltiples.
+    return removeIfExists(advanceLedgerId);
   }
 
   public getOwnerAvailableCredit(userId: string): number {

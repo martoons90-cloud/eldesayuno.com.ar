@@ -360,7 +360,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       userId: finalUserId,
       userName: finalUserName,
       partName: finalPartName,
-      status: expenseForm.status,
+      // Una factura a pagar con fondos del proyecto entra primero como
+      // pendiente. El egreso físico se registra desde Caja al decidir cuánto
+      // abonar, por lo que puede ser parcial o total.
+      status: expenseForm.fundingSource === 'project_funds' ? 'pending' : expenseForm.status,
       reimbursementStatus: expenseForm.fundingSource === 'owner_advance'
         ? (editingExpense?.reimbursementStatus === 'fully_repaid' ? 'fully_repaid' : editingExpense?.reimbursementStatus === 'partial' ? 'partial' : 'unpaid')
         : 'not_applicable',
@@ -1305,7 +1308,14 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <label className="block font-bold text-[#163323] mb-1">¿De dónde salió el dinero?</label>
                 <select
                   value={expenseForm.fundingSource}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, fundingSource: e.target.value as 'project_funds' | 'owner_advance' })}
+                  onChange={(e) => {
+                    const fundingSource = e.target.value as 'project_funds' | 'owner_advance';
+                    setExpenseForm({
+                      ...expenseForm,
+                      fundingSource,
+                      status: fundingSource === 'project_funds' ? 'pending' : expenseForm.status,
+                    });
+                  }}
                   className="w-full px-3 py-2 bg-white border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                 >
                   <option value="project_funds">Caja / Banco del proyecto</option>
@@ -1314,7 +1324,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <p className="text-[11px] mt-1.5 text-[#526657]">
                   {expenseForm.fundingSource === 'owner_advance'
                     ? 'No disminuye Caja ahora: genera saldo a favor para quien adelantó el pago.'
-                    : 'Disminuye Caja/Banco ahora: el proyecto pagó directamente este gasto.'}
+                    : 'Se registra como factura pendiente. El pago (total o parcial) se decide después desde Caja/Banco.'}
                 </p>
                 {expenseForm.fundingSource === 'owner_advance' && (
                   <label className="mt-3 flex items-start gap-2 cursor-pointer text-xs text-[#163323]">
@@ -1349,6 +1359,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <select
                     value={expenseForm.status}
                     onChange={(e) => setExpenseForm({ ...expenseForm, status: e.target.value as any })}
+                    disabled={expenseForm.fundingSource === 'project_funds'}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold focus:outline-none focus:border-[#1B3B2B]"
                   >
                     <option value="paid">Pagado</option>

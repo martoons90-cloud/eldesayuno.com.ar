@@ -99,6 +99,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [txLinkedUserId, setTxLinkedUserId] = useState<string>('');
   const [txNotes, setTxNotes] = useState('');
 
+  // Una factura puede abonarse en uno o varios pagos desde Caja.
+  const [isInvoicePaymentModalOpen, setIsInvoicePaymentModalOpen] = useState(false);
+  const [invoicePaymentAmounts, setInvoicePaymentAmounts] = useState<Record<string, number>>({});
+  const [invoicePaymentDate, setInvoicePaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [invoicePaymentNotes, setInvoicePaymentNotes] = useState('');
+
   // Expense Submission Modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expConcept, setExpConcept] = useState('');
@@ -157,43 +163,15 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     }
   }, [canViewGeneral, canUsePersonalAccount, activeTabSub]);
 
-  // Combine registered cash flows with all approved/paid expenses from Gastos
+  // Caja se calcula exclusivamente desde los movimientos confirmados en la
+  // base. Registrar una factura no mueve efectivo por sí solo.
   const effectiveCashFlows = useMemo(() => {
     // Los movimientos "ledger-" representan saldo entre el proyecto y un socio,
     // no dinero que haya ingresado o salido físicamente de Caja/Banco.
-    const list = cashFlows.filter((transaction) => !transaction.id.startsWith('ledger-'));
-    expenses
-      .filter(
-        (e) =>
-          (e.approvalStatus === 'approved' || e.status === 'paid' || !e.approvalStatus) &&
-          e.approvalStatus !== 'rejected' &&
-          // Si un socio pagó de su bolsillo, la salida de dinero todavía no fue
-          // de Caja/Banco: queda registrada como adelanto a su favor.
-          (e.reimbursementStatus === 'not_applicable' || !e.userId)
-      )
-      .forEach((e) => {
-        const alreadyInCashFlow = list.some((t) => t.expenseId === e.id || t.id === `cf-exp-${e.id}`);
-        if (!alreadyInCashFlow) {
-          list.push({
-            id: `cf-exp-${e.id}`,
-            type: 'egreso',
-            category: (e.category === 'servicios' ? 'servicio' : e.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as CashFlowCategory,
-            concept: `${e.concept}${e.provider ? ` (${e.provider})` : ''}`,
-            amount: Number(e.amount),
-            currency: e.currency || 'ARS',
-            date: e.date,
-            userId: e.userId,
-            userName: e.userName,
-            partName: e.partName,
-            expenseId: e.id,
-            notes: e.invoiceNumber ? `Factura N° ${e.invoiceNumber}` : (e.notes || 'Gasto auditado del fideicomiso'),
-            createdBy: e.createdBy || e.userName || 'Sistema Gastos',
-            createdAt: e.createdAt || e.date,
-          });
-        }
-      });
-    return list.sort((a, b) => b.date.localeCompare(a.date));
-  }, [cashFlows, expenses]);
+    return cashFlows
+      .filter((transaction) => !transaction.id.startsWith('ledger-'))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [cashFlows]);
 
   // Helper: Share Percentage of an owner
   const getOwnerSharePct = (u: User): number => {
@@ -260,6 +238,38 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   // Compute particular account details for all eligible owners
   const activeOwners = users.filter((u) => u.active !== false && u.role !== 'intendente');
+  const paidFromCajaByExpense = useMemo(() => {
+    const totals = new Map<string, number>();
+    cashFlows
+      .filter((transaction) =>
+        !transaction.id.startsWith('ledger-') &&
+        transaction.type === 'egreso' &&
+        Boolean(transaction.expenseId)
+      )
+      .forEach((transaction) => {
+        const expenseId = transaction.expenseId!;
+        totals.set(expenseId, (totals.get(expenseId) || 0) + (Number(transaction.amount) || 0));
+      });
+    return totals;
+  }, [cashFlows]);
+
+  // Facturas de Caja/Banco con saldo pendiente. Los adelantos personales se
+  // reintegran por su circuito propio y por eso no se ofrecen en este pago.
+  const payableInvoices = useMemo(() => expenses
+    .filter((expense) =>
+      expense.approvalStatus !== 'rejected' &&
+      !storageService.isOwnerAdvanceExpense(expense) &&
+      (expense.approvalStatus === 'approved' || expense.status === 'pending' || !expense.approvalStatus)
+    )
+    .map((expense) => {
+      const paidAmount = paidFromCajaByExpense.get(expense.id) || 0;
+      return {
+        expense,
+        paidAmount,
+        pendingAmount: Math.max(0, Math.round((Number(expense.amount) - paidAmount) * 100) / 100),
+      };
+    })
+    .filter((item) => item.pendingAmount > 0.01), [expenses, paidFromCajaByExpense]);
   const targetOwners = canViewGeneral
     ? activeOwners
     : activeOwners.filter(
@@ -315,10 +325,16 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       0
     );
 
+    // Parte proporcional de las facturas que Caja ya pagó. Es un asiento de
+    // cuenta corriente, no una segunda salida de efectivo.
+    const totalInvoicePayments = cashFlows
+      .filter((t) => t.id.startsWith('ledger-expense-share-') && t.userId === u.id)
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
     // 6. Net available balance in owner's particular account
     // (+) Incomes credited + (+) Expenses advanced - (-) Reimbursements - (-) Auto debits applied
     const totalCredited = totalUserIncome + totalAdvanced;
-    const totalDeductions = totalReimbursed + totalAutoDebited;
+    const totalDeductions = totalReimbursed + totalAutoDebited + totalInvoicePayments;
     const netAvailableBalance = Math.max(0, totalCredited - totalDeductions);
 
     // 7. Pending monthly fee debts
@@ -358,6 +374,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       totalAdvanced,
       totalReimbursed,
       totalAutoDebited,
+      totalInvoicePayments,
       netAvailableBalance,
       totalPendingDebt,
       pendingAllocations,
@@ -382,6 +399,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       totalAdvanced: 0,
       totalReimbursed: 0,
       totalAutoDebited: 0,
+      totalInvoicePayments: 0,
       netAvailableBalance: 0,
       totalPendingDebt: 0,
       pendingAllocations: [],
@@ -452,37 +470,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
     await storageService.saveCashFlowTransaction(newTx);
 
-    // If it's a common income (no single owner linked), distribute and auto-debit pending fees
+    // Un ingreso común se acredita proporcionalmente en las cuentas mediante
+    // su asiento de Caja, pero no se usa automáticamente para cancelar cuotas
+    // o facturas. Administración decide expresamente qué pagar.
     if (txType === 'ingreso' && !linkedUser) {
-      const activeOwnersList = users.filter((u) => u.active !== false && u.role !== 'intendente');
-      let debitedTotalAll = 0;
-      let affectedCount = 0;
-
-      for (const owner of activeOwnersList) {
-        if (storageService.isAutoDebitEnabled(owner.id)) {
-          const ownerPct = getOwnerSharePct(owner);
-          const ownerCredit = Math.round(Number(txAmount) * (ownerPct / 100));
-          if (ownerCredit > 0) {
-            const result = await storageService.executeAutoDebitForUser(owner.id, ownerCredit);
-            if (result.debitedTotal > 0) {
-              debitedTotalAll += result.debitedTotal;
-              affectedCount++;
-            }
-          }
-        }
-      }
-
-      if (debitedTotalAll > 0) {
-        alert(
-          `Ingreso común de $${Number(txAmount).toLocaleString()} ARS distribuido a los copropietarios.\n\n` +
-          `⚡ Se ejecutó débito automático para ${affectedCount} copropietario(s) con cuotas pendientes por un total de $${debitedTotalAll.toLocaleString()} ARS.`
-        );
-      } else {
-        alert(
-          `Ingreso común de $${Number(txAmount).toLocaleString()} ARS registrado con éxito.\n` +
-          `Se acreditó a cada copropietario la parte proporcional según su porcentaje de participación.`
-        );
-      }
+      alert(
+        `Ingreso común de $${Number(txAmount).toLocaleString()} ARS registrado con éxito.\n\n` +
+        `Quedó acreditado proporcionalmente en las cuentas de los copropietarios. Ahora podés decidir qué facturas pagar desde el botón “Pagar Facturas”; no se aplicó ningún débito automático.`
+      );
     }
 
     setIsTransactionModalOpen(false);
@@ -491,6 +486,109 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     setTxNotes('');
     setTxLinkedUserId('');
     await syncData();
+  };
+
+  const openInvoicePaymentModal = () => {
+    const initialAmounts: Record<string, number> = {};
+    payableInvoices.forEach(({ expense }) => { initialAmounts[expense.id] = 0; });
+    setInvoicePaymentAmounts(initialAmounts);
+    setInvoicePaymentDate(new Date().toISOString().split('T')[0]);
+    setInvoicePaymentNotes('');
+    setIsInvoicePaymentModalOpen(true);
+  };
+
+  const handlePayInvoicesFromCaja = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const selected = payableInvoices
+      .map((item) => ({ ...item, paymentAmount: Number(invoicePaymentAmounts[item.expense.id]) || 0 }))
+      .filter((item) => item.paymentAmount > 0.005);
+    const totalPayment = selected.reduce((sum, item) => sum + item.paymentAmount, 0);
+
+    if (selected.length === 0 || totalPayment <= 0) {
+      alert('Indicá un importe para al menos una factura.');
+      return;
+    }
+    if (selected.some((item) => item.paymentAmount > item.pendingAmount + 0.01)) {
+      alert('No podés pagar más que el saldo pendiente de una factura.');
+      return;
+    }
+    if (totalPayment > cajaBalanceGeneral + 0.01) {
+      alert(`El total a pagar ($${totalPayment.toLocaleString()} ARS) supera la Caja disponible ($${cajaBalanceGeneral.toLocaleString()} ARS).`);
+      return;
+    }
+
+    const persistedIds: string[] = [];
+    const paymentBatchId = Date.now().toString();
+    try {
+      for (const { expense, paymentAmount, paidAmount } of selected) {
+        const paymentId = `cf-invoice-payment-${expense.id}-${paymentBatchId}`;
+        const savedPayment = await storageService.saveCashFlowTransaction({
+          id: paymentId,
+          type: 'egreso',
+          category: (expense.category === 'servicios' ? 'servicio' : expense.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as CashFlowCategory,
+          concept: `Pago ${paymentAmount + paidAmount >= Number(expense.amount) - 0.01 ? 'total' : 'parcial'} de factura: ${expense.concept}`,
+          amount: paymentAmount,
+          currency: expense.currency || 'ARS',
+          date: invoicePaymentDate,
+          expenseId: expense.id,
+          notes: [expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : '', invoicePaymentNotes.trim()].filter(Boolean).join(' · '),
+          createdBy: `${currentUser.name} (Administración)`,
+          createdAt: new Date().toISOString(),
+        });
+        if (!savedPayment) throw new Error('No se pudo guardar el egreso de Caja.');
+        persistedIds.push(paymentId);
+
+        // Se reparte exactamente el pago entre los socios, corrigiendo el
+        // redondeo en el último asiento para que la suma coincida al centavo.
+        const shares = activeOwners.map((owner) => ({
+          owner,
+          amount: Math.round(paymentAmount * (getOwnerSharePct(owner) / 100) * 100) / 100,
+        }));
+        const allocated = shares.reduce((sum, share) => sum + share.amount, 0);
+        if (shares.length > 0) {
+          shares[shares.length - 1].amount = Math.round((shares[shares.length - 1].amount + paymentAmount - allocated) * 100) / 100;
+        }
+        for (const share of shares) {
+          if (share.amount <= 0) continue;
+          const ledgerId = `ledger-expense-share-${paymentId}-${share.owner.id}`;
+          const savedShare = await storageService.saveCashFlowTransaction({
+            id: ledgerId,
+            type: 'egreso',
+            category: 'pago_proveedor',
+            concept: `Parte proporcional de factura pagada: ${expense.concept}`,
+            amount: share.amount,
+            currency: expense.currency || 'ARS',
+            date: invoicePaymentDate,
+            userId: share.owner.id,
+            userName: share.owner.name,
+            partName: share.owner.partName,
+            expenseId: expense.id,
+            notes: `Pago de Caja ${paymentId}. Participación ${getOwnerSharePct(share.owner).toFixed(2)}%.`,
+            createdBy: `${currentUser.name} (Administración)`,
+            createdAt: new Date().toISOString(),
+          });
+          if (!savedShare) throw new Error('No se pudo guardar el asiento proporcional de los copropietarios.');
+          persistedIds.push(ledgerId);
+        }
+
+        const totalPaid = Math.round((paidAmount + paymentAmount) * 100) / 100;
+        const savedExpense = await storageService.saveExpense({
+          ...expense,
+          status: totalPaid >= Number(expense.amount) - 0.01 ? 'paid' : 'pending',
+          paidAt: invoicePaymentDate,
+          paymentMethod: 'Caja/Banco',
+        });
+        if (!savedExpense) throw new Error('No se pudo actualizar el estado de la factura.');
+      }
+      setIsInvoicePaymentModalOpen(false);
+      alert(`Pago de $${totalPayment.toLocaleString()} ARS registrado en Caja. Cada cuenta de copropietario recibió su parte proporcional.`);
+      await syncData();
+    } catch (error) {
+      // Evita dejar asientos sueltos si la base rechaza cualquier parte del pago.
+      await Promise.all(persistedIds.map((id) => storageService.deleteCashFlowTransaction(id)));
+      await syncData();
+      alert('La base de datos no confirmó el pago completo. No se aplicaron movimientos parciales.');
+    }
   };
 
   // Submit Expense Modal Form
@@ -527,26 +625,6 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
     storageService.saveExpense(newExpense);
 
-    if (fullAdmin) {
-      const outflow: CashFlowTransaction = {
-        id: `cf-exp-${Date.now()}`,
-        type: 'egreso',
-        category: 'pago_proveedor',
-        concept: `Gasto Aprobado: ${newExpense.concept}${newExpense.invoiceNumber ? ` (Factura N° ${newExpense.invoiceNumber})` : ''}`,
-        amount: newExpense.amount,
-        currency: 'ARS',
-        date: newExpense.date,
-        userId: selectedPayer.id,
-        userName: selectedPayer.name,
-        partName: selectedPayer.partName,
-        expenseId: newExpense.id,
-        notes: newExpense.notes,
-        createdBy: `${currentUser.name} (Admin/Intendente)`,
-        createdAt: new Date().toISOString(),
-      };
-      storageService.saveCashFlowTransaction(outflow);
-    }
-
     setIsExpenseModalOpen(false);
     setExpConcept('');
     setExpAmount(0);
@@ -556,7 +634,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     setExpNotes('');
     alert(
       fullAdmin
-        ? 'Gasto registrado y aprobado automáticamente en la caja del fideicomiso.'
+        ? 'Factura registrada y aprobada. Quedó disponible para pagar total o parcialmente desde Caja.'
         : 'Factura/Gasto enviado con éxito. Quedará sujeto a aprobación del Administrador o Intendente.'
     );
   };
@@ -571,24 +649,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     };
     storageService.saveExpense(updated);
 
-    const outflow: CashFlowTransaction = {
-      id: `cf-exp-${Date.now()}`,
-      type: 'egreso',
-      category: 'pago_proveedor',
-      concept: `Pago Gasto Aprobado: ${exp.concept} (${exp.userName || 'Socio'})`,
-      amount: exp.amount,
-      currency: 'ARS',
-      date: new Date().toISOString().split('T')[0],
-      userId: exp.userId,
-      userName: exp.userName,
-      partName: exp.partName,
-      expenseId: exp.id,
-      notes: exp.notes,
-      createdBy: `${currentUser.name} (Admin)`,
-      createdAt: new Date().toISOString(),
-    };
-    storageService.saveCashFlowTransaction(outflow);
-    alert('Gasto aprobado y registrado como egreso en caja.');
+    alert('Factura aprobada. El egreso se registrará sólo al aplicar un pago desde Caja.');
   };
 
   const handleRejectExpense = (exp: ExpenseItem) => {
@@ -660,6 +721,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   // 3. Approved expense advances
   // 4. Reimbursements
   // 5. Auto-debits applied to monthly fee debts
+  // 6. Proportional shares of invoices paid from Caja
   const personalMovements = [
     // Common incomes distributed
     ...commonIncomes.map((t) => {
@@ -733,6 +795,20 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       notes: allocation.notes || 'Débito automático aplicado desde saldo a favor',
       isCommonShare: false,
     })),
+    // Facturas abonadas con Caja: cada copropietario ve el importe que le
+    // corresponde por su participación, sin duplicar el egreso físico.
+    ...cashFlows
+      .filter((t) => t.id.startsWith('ledger-expense-share-') && t.userId === currentUser.id)
+      .map((t) => ({
+        id: t.id,
+        date: t.date,
+        type: 'egreso' as CashFlowType,
+        category: 'Factura Pagada por Caja',
+        concept: t.concept,
+        amount: t.amount,
+        notes: t.notes || 'Parte proporcional de una factura pagada desde Caja',
+        isCommonShare: false,
+      })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
   const pendingExpenses = expenses.filter((e) => !e.approvalStatus || e.approvalStatus === 'pending');
@@ -782,13 +858,22 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           )}
 
           {fullAdmin && (
-            <button
-              onClick={() => setIsTransactionModalOpen(true)}
-              className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-2xs"
-            >
-              <Plus className="w-4 h-4 text-[#BFA270]" />
-              <span>+ Registrar Ingreso / Movimiento</span>
-            </button>
+            <>
+              <button
+                onClick={openInvoicePaymentModal}
+                className="px-4 py-2.5 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#DDD5BF] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+              >
+                <Receipt className="w-4 h-4 text-[#8C7A53]" />
+                <span>Pagar Facturas ({payableInvoices.length})</span>
+              </button>
+              <button
+                onClick={() => setIsTransactionModalOpen(true)}
+                className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-2xs"
+              >
+                <Plus className="w-4 h-4 text-[#BFA270]" />
+                <span>+ Registrar Ingreso / Movimiento</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1152,6 +1237,43 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             Los adelantos son gastos reales pagados por copropietarios. No reducen Caja hasta que se emite un reintegro; por eso se muestran como compromiso pendiente y ajustan el saldo neto.
           </p>
 
+          <div className="bg-white border border-[#E3DFC8] shadow-xs overflow-hidden">
+            <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3DFC8] bg-[#FAF8F5]">
+              <div>
+                <h3 className="text-sm font-bold text-[#163323] flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-[#BFA270]" />
+                  <span>Facturas Pendientes de Pago desde Caja</span>
+                </h3>
+                <p className="text-[11px] text-[#637568] mt-1">Registrá un ingreso, elegí qué facturas pagar y definí el importe total o parcial. El sistema asienta cada parte proporcional en las cuentas de los copropietarios.</p>
+              </div>
+              {fullAdmin && (
+                <button onClick={openInvoicePaymentModal} className="px-3 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-[11px] font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 shrink-0">
+                  <Check className="w-3.5 h-3.5 text-[#BFA270]" />
+                  Aplicar Pago
+                </button>
+              )}
+            </div>
+            {payableInvoices.length === 0 ? (
+              <p className="px-4 py-5 text-xs text-[#637568]">No hay facturas pendientes de pago desde Caja.</p>
+            ) : (
+              <div className="divide-y divide-[#EFEAE0]">
+                {payableInvoices.slice(0, 5).map(({ expense, paidAmount, pendingAmount }) => (
+                  <div key={expense.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div>
+                      <strong className="text-[#163323]">{expense.concept}</strong>
+                      <span className="block text-[11px] text-[#7A8E7E]">{expense.provider || 'Proveedor no informado'}{expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}</span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="block text-[10px] uppercase text-[#7A8E7E]">Pagado ${paidAmount.toLocaleString()} · Pendiente</span>
+                      <strong className="font-mono text-amber-800">${pendingAmount.toLocaleString()} ARS</strong>
+                    </div>
+                  </div>
+                ))}
+                {payableInvoices.length > 5 && <p className="px-4 py-2 text-[11px] text-[#637568]">Y {payableInvoices.length - 5} factura(s) más pendientes.</p>}
+              </div>
+            )}
+          </div>
+
           {/* LIBRO DIARIO GENERAL DE CAJA */}
           <div className="space-y-4">
             <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1372,7 +1494,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               <span>Cuentas Corrientes Particulares de Copropietarios ({accountsSummary.length} Socios)</span>
             </h3>
             <p className="text-xs text-[#526657] leading-relaxed">
-              Consulte la cuenta particular de cada socio: sus gastos adelantados, sus ingresos comunes acreditados por porcentaje accionario, débitos automáticos aplicados a expensas y reintegros emitidos desde caja común.
+              Consulte la cuenta particular de cada socio: sus ingresos comunes acreditados por porcentaje, adelantos, cuotas debitadas y la parte proporcional de cada factura abonada desde Caja.
             </p>
           </div>
 
@@ -1420,7 +1542,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
                         <span className="text-[10px] text-[#7A8E7E] block uppercase">Ingresos %</span>
                         <span className="font-mono font-bold text-emerald-800 text-sm">${acc.distributedIncome.toLocaleString()}</span>
@@ -1428,6 +1550,10 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
                         <span className="text-[10px] text-[#7A8E7E] block uppercase">Adelantos</span>
                         <span className="font-mono font-bold text-[#163323] text-sm">${acc.totalAdvanced.toLocaleString()}</span>
+                      </div>
+                      <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
+                        <span className="text-[10px] text-[#7A8E7E] block uppercase">Facturas Pagadas</span>
+                        <span className="font-mono font-bold text-amber-800 text-sm">${acc.totalInvoicePayments.toLocaleString()}</span>
                       </div>
                       <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
                         <span className="text-[10px] text-[#7A8E7E] block uppercase">Saldo Disponible</span>
@@ -1552,6 +1678,83 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: APLICAR DINERO DE CAJA A FACTURAS                 */}
+      {/* ========================================================= */}
+      {isInvoicePaymentModalOpen && fullAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-3xl border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>Aplicar Dinero de Caja a Facturas</h3>
+                <p className="text-[11px] text-[#C9D6CC] mt-0.5">Caja disponible: ${cajaBalanceGeneral.toLocaleString()} ARS · Podés pagar en forma total o parcial.</p>
+              </div>
+              <button onClick={() => setIsInvoicePaymentModalOpen(false)} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+
+            <form onSubmit={handlePayInvoicesFromCaja} className="p-5 sm:p-6 space-y-4 overflow-y-auto text-xs">
+              {payableInvoices.length === 0 ? (
+                <div className="py-10 text-center text-[#637568]">No hay facturas pendientes de pago desde Caja.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold uppercase text-[#35483A] mb-1">Fecha de pago *</label>
+                      <input type="date" required value={invoicePaymentDate} onChange={(e) => setInvoicePaymentDate(e.target.value)} className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold focus:outline-none" />
+                    </div>
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200">
+                      <span className="block font-bold uppercase text-[10px] text-emerald-900">Total a aplicar</span>
+                      <span className="font-mono font-bold text-lg text-emerald-800">${Object.values(invoicePaymentAmounts).reduce((sum, amount) => sum + (Number(amount) || 0), 0).toLocaleString()} ARS</span>
+                    </div>
+                  </div>
+
+                  <div className="border border-[#E3DFC8] divide-y divide-[#EFEAE0]">
+                    {payableInvoices.map(({ expense, paidAmount, pendingAmount }) => {
+                      const selectedAmount = Number(invoicePaymentAmounts[expense.id]) || 0;
+                      return (
+                        <div key={expense.id} className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-[1fr_170px] gap-3 items-center">
+                          <div>
+                            <strong className="text-sm text-[#163323]">{expense.concept}</strong>
+                            <span className="block text-[11px] text-[#637568]">{expense.provider || 'Proveedor no informado'}{expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}</span>
+                            <span className="block mt-1 text-[11px] text-amber-800">Total: ${Number(expense.amount).toLocaleString()} · Ya pagado: ${paidAmount.toLocaleString()} · Pendiente: <strong>${pendingAmount.toLocaleString()}</strong></span>
+                            {selectedAmount > 0 && (
+                              <span className="block mt-1 text-[10px] text-blue-800">Se repartirá entre los copropietarios según su porcentaje de participación.</span>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block font-semibold uppercase text-[#35483A] mb-1">Pagar ahora (ARS)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={pendingAmount}
+                              step="0.01"
+                              value={selectedAmount || ''}
+                              onChange={(e) => setInvoicePaymentAmounts({ ...invoicePaymentAmounts, [expense.id]: Math.max(0, Number(e.target.value) || 0) })}
+                              className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-sm focus:outline-none"
+                              placeholder="0"
+                            />
+                            <button type="button" onClick={() => setInvoicePaymentAmounts({ ...invoicePaymentAmounts, [expense.id]: pendingAmount })} className="mt-1 text-[10px] font-bold text-[#1B3B2B] hover:underline cursor-pointer">Pagar total</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold uppercase text-[#35483A] mb-1">Observaciones</label>
+                    <textarea rows={2} value={invoicePaymentNotes} onChange={(e) => setInvoicePaymentNotes(e.target.value)} placeholder="Transferencia, número de comprobante u observación..." className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] focus:outline-none" />
+                  </div>
+                </>
+              )}
+              <div className="pt-3 border-t border-[#EFEAE0] flex items-center justify-end gap-3">
+                <button type="button" onClick={() => setIsInvoicePaymentModalOpen(false)} className="px-4 py-2 text-xs font-semibold text-[#637568] hover:text-[#163323] cursor-pointer">Cancelar</button>
+                {payableInvoices.length > 0 && <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer flex items-center gap-2 shadow-xs"><Check className="w-4 h-4 text-[#BFA270]" /><span>Confirmar Pagos</span></button>}
+              </div>
+            </form>
           </div>
         </div>
       )}
