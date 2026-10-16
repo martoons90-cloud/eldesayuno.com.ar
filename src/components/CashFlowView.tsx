@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   User,
   CashFlowTransaction,
@@ -60,10 +60,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   canViewGeneral: canViewGeneralProp,
   onNavigateToCobranzas,
 }) => {
-  const [cashFlows, setCashFlows] = useState<CashFlowTransaction[]>([]);
-  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
+  const [cashFlows, setCashFlows] = useState<CashFlowTransaction[]>(() => storageService.getCashFlows());
+  const [expenses, setExpenses] = useState<ExpenseItem[]>(() => storageService.getExpenses());
+  const [users, setUsers] = useState<User[]>(() => storageService.getUsers());
+  const [feeCollections, setFeeCollections] = useState<FeeCollection[]>(() => storageService.getFeeCollections());
+  const syncInProgress = useRef(false);
 
   // Permissions
   const fullAdmin = isAdmin !== undefined ? isAdmin : hasFinancialAccess(currentUser);
@@ -117,16 +118,25 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   );
 
   const syncData = async () => {
-    await storageService.syncApprovedExpensesToCashFlow();
-    const [freshCF, freshExp] = await Promise.all([
-      storageService.fetchCashFlowFromDatabase(),
-      storageService.fetchExpensesFromDatabase(),
-    ]);
-    if (freshCF && Array.isArray(freshCF)) setCashFlows(freshCF);
-    if (freshExp && Array.isArray(freshExp)) setExpenses(freshExp);
-    setUsers(storageService.getUsers());
-    setFeeCollections(storageService.getFeeCollections());
-    setAutoDebitEnabled(storageService.isAutoDebitEnabled(currentUser.id));
+    // La vista es de lectura. Antes, cada apertura volvía a guardar los gastos
+    // aprobados y disparaba notificaciones que iniciaban nuevas sincronizaciones
+    // en cadena, dejando la Caja momentáneamente vacía.
+    if (syncInProgress.current) return;
+    syncInProgress.current = true;
+    try {
+      const [freshCF, freshExp, freshFees] = await Promise.all([
+        storageService.fetchCashFlowFromDatabase(),
+        storageService.fetchExpensesFromDatabase(),
+        storageService.fetchFeesFromDatabase(),
+      ]);
+      if (Array.isArray(freshCF)) setCashFlows(freshCF);
+      if (Array.isArray(freshExp)) setExpenses(freshExp);
+      if (Array.isArray(freshFees)) setFeeCollections(freshFees);
+      setUsers(storageService.getUsers());
+      setAutoDebitEnabled(storageService.isAutoDebitEnabled(currentUser.id));
+    } finally {
+      syncInProgress.current = false;
+    }
   };
 
   useEffect(() => {
