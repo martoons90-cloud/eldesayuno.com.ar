@@ -325,7 +325,8 @@ export interface ExpenseItem {
   approvedAt?: string;
   approvedBy?: string;
   rejectionReason?: string;
-  reimbursementStatus?: 'unpaid' | 'partial' | 'fully_repaid';
+  /** `not_applicable` means the expense was paid directly from Caja/Banco. */
+  reimbursementStatus?: 'not_applicable' | 'unpaid' | 'partial' | 'fully_repaid';
   reimbursedAmount?: number; // Amount returned so far
   createdAt: string;
 }
@@ -336,6 +337,7 @@ export interface ExpenseItem {
 export type CashFlowType = 'ingreso' | 'egreso';
 export type CashFlowCategory =
   | 'aporte_socio'
+  | 'adelanto_socio'
   | 'pago_expensas'
   | 'pago_proveedor'
   | 'reintegro_gasto'

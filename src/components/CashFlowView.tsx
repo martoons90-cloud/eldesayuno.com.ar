@@ -144,12 +144,17 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   // Combine registered cash flows with all approved/paid expenses from Gastos
   const effectiveCashFlows = useMemo(() => {
-    const list = [...cashFlows];
+    // Los movimientos "ledger-" representan saldo entre el proyecto y un socio,
+    // no dinero que haya ingresado o salido físicamente de Caja/Banco.
+    const list = cashFlows.filter((transaction) => !transaction.id.startsWith('ledger-'));
     expenses
       .filter(
         (e) =>
           (e.approvalStatus === 'approved' || e.status === 'paid' || !e.approvalStatus) &&
-          e.approvalStatus !== 'rejected'
+          e.approvalStatus !== 'rejected' &&
+          // Si un socio pagó de su bolsillo, la salida de dinero todavía no fue
+          // de Caja/Banco: queda registrada como adelanto a su favor.
+          (e.reimbursementStatus === 'not_applicable' || !e.userId)
       )
       .forEach((e) => {
         const alreadyInCashFlow = list.some((t) => t.expenseId === e.id || t.id === `cf-exp-${e.id}`);
@@ -230,13 +235,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     const totalDirectIncome = directIncomes.reduce((sum, t) => sum + t.amount, 0);
     const totalUserIncome = distributedIncome + totalDirectIncome;
 
-    // 3. Approved expenses advanced out of pocket
-    const approvedExpenses = expenses.filter(
-      (e) =>
-        (e.userId === u.id || (e.userName && e.userName.toLowerCase() === u.name.toLowerCase())) &&
-        (e.approvalStatus === 'approved' || e.status === 'paid')
-    );
-    const totalAdvanced = approvedExpenses.reduce((sum, e) => sum + e.amount, 0);
+    // 3. Solo los adelantos explícitos cuentan como saldo a favor. Un gasto
+    // pagado desde Caja/Banco nunca se acredita a la cuenta de un socio.
+    const totalAdvanced = cashFlows
+      .filter((t) => t.id.startsWith('ledger-advance-') && t.userId === u.id)
+      .reduce((sum, t) => sum + t.amount, 0);
 
     // 4. Reimbursements received from cash flow
     const reimbursements = cashFlows.filter(
@@ -542,7 +545,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     storageService.saveExpense(updated);
   };
 
-  const handleExecuteReimbursement = (e: React.FormEvent) => {
+  const handleExecuteReimbursement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reimburseModalUser || reimburseAmount <= 0) {
       alert('Monto de reintegro no válido.');
@@ -568,7 +571,15 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    storageService.saveCashFlowTransaction(tx);
+    const savedCashMovement = await storageService.saveCashFlowTransaction(tx);
+    if (!savedCashMovement) {
+      alert('La base de datos no confirmó el reintegro. No se actualizó el saldo del socio.');
+      return;
+    }
+    const applied = await storageService.applyReimbursementToAdvances(reimburseModalUser.userId, reimburseAmount);
+    if (!applied) {
+      alert('El reintegro quedó registrado, pero no se pudo aplicar completo contra los adelantos. Revisá la cuenta corriente.');
+    }
     setReimburseModalUser(null);
     setReimburseAmount(0);
     setReimburseNotes('');
@@ -624,21 +635,17 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         notes: t.notes || 'Aporte directo registrado',
         isCommonShare: false,
       })),
-    // Approved expenses advanced
-    ...expenses
-      .filter(
-        (e) =>
-          (e.userId === currentUser.id || (e.userName && e.userName.toLowerCase() === currentUser.name.toLowerCase())) &&
-          (e.approvalStatus === 'approved' || e.status === 'paid')
-      )
-      .map((e) => ({
-        id: `exp-${e.id}`,
-        date: e.date,
+    // Adelantos personales realmente registrados en la cuenta corriente.
+    ...cashFlows
+      .filter((t) => t.id.startsWith('ledger-advance-') && t.userId === currentUser.id)
+      .map((t) => ({
+        id: t.id,
+        date: t.date,
         type: 'ingreso' as CashFlowType, // positive credit to owner's account
         category: 'Gasto Adelantado (Aprobado)',
-        concept: `Adelanto: ${e.concept}${e.invoiceNumber ? ` (Factura N° ${e.invoiceNumber})` : ''}`,
-        amount: e.amount,
-        notes: `Comercio: ${e.provider || 'Varios'} - Aprobado por ${e.approvedBy || 'Administración'}`,
+        concept: t.concept,
+        amount: t.amount,
+        notes: t.notes || 'Compra abonada personalmente por el copropietario',
         isCommonShare: false,
       })),
     // Reimbursements received

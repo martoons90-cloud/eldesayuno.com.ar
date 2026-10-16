@@ -1284,14 +1284,14 @@ class StorageService {
     return true;
   }
 
-  public updateOwnerAllocationStatus(
+  public async updateOwnerAllocationStatus(
     collectionId: string,
     userId: string,
     update: Partial<OwnerFeeAllocation>
   ): Promise<boolean> {
     const list = this.getFeeCollections();
     const collection = list.find((f) => f.id === collectionId);
-    if (!collection) return Promise.resolve(false);
+    if (!collection) return false;
 
     const updatedAllocations = collection.allocations.map((alloc) => {
       if (alloc.userId === userId) {
@@ -1308,7 +1308,38 @@ class StorageService {
       status: allPaid ? 'completed' : collection.status,
     };
 
-    return this.saveFeeCollection(updatedCollection);
+    const savedCollection = await this.saveFeeCollection(updatedCollection);
+    if (!savedCollection) return false;
+
+    const savedAllocation = updatedAllocations.find((allocation) => allocation.userId === userId);
+    if (!savedAllocation) return false;
+
+    // Un pago informado mueve dinero real solo cuando entra por un medio externo.
+    // Las compensaciones por saldo a favor cancelan deuda, pero no ingresan dinero a Caja.
+    const paymentCashFlowId = `cf-fee-payment-${collectionId}-${userId}`;
+    const existingCashMovement = this.getCashFlows().some((transaction) => transaction.id === paymentCashFlowId);
+    const isInternalCompensation = savedAllocation.paymentMethod === 'auto_debit';
+    const paidAmount = Number(savedAllocation.paidAmount) || 0;
+
+    if (isInternalCompensation || paidAmount <= 0) {
+      return !existingCashMovement || await this.deleteCashFlowTransaction(paymentCashFlowId);
+    }
+
+    return this.saveCashFlowTransaction({
+      id: paymentCashFlowId,
+      type: 'ingreso',
+      category: 'pago_expensas',
+      concept: `Cobranza recibida: ${collection.concept}`,
+      amount: paidAmount,
+      currency: collection.currency,
+      date: savedAllocation.paidAt || new Date().toISOString().split('T')[0],
+      userId: savedAllocation.userId,
+      userName: savedAllocation.userName,
+      partName: savedAllocation.partName,
+      notes: `Pago aplicado a la cobranza ${collection.id}. ${savedAllocation.notes || ''}`.trim(),
+      createdBy: 'Sistema de Cobranzas',
+      createdAt: new Date().toISOString(),
+    });
   }
 
   // Auto Debit Configuration & Execution
@@ -1392,6 +1423,17 @@ class StorageService {
   }
 
   public async deleteFeeCollection(collectionId: string): Promise<boolean> {
+    // Cada pago confirmado de una cobranza tiene su movimiento físico asociado.
+    // Al anular la cobranza se anulan también esos ingresos para que Caja no
+    // conserve dinero de una cuota que ya no existe.
+    const paymentPrefix = `cf-fee-payment-${collectionId}-`;
+    const paymentFlows = this.getCashFlows().filter((flow) => flow.id.startsWith(paymentPrefix));
+    for (const flow of paymentFlows) {
+      if (!await this.deleteCashFlowTransaction(flow.id)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
     const deleted = await supabaseService.deleteFeeCollection(collectionId);
     if (!deleted) {
       await this.hydrateFromAppStateAsync();
@@ -1491,13 +1533,37 @@ class StorageService {
     }
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
 
-    // Automatically sync approved/paid expense as an egreso in cash flow
-    if (expense.approvalStatus !== 'rejected') {
-      const outflowTx: CashFlowTransaction = {
-        id: `cf-exp-${expense.id}`,
-        type: 'egreso',
-        category: (expense.category === 'servicios' ? 'servicio' : expense.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as any,
-        concept: `${expense.concept}${expense.provider ? ` (${expense.provider})` : ''}`,
+    const fundingSaved = await this.syncExpenseFunding(expense);
+    if (!fundingSaved) return false;
+
+    this.notify(false);
+    return true;
+  }
+
+  /** Un gasto pagado por un socio genera crédito a su favor; no es una salida de Caja. */
+  public isOwnerAdvanceExpense(expense: ExpenseItem): boolean {
+    return Boolean(expense.userId) && expense.reimbursementStatus !== 'not_applicable';
+  }
+
+  /** Mantiene un único movimiento económico por gasto, según su fuente de financiación. */
+  public async syncExpenseFunding(expense: ExpenseItem): Promise<boolean> {
+    const cashExpenseId = `cf-exp-${expense.id}`;
+    const advanceLedgerId = `ledger-advance-${expense.id}`;
+    const existingIds = new Set(this.getCashFlows().map((transaction) => transaction.id));
+    const removeIfExists = async (id: string) => !existingIds.has(id) || await this.deleteCashFlowTransaction(id);
+    const isApprovedAndPaid = expense.status === 'paid' && expense.approvalStatus !== 'rejected';
+
+    if (!isApprovedAndPaid) {
+      return (await removeIfExists(cashExpenseId)) && (await removeIfExists(advanceLedgerId));
+    }
+
+    if (this.isOwnerAdvanceExpense(expense)) {
+      if (!await removeIfExists(cashExpenseId)) return false;
+      return this.saveCashFlowTransaction({
+        id: advanceLedgerId,
+        type: 'ingreso',
+        category: 'adelanto_socio',
+        concept: `Adelanto personal: ${expense.concept}`,
         amount: Number(expense.amount),
         currency: expense.currency || 'ARS',
         date: expense.date,
@@ -1505,18 +1571,86 @@ class StorageService {
         userName: expense.userName,
         partName: expense.partName,
         expenseId: expense.id,
-        notes: expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : (expense.notes || 'Gasto auditado del fideicomiso'),
+        notes: `Saldo a favor por compra pagada personalmente.${expense.invoiceNumber ? ` Factura N° ${expense.invoiceNumber}.` : ''}`,
         createdBy: expense.createdBy || expense.userName || 'Sistema Gastos',
         createdAt: expense.createdAt || new Date().toISOString(),
-      };
-      await this.saveCashFlowTransaction(outflowTx);
+      });
     }
 
-    this.notify(false);
-    return true;
+    if (!await removeIfExists(advanceLedgerId)) return false;
+    return this.saveCashFlowTransaction({
+      id: cashExpenseId,
+      type: 'egreso',
+      category: (expense.category === 'servicios' ? 'servicio' : expense.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as any,
+      concept: `${expense.concept}${expense.provider ? ` (${expense.provider})` : ''}`,
+      amount: Number(expense.amount),
+      currency: expense.currency || 'ARS',
+      date: expense.date,
+      expenseId: expense.id,
+      notes: expense.invoiceNumber ? `Factura N° ${expense.invoiceNumber}` : (expense.notes || 'Gasto pagado desde Caja/Banco'),
+      createdBy: expense.createdBy || 'Sistema Gastos',
+      createdAt: expense.createdAt || new Date().toISOString(),
+    });
+  }
+
+  public getOwnerAvailableCredit(userId: string): number {
+    const advances = this.getCashFlows()
+      .filter((transaction) => transaction.id.startsWith('ledger-advance-') && transaction.userId === userId)
+      .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
+    const reimbursements = this.getCashFlows()
+      .filter((transaction) => transaction.category === 'reintegro_gasto' && transaction.userId === userId)
+      .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
+    const compensations = this.getFeeCollections().flatMap((collection) => collection.allocations)
+      .filter((allocation) => allocation.userId === userId && allocation.paymentMethod === 'auto_debit')
+      .reduce((sum, allocation) => sum + (Number(allocation.paidAmount) || 0), 0);
+    return Math.max(0, Math.round((advances - reimbursements - compensations) * 100) / 100);
+  }
+
+  public async applyReimbursementToAdvances(userId: string, amount: number): Promise<boolean> {
+    let remaining = Math.max(0, Number(amount) || 0);
+    const advances = this.getExpenses()
+      .filter((expense) => this.isOwnerAdvanceExpense(expense) && expense.userId === userId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    for (const expense of advances) {
+      if (remaining <= 0) break;
+      const reimbursed = Number(expense.reimbursedAmount) || 0;
+      const pending = Math.max(0, Number(expense.amount) - reimbursed);
+      if (pending <= 0) continue;
+      const applied = Math.min(pending, remaining);
+      const totalReimbursed = Math.round((reimbursed + applied) * 100) / 100;
+      const saved = await this.saveExpense({
+        ...expense,
+        reimbursedAmount: totalReimbursed,
+        reimbursementStatus: totalReimbursed >= Number(expense.amount) ? 'fully_repaid' : 'partial',
+      });
+      if (!saved) return false;
+      remaining = Math.round((remaining - applied) * 100) / 100;
+    }
+    return remaining <= 0.01;
   }
 
   public async deleteExpense(expenseId: string): Promise<boolean> {
+    const expense = this.getExpenses().find((item) => item.id === expenseId);
+    const linkedCollections = this.getFeeCollections().filter(
+      (collection) => collection.originalExpenseId === expenseId || collection.id === expense?.transferredToFeeCollectionId
+    );
+    for (const collection of linkedCollections) {
+      if (!await this.deleteFeeCollection(collection.id)) {
+        return false;
+      }
+    }
+
+    const linkedFlows = this.getCashFlows().filter(
+      (flow) => flow.expenseId === expenseId || flow.id === `cf-exp-${expenseId}` || flow.id === `ledger-advance-${expenseId}`
+    );
+    for (const flow of linkedFlows) {
+      if (!await this.deleteCashFlowTransaction(flow.id)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
+
     const deleted = await supabaseService.deleteExpense(expenseId);
     if (!deleted) {
       await this.fetchExpensesFromDatabase();
@@ -1526,43 +1660,17 @@ class StorageService {
     const list = this.getExpenses().filter((e) => e.id !== expenseId);
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
 
-    // Remove matching cash flow egreso if exists
-    const matchingTx = this.getCashFlows().find((t) => t.expenseId === expenseId || t.id === `cf-exp-${expenseId}`);
-    if (matchingTx) {
-      await this.deleteCashFlowTransaction(matchingTx.id);
-    }
-
     this.notify(false);
     return true;
   }
 
   public async syncApprovedExpensesToCashFlow(): Promise<void> {
     const expenses = this.getExpenses();
-    const cashFlows = this.getCashFlows();
     const approved = expenses.filter(
       (e) => (e.approvalStatus === 'approved' || e.status === 'paid' || !e.approvalStatus) && e.approvalStatus !== 'rejected'
     );
     for (const exp of approved) {
-      const exists = cashFlows.some((t) => t.expenseId === exp.id || t.id === `cf-exp-${exp.id}`);
-      if (!exists) {
-        const outflowTx: CashFlowTransaction = {
-          id: `cf-exp-${exp.id}`,
-          type: 'egreso',
-          category: (exp.category === 'servicios' ? 'servicio' : exp.category === 'mantenimiento' ? 'mantenimiento' : 'pago_proveedor') as any,
-          concept: `${exp.concept}${exp.provider ? ` (${exp.provider})` : ''}`,
-          amount: Number(exp.amount),
-          currency: exp.currency || 'ARS',
-          date: exp.date,
-          userId: exp.userId,
-          userName: exp.userName,
-          partName: exp.partName,
-          expenseId: exp.id,
-          notes: exp.invoiceNumber ? `Factura N° ${exp.invoiceNumber}` : (exp.notes || 'Gasto auditado del fideicomiso'),
-          createdBy: exp.createdBy || exp.userName || 'Sistema Gastos',
-          createdAt: exp.createdAt || new Date().toISOString(),
-        };
-        await this.saveCashFlowTransaction(outflowTx);
-      }
+      await this.syncExpenseFunding(exp);
     }
   }
 

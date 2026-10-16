@@ -110,6 +110,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     userName: string;
     partName: string;
     status: 'paid' | 'pending';
+    fundingSource: 'project_funds' | 'owner_advance';
+    autoCollectForOthers: boolean;
     paymentMethod: string;
     receiptUrl: string;
     notes: string;
@@ -126,6 +128,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     userName: '',
     partName: '',
     status: 'paid',
+    fundingSource: 'project_funds',
+    autoCollectForOthers: true,
     paymentMethod: 'transfer',
     receiptUrl: '',
     notes: '',
@@ -290,6 +294,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       userName: exp.userName || '',
       partName: exp.partName || '',
       status: exp.status,
+      fundingSource: storageService.isOwnerAdvanceExpense(exp) ? 'owner_advance' : 'project_funds',
+      autoCollectForOthers: Boolean(exp.transferredToFeeCollectionId),
       paymentMethod: exp.paymentMethod || 'transfer',
       receiptUrl: exp.receiptUrl || '',
       notes: exp.notes || '',
@@ -329,6 +335,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     const finalUserName = foundUser ? foundUser.name : (expenseForm.userName || (expenseForm.userId ? expenseForm.userId : undefined));
     const finalPartName = foundUser ? foundUser.partName : (expenseForm.partName || undefined);
 
+    if (expenseForm.fundingSource === 'owner_advance' && !finalUserId) {
+      setDialog({
+        isOpen: true,
+        title: 'Falta indicar quién adelantó el dinero',
+        message: 'Para registrar un gasto pagado personalmente, seleccioná al copropietario que hizo el adelanto.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
+
     const itemToSave: ExpenseItem = {
       id: editingExpense ? editingExpense.id : 'exp-' + Date.now(),
       concept: expenseForm.concept.trim(),
@@ -343,11 +361,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       userName: finalUserName,
       partName: finalPartName,
       status: expenseForm.status,
+      reimbursementStatus: expenseForm.fundingSource === 'owner_advance'
+        ? (editingExpense?.reimbursementStatus === 'fully_repaid' ? 'fully_repaid' : editingExpense?.reimbursementStatus === 'partial' ? 'partial' : 'unpaid')
+        : 'not_applicable',
+      reimbursedAmount: expenseForm.fundingSource === 'owner_advance' ? (editingExpense?.reimbursedAmount || 0) : 0,
       paymentMethod: expenseForm.paymentMethod,
       receiptUrl: expenseForm.receiptUrl,
       notes: expenseForm.notes.trim(),
       createdBy: currentUser.name,
       createdAt: editingExpense ? editingExpense.createdAt : new Date().toISOString(),
+      transferredToFeeCollectionId: editingExpense?.transferredToFeeCollectionId,
+      transferredPercentage: editingExpense?.transferredPercentage,
+      transferredInstallments: editingExpense?.transferredInstallments,
     };
 
     const saved = await storageService.saveExpense(itemToSave);
@@ -361,6 +386,20 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         onConfirm: () => {},
       });
       return;
+    }
+
+    if (expenseForm.fundingSource === 'owner_advance' && expenseForm.autoCollectForOthers && !editingExpense?.transferredToFeeCollectionId) {
+      const collectionSaved = await createAutomaticCollectionForExpense(itemToSave);
+      if (!collectionSaved) {
+        setDialog({
+          isOpen: true,
+          title: 'Gasto guardado; cobranza pendiente',
+          message: 'El adelanto personal quedó registrado, pero la base no confirmó la cobranza automática. Podés emitirla desde el botón Enviar a Cobranza.',
+          type: 'alert',
+          confirmText: 'Aceptar',
+          onConfirm: () => {},
+        });
+      }
     }
     setIsNewExpenseModalOpen(false);
     setEditingExpense(null);
@@ -522,6 +561,71 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const liveTransferTotalPct = liveTransferAllocations.reduce((s, a) => s + a.percentage, 0);
   const liveTransferTotalAmt = liveTransferAllocations.reduce((s, a) => s + a.assignedAmount, 0);
 
+  /**
+   * Flujo predeterminado para compras abonadas por un socio: se emite una única
+   * cuota a 15 días y se compensa automáticamente la parte propia del aportante.
+   */
+  const createAutomaticCollectionForExpense = async (expense: ExpenseItem): Promise<boolean> => {
+    if (!expense.userId || !storageService.isOwnerAdvanceExpense(expense)) return true;
+    const activeUsers = storageService.getUsers().filter((user) => user.active !== false);
+    if (activeUsers.length === 0) return false;
+
+    const totalShares = activeUsers.reduce((sum, user) => sum + Math.max(0, Number(user.sharePercentage) || 0), 0);
+    let assignedSoFar = 0;
+    let availableCredit = storageService.getOwnerAvailableCredit(expense.userId);
+    const allocations: OwnerFeeAllocation[] = activeUsers.map((user, index) => {
+      const isLast = index === activeUsers.length - 1;
+      const percentage = totalShares > 0
+        ? (Math.max(0, Number(user.sharePercentage) || 0) / totalShares) * 100
+        : 100 / activeUsers.length;
+      const assignedAmount = isLast
+        ? Math.round((expense.amount - assignedSoFar) * 100) / 100
+        : Math.round(expense.amount * (percentage / 100) * 100) / 100;
+      assignedSoFar = Math.round((assignedSoFar + assignedAmount) * 100) / 100;
+      const compensation = user.id === expense.userId ? Math.min(assignedAmount, availableCredit) : 0;
+      availableCredit = Math.round((availableCredit - compensation) * 100) / 100;
+      return {
+        userId: user.id,
+        userName: user.name,
+        partName: user.partName,
+        cabezaNumber: user.cabezaNumber,
+        percentage: Math.round(percentage * 10000) / 10000,
+        assignedAmount,
+        paidAmount: compensation,
+        status: compensation >= assignedAmount ? 'paid' : compensation > 0 ? 'partial' : 'pending',
+        paymentMethod: compensation > 0 ? 'auto_debit' : undefined,
+        paidAt: compensation > 0 ? new Date().toISOString().split('T')[0] : undefined,
+        notes: compensation > 0 ? 'Compensado con el saldo a favor originado por este adelanto.' : undefined,
+      };
+    });
+
+    const dueDate = new Date(`${expense.date}T12:00:00`);
+    dueDate.setDate(dueDate.getDate() + 15);
+    const collection: FeeCollection = {
+      id: `fee-exp-${expense.id}`,
+      concept: expense.concept,
+      category: 'expensas_ordinarias',
+      totalAmount: expense.amount,
+      currency: expense.currency,
+      recurrence: 'one_time',
+      issueDate: expense.date,
+      dueDate: dueDate.toISOString().split('T')[0],
+      distributionMode: 'share_percentage',
+      allocations,
+      status: allocations.every((allocation) => allocation.status === 'paid') ? 'completed' : 'active',
+      createdBy: `${currentUser.name} (flujo automático de adelantos)`,
+      createdAt: new Date().toISOString(),
+      notes: `Cobranza generada automáticamente para reintegrar el adelanto de ${expense.userName || 'un copropietario'}. Vence a los 15 días.`,
+      installmentsCount: 1,
+      installmentNumber: 1,
+      transferredPercentage: 100,
+      originalExpenseId: expense.id,
+    };
+    const collectionSaved = await storageService.saveFeeCollection(collection);
+    if (!collectionSaved) return false;
+    return storageService.saveExpense({ ...expense, transferredToFeeCollectionId: collection.id, transferredPercentage: 100, transferredInstallments: 1 });
+  };
+
   // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES OR INDIVIDUAL INVOICE)
   const handleTransferToCobranza = async () => {
     if (currentTotalToCollect <= 0) {
@@ -539,6 +643,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     const formattedPeriodLabel = selectedPeriod === '2026-10' ? 'Octubre 2026' : selectedPeriod;
     const createdCount = Math.max(1, installmentsCount);
     const baseDueDateObj = new Date(transferDueDate || Date.now());
+    const advancePayerId = transferTarget === 'selected_expense' && selectedExpenseForTransfer && storageService.isOwnerAdvanceExpense(selectedExpenseForTransfer)
+      ? selectedExpenseForTransfer.userId
+      : undefined;
+    let advanceCreditRemaining = advancePayerId ? storageService.getOwnerAvailableCredit(advancePayerId) : 0;
 
     for (let i = 1; i <= createdCount; i++) {
       const issueDateObj = new Date();
@@ -567,11 +675,24 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       const installmentAmount = i === createdCount
         ? Math.round((currentFinancedTotal - currentAmountPerInstallment * (createdCount - 1)) * 100) / 100
         : currentAmountPerInstallment;
-      const allocations = calculateTransferAllocations(installmentAmount).map((allocation) => ({
-        ...allocation,
-        financingInterestPercentage: installmentInterestPercentage,
-        baseInstallmentAmount: Math.round((currentTotalToCollect / createdCount) * 100) / 100,
-      }));
+      const allocations = calculateTransferAllocations(installmentAmount).map((allocation) => {
+        const compensation = allocation.userId === advancePayerId
+          ? Math.min(allocation.assignedAmount, advanceCreditRemaining)
+          : 0;
+        advanceCreditRemaining = Math.round((advanceCreditRemaining - compensation) * 100) / 100;
+        return {
+          ...allocation,
+          paidAmount: compensation > 0 ? compensation : allocation.paidAmount,
+          status: compensation >= allocation.assignedAmount ? 'paid' : compensation > 0 ? 'partial' : allocation.status,
+          paymentMethod: compensation > 0 ? 'auto_debit' : allocation.paymentMethod,
+          paidAt: compensation > 0 ? new Date().toISOString().split('T')[0] : allocation.paidAt,
+          notes: compensation > 0
+            ? `Compensado automáticamente contra el adelanto personal del gasto ($${compensation.toLocaleString()} ARS).`
+            : allocation.notes,
+          financingInterestPercentage: installmentInterestPercentage,
+          baseInstallmentAmount: Math.round((currentTotalToCollect / createdCount) * 100) / 100,
+        };
+      });
 
       const newFeeCollection: FeeCollection = {
         id: `fee-exp-${Date.now()}-${i}`,
@@ -709,6 +830,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       userName: '',
                       partName: '',
                       status: 'paid',
+                      fundingSource: 'project_funds',
+                      autoCollectForOthers: true,
                       paymentMethod: 'transfer',
                       receiptUrl: '',
                       notes: '',
@@ -1176,6 +1299,37 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     className="w-full px-3 py-2 bg-white border border-[#DDD5BF] font-mono text-xs font-bold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
                   />
                 </div>
+              </div>
+
+              <div className={`border p-3 ${expenseForm.fundingSource === 'owner_advance' ? 'bg-blue-50 border-blue-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <label className="block font-bold text-[#163323] mb-1">¿De dónde salió el dinero?</label>
+                <select
+                  value={expenseForm.fundingSource}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, fundingSource: e.target.value as 'project_funds' | 'owner_advance' })}
+                  className="w-full px-3 py-2 bg-white border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                >
+                  <option value="project_funds">Caja / Banco del proyecto</option>
+                  <option value="owner_advance">Adelanto personal de un copropietario</option>
+                </select>
+                <p className="text-[11px] mt-1.5 text-[#526657]">
+                  {expenseForm.fundingSource === 'owner_advance'
+                    ? 'No disminuye Caja ahora: genera saldo a favor para quien adelantó el pago.'
+                    : 'Disminuye Caja/Banco ahora: el proyecto pagó directamente este gasto.'}
+                </p>
+                {expenseForm.fundingSource === 'owner_advance' && (
+                  <label className="mt-3 flex items-start gap-2 cursor-pointer text-xs text-[#163323]">
+                    <input
+                      type="checkbox"
+                      checked={expenseForm.autoCollectForOthers}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, autoCollectForOthers: e.target.checked })}
+                      className="mt-0.5 accent-[#1B3B2B]"
+                    />
+                    <span>
+                      <strong>Generar cobranza automáticamente para recuperar el adelanto</strong>
+                      <small className="block mt-0.5 text-[#526657]">Se distribuye según el porcentaje de cada copropietario, en una cuota con vencimiento a 15 días. La parte propia se compensa con su saldo a favor.</small>
+                    </span>
+                  </label>
+                )}
               </div>
 
               <div>

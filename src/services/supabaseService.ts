@@ -261,7 +261,10 @@ class SupabaseService {
           approved_at: e.approvedAt || null,
           approved_by: e.approvedBy || '',
           rejection_reason: e.rejectionReason || '',
-          reimbursement_status: e.reimbursementStatus || 'unpaid',
+          // Los gastos anteriores al flujo de adelantos se consideran pagos
+          // desde Caja/Banco. Solo la pantalla de Gastos marca explícitamente
+          // un adelanto personal como unpaid/partial/fully_repaid.
+          reimbursement_status: e.reimbursementStatus || 'not_applicable',
           reimbursed_amount: e.reimbursedAmount || 0,
           created_at: e.createdAt || new Date().toISOString(),
         }));
@@ -561,7 +564,7 @@ class SupabaseService {
           approvedAt: e.approved_at || null,
           approvedBy: e.approved_by || '',
           rejectionReason: e.rejection_reason || '',
-          reimbursementStatus: e.reimbursement_status || 'unpaid',
+          reimbursementStatus: e.reimbursement_status || 'not_applicable',
           reimbursedAmount: Number(e.reimbursed_amount) || 0,
         }));
       }
