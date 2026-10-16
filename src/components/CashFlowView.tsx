@@ -112,6 +112,10 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [incomeExpensePercentages, setIncomeExpensePercentages] = useState<Record<string, number>>({});
   const [incomeRemainderMode, setIncomeRemainderMode] = useState<'general' | 'all' | 'one'>('general');
   const [incomeRemainderUserId, setIncomeRemainderUserId] = useState('');
+  const [isSavingIncomeAllocation, setIsSavingIncomeAllocation] = useState(false);
+  const [isConfirmingPayments, setIsConfirmingPayments] = useState(false);
+  const incomeAllocationInProgress = useRef(false);
+  const paymentConfirmationInProgress = useRef(false);
   const [pendingRemainderAllocation, setPendingRemainderAllocation] = useState<{
     income: CashFlowTransaction;
     amount: number;
@@ -147,11 +151,20 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     if (syncInProgress.current) return;
     syncInProgress.current = true;
     try {
-      const [freshCF, freshExp, freshFees] = await Promise.all([
+      let [freshCF, freshExp, freshFees] = await Promise.all([
         storageService.fetchCashFlowFromDatabase(),
         storageService.fetchExpensesFromDatabase(),
         storageService.fetchFeesFromDatabase(),
       ]);
+      // Limpia los asientos que versiones anteriores dejaron al borrar el
+      // movimiento padre. Se hace contra la base y sólo si hay inconsistencias.
+      if (await storageService.reconcileCashFlowDependencies()) {
+        [freshCF, freshExp, freshFees] = await Promise.all([
+          storageService.fetchCashFlowFromDatabase(),
+          storageService.fetchExpensesFromDatabase(),
+          storageService.fetchFeesFromDatabase(),
+        ]);
+      }
       if (Array.isArray(freshCF)) setCashFlows(freshCF);
       if (Array.isArray(freshExp)) setExpenses(freshExp);
       if (Array.isArray(freshFees)) setFeeCollections(freshFees);
@@ -526,6 +539,10 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const handleIncomeAllocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!incomeForAllocation) return;
+    if (incomeAllocationInProgress.current) return;
+    incomeAllocationInProgress.current = true;
+    setIsSavingIncomeAllocation(true);
+    try {
     const existing = incomeDistributionBySource.get(incomeForAllocation.id) || [];
     if (incomeAllocationMode === 'expenses') {
       const selectedPercentages = payableInvoices
@@ -645,10 +662,18 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     }
     setIncomeForAllocation(null);
     await syncData();
+    } finally {
+      incomeAllocationInProgress.current = false;
+      setIsSavingIncomeAllocation(false);
+    }
   };
 
   const handlePayInvoicesFromCaja = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (paymentConfirmationInProgress.current) return;
+    paymentConfirmationInProgress.current = true;
+    setIsConfirmingPayments(true);
+    try {
     const selected = payableInvoices
       .map((item) => ({ ...item, paymentAmount: Number(invoicePaymentAmounts[item.expense.id]) || 0 }))
       .filter((item) => item.paymentAmount > 0.005);
@@ -810,6 +835,10 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       setPendingRemainderAllocation(null);
       await syncData();
       alert('La base de datos no confirmó el pago completo. No se aplicaron movimientos parciales.');
+    }
+    } finally {
+      paymentConfirmationInProgress.current = false;
+      setIsConfirmingPayments(false);
     }
   };
 
@@ -1567,9 +1596,13 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (confirm('¿Eliminar este movimiento de caja?')) {
-                                      storageService.deleteCashFlowTransaction(tx.id);
+                                      const deleted = await storageService.deleteCashFlowWithDependencies(tx.id);
+                                      if (!deleted) {
+                                        alert('La base de datos no confirmó la eliminación completa del movimiento.');
+                                      }
+                                      await syncData();
                                     }
                                   }}
                                   className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
@@ -1965,9 +1998,13 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                 value={displayedValue || ''}
                                 onChange={(e) => {
                                   const enteredValue = Math.max(0, Number(e.target.value) || 0);
+                                  const cappedValue = Math.min(
+                                    enteredValue,
+                                    isAmountEntry ? maxAmountForExpense : maxPctForExpense
+                                  );
                                   const nextPercentage = isAmountEntry && incomeForAllocation.amount > 0
-                                    ? Math.round((enteredValue / incomeForAllocation.amount) * 100 * 1000000) / 1000000
-                                    : enteredValue;
+                                    ? Math.round((cappedValue / incomeForAllocation.amount) * 100 * 1000000) / 1000000
+                                    : cappedValue;
                                   setIncomeExpensePercentages({ ...incomeExpensePercentages, [expense.id]: nextPercentage });
                                 }}
                                 className="w-full p-2 border border-[#DCD4C0] bg-[#FAF8F5] font-mono font-bold focus:outline-none"
@@ -2011,7 +2048,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               </div>
               <div className="pt-3 border-t border-[#EFEAE0] flex justify-end gap-3">
                 <button type="button" onClick={() => setIncomeForAllocation(null)} className="px-4 py-2 text-xs font-semibold text-[#637568] cursor-pointer">Cancelar</button>
-                <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer">{incomeAllocationMode === 'expenses' ? 'Revisar y aplicar gastos' : 'Guardar decisión'}</button>
+                <button type="submit" disabled={isSavingIncomeAllocation} className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] disabled:bg-[#637568] disabled:cursor-not-allowed text-white text-xs font-semibold uppercase tracking-wider cursor-pointer">{isSavingIncomeAllocation ? 'Guardando...' : incomeAllocationMode === 'expenses' ? 'Revisar y aplicar gastos' : 'Guardar decisión'}</button>
               </div>
             </form>
           </div>
@@ -2081,7 +2118,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                               max={pendingAmount}
                               step="0.01"
                               value={selectedAmount || ''}
-                              onChange={(e) => setInvoicePaymentAmounts({ ...invoicePaymentAmounts, [expense.id]: Math.max(0, Number(e.target.value) || 0) })}
+                              onChange={(e) => setInvoicePaymentAmounts({ ...invoicePaymentAmounts, [expense.id]: Math.min(pendingAmount, Math.max(0, Number(e.target.value) || 0)) })}
                               className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-sm focus:outline-none"
                               placeholder="0"
                             />
@@ -2100,7 +2137,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               )}
               <div className="pt-3 border-t border-[#EFEAE0] flex items-center justify-end gap-3">
                 <button type="button" onClick={() => { setIsInvoicePaymentModalOpen(false); setIncomeForExpensePayment(null); setPendingRemainderAllocation(null); }} className="px-4 py-2 text-xs font-semibold text-[#637568] hover:text-[#163323] cursor-pointer">Cancelar</button>
-                {payableInvoices.length > 0 && <button type="submit" className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer flex items-center gap-2 shadow-xs"><Check className="w-4 h-4 text-[#BFA270]" /><span>Confirmar Pagos</span></button>}
+                {payableInvoices.length > 0 && <button type="submit" disabled={isConfirmingPayments} className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] disabled:bg-[#637568] disabled:cursor-not-allowed text-white text-xs font-semibold uppercase tracking-wider cursor-pointer flex items-center gap-2 shadow-xs"><Check className="w-4 h-4 text-[#BFA270]" /><span>{isConfirmingPayments ? 'Confirmando...' : 'Confirmar Pagos'}</span></button>}
               </div>
             </form>
           </div>

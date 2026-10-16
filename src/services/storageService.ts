@@ -1737,6 +1737,140 @@ class StorageService {
     return true;
   }
 
+  /**
+   * Elimina un movimiento junto con los asientos que existen únicamente por él.
+   * Los asientos `ledger-*` son contables: jamás deben quedar visibles si el
+   * pago o el ingreso que los generó fue eliminado.
+   */
+  public async deleteCashFlowWithDependencies(txId: string): Promise<boolean> {
+    const flows = this.getCashFlows();
+    const target = flows.find((flow) => flow.id === txId);
+    if (!target) return false;
+
+    const idsToDelete = new Set<string>([txId]);
+    const affectedExpenseIds = new Set<string>();
+    const addPaymentAndShares = (payment: CashFlowTransaction) => {
+      idsToDelete.add(payment.id);
+      if (payment.expenseId) affectedExpenseIds.add(payment.expenseId);
+      flows
+        .filter((flow) => flow.id.startsWith(`ledger-expense-share-${payment.id}-`))
+        .forEach((flow) => idsToDelete.add(flow.id));
+    };
+
+    // Al borrar un ingreso, se borran sus distribuciones y cualquier pago de
+    // gasto financiado expresamente desde ese ingreso.
+    if (!target.id.startsWith('ledger-') && target.type === 'ingreso') {
+      flows
+        .filter((flow) => flow.id.startsWith(`ledger-income-share-${target.id}--`))
+        .forEach((flow) => idsToDelete.add(flow.id));
+      flows
+        .filter((flow) => flow.id.startsWith(`cf-income-spend-${target.id}-`))
+        .forEach(addPaymentAndShares);
+    }
+
+    // Al borrar un pago o reintegro, desaparecen sus cargos proporcionales de
+    // cada cuenta y el gasto vuelve al saldo realmente pendiente.
+    if (!target.id.startsWith('ledger-') && target.type === 'egreso' && target.expenseId) {
+      addPaymentAndShares(target);
+    }
+
+    const deletionOrder = [...idsToDelete]
+      .filter((id) => id !== txId)
+      .sort((a, b) => Number(b.startsWith('ledger-')) - Number(a.startsWith('ledger-')));
+
+    for (const id of [...deletionOrder, txId]) {
+      if (!await this.deleteCashFlowTransaction(id)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
+
+    for (const expenseId of affectedExpenseIds) {
+      if (!await this.recalculateExpensePaymentState(expenseId)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Repara asientos huérfanos de operaciones eliminadas en versiones anteriores. */
+  public async reconcileCashFlowDependencies(): Promise<boolean> {
+    const flows = this.getCashFlows();
+    const physicalFlows = flows.filter((flow) => !flow.id.startsWith('ledger-'));
+    const orphanIds = new Set<string>();
+    const affectedExpenseIds = new Set<string>();
+
+    const stalePayments = physicalFlows.filter(
+      (flow) => flow.id.startsWith('cf-income-spend-') &&
+        !physicalFlows.some((income) => income.type === 'ingreso' && flow.id.startsWith(`cf-income-spend-${income.id}-`))
+    );
+    stalePayments.forEach((payment) => {
+      orphanIds.add(payment.id);
+      if (payment.expenseId) affectedExpenseIds.add(payment.expenseId);
+    });
+
+    flows.filter((flow) => flow.id.startsWith('ledger-income-share-')).forEach((ledger) => {
+      const sourceId = ledger.id.slice('ledger-income-share-'.length).split('--')[0];
+      if (!physicalFlows.some((flow) => flow.id === sourceId && flow.type === 'ingreso')) {
+        orphanIds.add(ledger.id);
+      }
+    });
+
+    flows.filter((flow) => flow.id.startsWith('ledger-expense-share-')).forEach((ledger) => {
+      const hasPayment = physicalFlows.some((payment) =>
+        !orphanIds.has(payment.id) && ledger.id.startsWith(`ledger-expense-share-${payment.id}-`)
+      );
+      if (!hasPayment) {
+        orphanIds.add(ledger.id);
+        if (ledger.expenseId) affectedExpenseIds.add(ledger.expenseId);
+      }
+    });
+
+    if (orphanIds.size === 0) return false;
+    for (const id of orphanIds) {
+      if (!await this.deleteCashFlowTransaction(id)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
+    for (const expenseId of affectedExpenseIds) {
+      if (!await this.recalculateExpensePaymentState(expenseId)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private async recalculateExpensePaymentState(expenseId: string): Promise<boolean> {
+    const expense = this.getExpenses().find((item) => item.id === expenseId);
+    if (!expense) return true;
+    const payments = this.getCashFlows().filter(
+      (flow) => !flow.id.startsWith('ledger-') && flow.type === 'egreso' && flow.expenseId === expenseId
+    );
+    const paidAmount = Math.round(payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0) * 100) / 100;
+
+    if (this.isOwnerAdvanceExpense(expense)) {
+      const reimbursedAmount = Math.min(Number(expense.amount), paidAmount);
+      return this.saveExpense({
+        ...expense,
+        reimbursedAmount,
+        reimbursementStatus: reimbursedAmount <= 0.01
+          ? 'unpaid'
+          : reimbursedAmount >= Number(expense.amount) - 0.01 ? 'fully_repaid' : 'partial',
+      });
+    }
+
+    const paid = paidAmount >= Number(expense.amount) - 0.01;
+    return this.saveExpense({
+      ...expense,
+      status: paid ? 'paid' : 'pending',
+      paidAt: paid ? expense.paidAt : undefined,
+      paymentMethod: paid ? expense.paymentMethod : undefined,
+    });
+  }
+
   public async fetchExpensesFromDatabase(): Promise<ExpenseItem[]> {
     if (typeof window === 'undefined') return this.getExpenses();
     try {
