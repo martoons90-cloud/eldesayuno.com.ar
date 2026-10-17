@@ -555,11 +555,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       const selectedPayments = payableInvoices
         .map((item) => ({ ...item, paymentAmount: Math.round((Number(incomeExpenseAmounts[item.expense.id]) || 0) * 100) / 100 }))
         .filter((item) => item.paymentAmount > 0.005);
-      const requestedAmount = selectedPayments.reduce((sum, item) => sum + item.paymentAmount, 0);
+      // Toda validación monetaria se hace a centavos. Sin este redondeo,
+      // decimales binarios como 0.01 pueden hacer que $100.000 exactos se
+      // interpreten erróneamente como un importe mayor al ingreso.
+      const requestedAmount = Math.round(selectedPayments.reduce((sum, item) => sum + item.paymentAmount, 0) * 100) / 100;
       const alreadyApplied = cashFlows
         .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForAllocation.id}-`))
         .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
-      const availableAmount = Math.max(0, incomeForAllocation.amount - alreadyApplied);
+      const availableAmount = Math.max(0, Math.round((incomeForAllocation.amount - alreadyApplied) * 100) / 100);
 
       if (selectedPayments.length === 0) {
         alert('Indicá un monto o porcentaje del ingreso para aplicar a al menos un gasto.');
@@ -679,7 +682,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     const selected = payableInvoices
       .map((item) => ({ ...item, paymentAmount: Number(invoicePaymentAmounts[item.expense.id]) || 0 }))
       .filter((item) => item.paymentAmount > 0.005);
-    const totalPayment = selected.reduce((sum, item) => sum + item.paymentAmount, 0);
+    const totalPayment = Math.round(selected.reduce((sum, item) => sum + item.paymentAmount, 0) * 100) / 100;
 
     if (selected.length === 0 || totalPayment <= 0) {
       alert('Indicá un importe para al menos una factura.');
@@ -699,7 +702,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0)
       : 0;
     const sourceAvailable = incomeForExpensePayment
-      ? Math.max(0, incomeForExpensePayment.amount - alreadyAppliedFromSource)
+      ? Math.max(0, Math.round((incomeForExpensePayment.amount - alreadyAppliedFromSource) * 100) / 100)
       : cajaBalanceGeneral;
     if (totalPayment > sourceAvailable + 0.01) {
       alert(`Este ingreso tiene $${sourceAvailable.toLocaleString()} ARS disponibles para aplicar. No podés asignar un importe mayor.`);
