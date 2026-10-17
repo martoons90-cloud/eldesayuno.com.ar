@@ -961,14 +961,22 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   };
 
   // Filtered cash flows for General Ledger
-  const filteredGeneralCashFlows = effectiveCashFlows.filter((t) => {
-    const matchesType = typeFilter === 'all' || t.type === typeFilter;
-    const matchesSearch =
-      t.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (t.userName && t.userName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (t.partName && t.partName.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesType && matchesSearch;
-  });
+  const filteredGeneralCashFlows = effectiveCashFlows
+    .filter((t) => {
+      const matchesType = typeFilter === 'all' || t.type === typeFilter;
+      const matchesSearch =
+        t.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.userName && t.userName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (t.partName && t.partName.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchesType && matchesSearch;
+    })
+    // Libro diario: el primer renglón es el primer movimiento. Así el saldo
+    // se entiende en escalera, desde el ingreso hasta el saldo final.
+    .sort((a, b) =>
+      a.date.localeCompare(b.date) ||
+      (a.createdAt || '').localeCompare(b.createdAt || '') ||
+      a.id.localeCompare(b.id)
+    );
 
   // Saldo resultante luego de cada movimiento real de Caja. Se calcula sobre
   // todo el libro diario, no sobre el filtro visible, para que siga siendo
