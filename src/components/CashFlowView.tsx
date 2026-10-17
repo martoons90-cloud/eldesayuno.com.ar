@@ -1940,7 +1940,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 </div>
                 <div className="min-w-0">
               {incomeAllocationMode === 'expenses' && (() => {
-                const selectedPct = Object.values(incomeExpensePercentages).reduce((sum, percentage) => sum + (Number(percentage) || 0), 0);
+                const selectedPct = Math.round(Object.values(incomeExpensePercentages).reduce((sum, percentage) => sum + (Number(percentage) || 0), 0) * 100000) / 100000;
                 const alreadyApplied = cashFlows
                   .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForAllocation.id}-`))
                   .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
@@ -1974,12 +1974,22 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     {payableInvoices.length === 0 ? (
                       <p className="text-[11px] text-[#637568] py-2">No hay gastos cargados con saldo pendiente.</p>
                     ) : payableInvoices.map(({ expense, isOwnerAdvance, pendingAmount }) => {
-                      const percentage = Number(incomeExpensePercentages[expense.id]) || 0;
+                      const percentage = Math.round((Number(incomeExpensePercentages[expense.id]) || 0) * 100000) / 100000;
                       const amount = Math.round((incomeForAllocation.amount * percentage / 100) * 100) / 100;
-                      const maxPctForExpense = incomeForAllocation.amount > 0 ? Math.min(100, (pendingAmount / incomeForAllocation.amount) * 100) : 0;
-                      const maxAmountForExpense = Math.min(pendingAmount, incomeForAllocation.amount);
+                      const otherPercentages = Math.max(0, selectedPct - percentage);
+                      const maxPctByPending = incomeForAllocation.amount > 0
+                        ? (pendingAmount / incomeForAllocation.amount) * 100
+                        : 0;
+                      // Además del pendiente de esta factura, cada fila sólo
+                      // puede consumir el saldo no asignado por las demás.
+                      const maxPctByAvailableBalance = Math.max(0, remainingPct - otherPercentages);
+                      const maxPctForExpense = Math.round(Math.min(100, maxPctByPending, maxPctByAvailableBalance) * 100000) / 100000;
+                      const maxAmountForExpense = Math.round(Math.min(
+                        pendingAmount,
+                        Math.max(0, availableAmount - (incomeForAllocation.amount * otherPercentages / 100))
+                      ) * 100) / 100;
                       const isAmountEntry = incomeExpenseEntryMode === 'amount';
-                      const displayedValue = isAmountEntry ? amount : percentage;
+                      const displayedValue = isAmountEntry ? amount : Number(percentage.toFixed(5));
                       return (
                         <div key={expense.id} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px] gap-4 items-center bg-white border border-blue-100 p-3.5">
                           <div>
@@ -2006,8 +2016,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                     isAmountEntry ? maxAmountForExpense : maxPctForExpense
                                   );
                                   const nextPercentage = isAmountEntry && incomeForAllocation.amount > 0
-                                    ? Math.round((cappedValue / incomeForAllocation.amount) * 100 * 1000000) / 1000000
-                                    : cappedValue;
+                                    ? Math.round((cappedValue / incomeForAllocation.amount) * 100 * 100000) / 100000
+                                    : Math.round(cappedValue * 100000) / 100000;
                                   setIncomeExpensePercentages({ ...incomeExpensePercentages, [expense.id]: nextPercentage });
                                 }}
                                 className="w-full p-2 border border-[#DCD4C0] bg-[#FAF8F5] font-mono font-bold focus:outline-none"
@@ -2015,7 +2025,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                               />
                               <span className="text-[#637568]">{isAmountEntry ? 'ARS' : '%'}</span>
                             </div>
-                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo: ${maxAmountForExpense.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS ({maxPctForExpense.toFixed(2)}%)</span>
+                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo disponible: ${maxAmountForExpense.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS ({maxPctForExpense.toFixed(3)}%)</span>
                           </div>
                         </div>
                       );
