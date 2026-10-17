@@ -2011,17 +2011,24 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                max={isAmountEntry ? maxAmountForExpense : maxDebtPercentage}
+                                // En porcentaje se permite escribir 100. El
+                                // límite real se aplica sobre el importe exacto
+                                // para no bloquear por un redondeo visual.
+                                max={isAmountEntry ? maxAmountForExpense : 100}
                                 step={isAmountEntry ? '1' : '0.01'}
                                 value={displayedValue || ''}
                                 onChange={(e) => {
                                   const rawValue = e.target.value;
                                   const enteredValue = Math.max(0, Number(rawValue) || 0);
-                                  const maximum = isAmountEntry ? maxAmountForExpense : maxDebtPercentage;
+                                  const maximum = isAmountEntry ? maxAmountForExpense : 100;
                                   const cappedValue = Math.min(enteredValue, maximum);
-                                  const amountToApply = isAmountEntry
+                                  const requestedAmount = isAmountEntry
                                     ? cappedValue
                                     : Math.round((pendingAmount * cappedValue / 100) * 100) / 100;
+                                  // Si el porcentaje redondeado genera un
+                                  // centavo de más, prevalece el monto exacto
+                                  // que queda disponible del ingreso.
+                                  const amountToApply = Math.min(maxAmountForExpense, requestedAmount);
                                   setIncomeExpenseAmounts({ ...incomeExpenseAmounts, [expense.id]: amountToApply });
                                   if (!isAmountEntry) {
                                     setIncomeExpensePercentageInputs({
