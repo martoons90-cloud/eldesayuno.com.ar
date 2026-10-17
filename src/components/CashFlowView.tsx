@@ -970,6 +970,27 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     return matchesType && matchesSearch;
   });
 
+  // Saldo resultante luego de cada movimiento real de Caja. Se calcula sobre
+  // todo el libro diario, no sobre el filtro visible, para que siga siendo
+  // correcto al buscar sólo ingresos o sólo egresos.
+  const cashBalanceAfterTransaction = useMemo(() => {
+    const balances = new Map<string, number>();
+    let balance = 0;
+    [...effectiveCashFlows]
+      .sort((a, b) =>
+        a.date.localeCompare(b.date) ||
+        (a.createdAt || '').localeCompare(b.createdAt || '') ||
+        a.id.localeCompare(b.id)
+      )
+      .forEach((transaction) => {
+        balance += transaction.type === 'ingreso'
+          ? Number(transaction.amount) || 0
+          : -(Number(transaction.amount) || 0);
+        balances.set(transaction.id, Math.round(balance * 100) / 100);
+      });
+    return balances;
+  }, [effectiveCashFlows]);
+
   // Personal Ledger for currentUser:
   // Combines:
   // 1. User's share of common incomes
@@ -1528,13 +1549,14 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     <th className="py-3 px-4">Concepto / Detalle</th>
                     <th className="py-3 px-3">Socio / Destino</th>
                     <th className="py-3 px-4 text-right">Monto (ARS)</th>
+                    <th className="py-3 px-4 text-right">Saldo disponible</th>
                     {fullAdmin && <th className="py-3 px-3 text-right">Acciones</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EFEAE0]">
                   {filteredGeneralCashFlows.length === 0 ? (
                     <tr>
-                      <td colSpan={fullAdmin ? 7 : 6} className="py-12 text-center text-xs text-[#7A8E7E]">
+                      <td colSpan={fullAdmin ? 8 : 7} className="py-12 text-center text-xs text-[#7A8E7E]">
                         <Coins className="w-8 h-8 text-[#DDD5BF] mx-auto mb-2" />
                         <span className="font-semibold text-sm text-[#163323] block">
                           No se encontraron movimientos de caja con los filtros seleccionados.
@@ -1593,6 +1615,9 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                             <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${isIngreso ? 'text-emerald-700' : 'text-amber-900'}`}>
                               {isIngreso ? '+' : '-'}${tx.amount.toLocaleString()}
                             </td>
+                            <td className={`py-3.5 px-4 text-right font-mono font-bold text-sm ${(cashBalanceAfterTransaction.get(tx.id) || 0) >= 0 ? 'text-[#163323]' : 'text-red-700'}`}>
+                              ${(cashBalanceAfterTransaction.get(tx.id) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                            </td>
                             {fullAdmin && (
                               <td className="py-3.5 px-3 text-right whitespace-nowrap">
                                 {isCommon && (
@@ -1622,7 +1647,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                           {/* DESPLEGABLE CON LA TABLA DE DISTRIBUCIÓN POR COPROPIETARIO */}
                           {isCommon && incomeDistribution.length > 0 && isExpanded && (
                             <tr key={`${tx.id}-breakdown`} className="bg-[#FAF8F5]">
-                              <td colSpan={fullAdmin ? 7 : 6} className="p-3 sm:p-4 border-b border-[#E3DFC8]">
+                              <td colSpan={fullAdmin ? 8 : 7} className="p-3 sm:p-4 border-b border-[#E3DFC8]">
                                 <div className="bg-white border border-[#E3DFC8] p-4 shadow-xs space-y-3">
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-[#EFEAE0]">
                                     <div>
