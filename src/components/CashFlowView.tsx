@@ -1108,20 +1108,20 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     ? [
         ...cashFlows
           .filter((transaction) => transaction.id.startsWith('ledger-income-share-') && transaction.userId === accountDetail.userId)
-          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, category: 'Ingreso común distribuido', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, displayType: 'Acreditación', category: 'Ingreso común distribuido', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
         ...effectiveCashFlows
           .filter((transaction) => transaction.type === 'ingreso' && Boolean(transaction.userId && (transaction.userId === accountDetail.userId || transaction.userName?.toLowerCase() === accountDetail.userName.toLowerCase())))
-          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, category: transaction.category.replace('_', ' '), concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, displayType: 'Acreditación', category: transaction.category.replace('_', ' '), concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
         ...cashFlows
           .filter((transaction) => transaction.id.startsWith('ledger-advance-') && transaction.userId === accountDetail.userId)
-          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, category: 'Adelanto personal', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, displayType: 'Adelanto', category: 'Gasto pagado de su bolsillo', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
         ...effectiveCashFlows
           .filter((transaction) => (transaction.userId === accountDetail.userId || transaction.userName?.toLowerCase() === accountDetail.userName.toLowerCase()) && transaction.category === 'reintegro_gasto')
-          .map((transaction) => ({ id: `reimb-${transaction.id}`, date: transaction.date, type: 'egreso' as CashFlowType, category: 'Reintegro cobrado', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
-        ...accountDetail.autoDebitedAllocations.map(({ collection, allocation }) => ({ id: `debit-${collection.id}-${allocation.userId}`, date: allocation.paidAt || collection.dueDate || '', type: 'egreso' as CashFlowType, category: 'Débito automático', concept: `Pago de expensas: ${collection.concept}`, amount: allocation.paidAmount || 0, notes: allocation.notes || '' })),
+          .map((transaction) => ({ id: `reimb-${transaction.id}`, date: transaction.date, type: 'egreso' as CashFlowType, displayType: 'Reintegro', category: 'Reintegro cobrado', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+        ...accountDetail.autoDebitedAllocations.map(({ collection, allocation }) => ({ id: `debit-${collection.id}-${allocation.userId}`, date: allocation.paidAt || collection.dueDate || '', type: 'egreso' as CashFlowType, displayType: 'Débito', category: 'Débito automático', concept: `Pago de expensas: ${collection.concept}`, amount: allocation.paidAmount || 0, notes: allocation.notes || '' })),
         ...cashFlows
           .filter((transaction) => transaction.id.startsWith('ledger-expense-share-') && transaction.userId === accountDetail.userId)
-          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'egreso' as CashFlowType, category: 'Factura pagada por Caja', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'egreso' as CashFlowType, displayType: 'Factura aplicada', category: 'Factura pagada por Caja', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
       ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
     : [];
   const accountDetailBalanceById = new Map<string, number>();
@@ -1907,11 +1907,13 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
             </div>
             <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="border border-emerald-200 bg-emerald-50 p-3"><span className="block text-[10px] uppercase font-bold text-emerald-800">Ingresos acreditados</span><strong className="font-mono text-base text-emerald-900">${accountDetail.totalUserIncome.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
-                <div className="border border-[#E3DFC8] bg-[#FAF8F5] p-3"><span className="block text-[10px] uppercase font-bold text-[#637568]">Adelantos personales</span><strong className="font-mono text-base text-[#163323]">${accountDetail.totalAdvanced.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
-                <div className="border border-amber-200 bg-amber-50 p-3"><span className="block text-[10px] uppercase font-bold text-amber-800">Egresos / débitos</span><strong className="font-mono text-base text-amber-900">${(accountDetail.totalReimbursed + accountDetail.totalAutoDebited + accountDetail.totalInvoicePayments).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
-                <div className="border border-[#1B3B2B] bg-[#F3F8F3] p-3"><span className="block text-[10px] uppercase font-bold text-[#1B3B2B]">Saldo disponible</span><strong className="font-mono text-base text-[#163323]">${accountDetail.netAvailableBalance.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-emerald-200 bg-emerald-50 p-3"><span className="block text-[10px] uppercase font-bold text-emerald-800">Acreditaciones recibidas</span><strong className="font-mono text-base text-emerald-900">${accountDetail.totalUserIncome.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-[#E3DFC8] bg-[#FAF8F5] p-3"><span className="block text-[10px] uppercase font-bold text-[#637568]">Adelantos a reintegrar</span><strong className="font-mono text-base text-[#163323]">${accountDetail.totalAdvanced.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-amber-200 bg-amber-50 p-3"><span className="block text-[10px] uppercase font-bold text-amber-800">Reintegros / débitos</span><strong className="font-mono text-base text-amber-900">${(accountDetail.totalReimbursed + accountDetail.totalAutoDebited + accountDetail.totalInvoicePayments).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-[#1B3B2B] bg-[#F3F8F3] p-3"><span className="block text-[10px] uppercase font-bold text-[#1B3B2B]">Saldo a favor</span><strong className="font-mono text-base text-[#163323]">${accountDetail.netAvailableBalance.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
               </div>
+
+              <p className="border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-900">Los <strong>adelantos</strong> no son ingresos: representan gastos que el copropietario pagó de su bolsillo y que el fideicomiso le debe reintegrar.</p>
 
               <div className="border border-[#E3DFC8] overflow-x-auto">
                 <table className="w-full min-w-[760px] text-xs text-left">
@@ -1921,8 +1923,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       <th className="py-3 px-3">Tipo</th>
                       <th className="py-3 px-3">Categoría</th>
                       <th className="py-3 px-4">Concepto / detalle</th>
-                      <th className="py-3 px-3 text-right">Ingreso</th>
-                      <th className="py-3 px-3 text-right">Egreso</th>
+                      <th className="py-3 px-3 text-right">A favor</th>
+                      <th className="py-3 px-3 text-right">Descuento</th>
                       <th className="py-3 px-4 text-right">Saldo</th>
                     </tr>
                   </thead>
@@ -1935,7 +1937,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       return (
                         <tr key={movement.id} className="hover:bg-[#FAF8F5]">
                           <td className="py-3 px-3 font-mono text-[#637568]">{movement.date}</td>
-                          <td className={`py-3 px-3 font-bold uppercase text-[10px] ${isIncome ? 'text-emerald-700' : 'text-amber-800'}`}>{isIncome ? 'Ingreso' : 'Egreso'}</td>
+                          <td className={`py-3 px-3 font-bold uppercase text-[10px] ${movement.displayType === 'Adelanto' ? 'text-[#55695B]' : isIncome ? 'text-emerald-700' : 'text-amber-800'}`}>{movement.displayType}</td>
                           <td className="py-3 px-3 uppercase text-[10px] text-[#526657]">{movement.category}</td>
                           <td className="py-3 px-4"><strong className="text-[#163323] block">{movement.concept}</strong>{movement.notes && <span className="text-[10px] text-[#7A8E7E]">{movement.notes}</span>}</td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800">{isIncome ? `$${Number(movement.amount).toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : '—'}</td>
