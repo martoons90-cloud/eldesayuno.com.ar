@@ -109,7 +109,10 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [incomeAllocationMode, setIncomeAllocationMode] = useState<'general' | 'all' | 'one' | 'expenses'>('general');
   const [incomeAllocationUserId, setIncomeAllocationUserId] = useState('');
   const [incomeExpenseEntryMode, setIncomeExpenseEntryMode] = useState<'percentage' | 'amount'>('amount');
-  const [incomeExpensePercentages, setIncomeExpensePercentages] = useState<Record<string, number>>({});
+  // Los importes son la fuente de verdad. El porcentaje es sólo una forma de
+  // cargar un importe sobre el saldo pendiente de cada gasto.
+  const [incomeExpenseAmounts, setIncomeExpenseAmounts] = useState<Record<string, number>>({});
+  const [incomeExpensePercentageInputs, setIncomeExpensePercentageInputs] = useState<Record<string, string>>({});
   const [incomeRemainderMode, setIncomeRemainderMode] = useState<'general' | 'all' | 'one'>('general');
   const [incomeRemainderUserId, setIncomeRemainderUserId] = useState('');
   const [isSavingIncomeAllocation, setIsSavingIncomeAllocation] = useState(false);
@@ -525,8 +528,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   const openIncomeAllocation = (income: CashFlowTransaction) => {
     const existing = incomeDistributionBySource.get(income.id) || [];
-    const initialPercentages: Record<string, number> = {};
-    payableInvoices.forEach(({ expense }) => { initialPercentages[expense.id] = 0; });
+    const initialAmounts: Record<string, number> = {};
+    payableInvoices.forEach(({ expense }) => { initialAmounts[expense.id] = 0; });
     setIncomeForAllocation(income);
     setIncomeAllocationMode(existing.length === 0 ? 'general' : existing.length === 1 ? 'one' : 'all');
     setIncomeAllocationUserId(existing.length === 1 ? existing[0].userId || '' : '');
@@ -534,7 +537,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     // sigue disponible como alternativa, pero no debe interpretar $25.000
     // como si fuera 25.000%.
     setIncomeExpenseEntryMode('amount');
-    setIncomeExpensePercentages(initialPercentages);
+    setIncomeExpenseAmounts(initialAmounts);
+    setIncomeExpensePercentageInputs({});
     setIncomeRemainderMode('general');
     setIncomeRemainderUserId('');
   };
@@ -548,29 +552,24 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     try {
     const existing = incomeDistributionBySource.get(incomeForAllocation.id) || [];
     if (incomeAllocationMode === 'expenses') {
-      const selectedPercentages = payableInvoices
-        .map((item) => ({ ...item, percentage: Number(incomeExpensePercentages[item.expense.id]) || 0 }))
-        .filter((item) => item.percentage > 0.005);
-      const requestedPercentage = selectedPercentages.reduce((sum, item) => sum + item.percentage, 0);
+      const selectedPayments = payableInvoices
+        .map((item) => ({ ...item, paymentAmount: Math.round((Number(incomeExpenseAmounts[item.expense.id]) || 0) * 100) / 100 }))
+        .filter((item) => item.paymentAmount > 0.005);
+      const requestedAmount = selectedPayments.reduce((sum, item) => sum + item.paymentAmount, 0);
       const alreadyApplied = cashFlows
         .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForAllocation.id}-`))
         .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
       const availableAmount = Math.max(0, incomeForAllocation.amount - alreadyApplied);
 
-      if (selectedPercentages.length === 0) {
+      if (selectedPayments.length === 0) {
         alert('Indicá un monto o porcentaje del ingreso para aplicar a al menos un gasto.');
         return;
       }
-      if (requestedPercentage > 100.001) {
-        alert('La suma de los importes no puede superar el total del ingreso.');
-        return;
-      }
-      const requestedAmount = Math.round((incomeForAllocation.amount * requestedPercentage / 100) * 100) / 100;
       if (requestedAmount > availableAmount + 0.01) {
         alert(`De este ingreso quedan $${availableAmount.toLocaleString()} ARS disponibles para aplicar.`);
         return;
       }
-      if (selectedPercentages.some((item) => (incomeForAllocation.amount * item.percentage / 100) > item.pendingAmount + 0.01)) {
+      if (selectedPayments.some((item) => item.paymentAmount > item.pendingAmount + 0.01)) {
         alert('El importe elegido supera el saldo pendiente de al menos uno de los gastos.');
         return;
       }
@@ -586,9 +585,9 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         }
       }
       setIncomeForAllocation(null);
-      setInvoicePaymentAmounts(Object.fromEntries(selectedPercentages.map((item) => [
+      setInvoicePaymentAmounts(Object.fromEntries(selectedPayments.map((item) => [
         item.expense.id,
-        Math.round((incomeForAllocation.amount * item.percentage / 100) * 100) / 100,
+        item.paymentAmount,
       ])));
       setInvoicePaymentDate(new Date().toISOString().split('T')[0]);
       setInvoicePaymentNotes('');
@@ -1940,31 +1939,34 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 </div>
                 <div className="min-w-0">
               {incomeAllocationMode === 'expenses' && (() => {
-                const selectedPct = Math.round(Object.values(incomeExpensePercentages).reduce((sum, percentage) => sum + (Number(percentage) || 0), 0) * 100000) / 100000;
+                const selectedAmount = Math.round(Object.values(incomeExpenseAmounts).reduce((sum, amount) => sum + (Number(amount) || 0), 0) * 100) / 100;
                 const alreadyApplied = cashFlows
                   .filter((transaction) => transaction.id.startsWith(`cf-income-spend-${incomeForAllocation.id}-`))
                   .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
                 const availableAmount = Math.max(0, incomeForAllocation.amount - alreadyApplied);
                 const remainingPct = incomeForAllocation.amount > 0 ? Math.max(0, (availableAmount / incomeForAllocation.amount) * 100) : 0;
+                const selectedPct = incomeForAllocation.amount > 0
+                  ? Math.round((selectedAmount / incomeForAllocation.amount) * 100 * 100) / 100
+                  : 0;
                 return (
                   <div className="border border-blue-200 bg-blue-50 p-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-bold text-[#163323]">Asignación del ingreso a gastos</span>
-                      <span className={`font-mono font-bold ${selectedPct > remainingPct + 0.01 ? 'text-red-700' : 'text-blue-900'}`}>{selectedPct.toFixed(2)}% del ingreso usado · ${(incomeForAllocation.amount * selectedPct / 100).toLocaleString()} ARS</span>
+                      <span className={`font-mono font-bold ${selectedPct > remainingPct + 0.01 ? 'text-red-700' : 'text-blue-900'}`}>{selectedPct.toFixed(2)}% del ingreso usado · ${selectedAmount.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS</span>
                     </div>
                     <p className="text-[11px] text-[#526657]">Disponible de este ingreso: ${availableAmount.toLocaleString()} ARS ({remainingPct.toFixed(2)}%). El saldo no asignado queda como dinero general en Caja.</p>
                     <div className="flex flex-wrap items-center gap-2 border-y border-blue-200 py-2.5">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[#526657]">Cargar cada gasto por:</span>
                       <button
                         type="button"
-                        onClick={() => setIncomeExpenseEntryMode('amount')}
+                        onClick={() => { setIncomeExpenseEntryMode('amount'); setIncomeExpensePercentageInputs({}); }}
                         className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'amount' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
                       >
                         Monto (ARS)
                       </button>
                       <button
                         type="button"
-                        onClick={() => setIncomeExpenseEntryMode('percentage')}
+                        onClick={() => { setIncomeExpenseEntryMode('percentage'); setIncomeExpensePercentageInputs({}); }}
                         className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'percentage' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
                       >
                         % de cada deuda
@@ -1974,27 +1976,22 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     {payableInvoices.length === 0 ? (
                       <p className="text-[11px] text-[#637568] py-2">No hay gastos cargados con saldo pendiente.</p>
                     ) : payableInvoices.map(({ expense, isOwnerAdvance, pendingAmount }) => {
-                      // Se guarda internamente la participación sobre el
-                      // ingreso para calcular la operación; en pantalla el %
-                      // representa siempre el saldo de ESTA factura.
-                      const sourcePercentage = Math.round((Number(incomeExpensePercentages[expense.id]) || 0) * 100000) / 100000;
-                      const amount = Math.round((incomeForAllocation.amount * sourcePercentage / 100) * 100) / 100;
-                      const otherPercentages = Math.max(0, selectedPct - sourcePercentage);
-                      // Además del pendiente de esta factura, cada fila sólo
-                      // puede consumir el saldo no asignado por las demás.
-                      const maxPctByAvailableBalance = Math.max(0, remainingPct - otherPercentages);
+                      const amount = Math.round((Number(incomeExpenseAmounts[expense.id]) || 0) * 100) / 100;
+                      const otherAmount = Math.max(0, selectedAmount - amount);
                       const maxAmountForExpense = Math.round(Math.min(
                         pendingAmount,
-                        Math.max(0, availableAmount - (incomeForAllocation.amount * otherPercentages / 100))
+                        Math.max(0, availableAmount - otherAmount)
                       ) * 100) / 100;
                       const maxDebtPercentage = pendingAmount > 0
-                        ? Math.round((maxAmountForExpense / pendingAmount) * 100 * 100000) / 100000
+                        ? Math.round((maxAmountForExpense / pendingAmount) * 100 * 100) / 100
                         : 0;
                       const percentageOfDebt = pendingAmount > 0
-                        ? Math.round((amount / pendingAmount) * 100 * 100000) / 100000
+                        ? Math.round((amount / pendingAmount) * 100 * 100) / 100
                         : 0;
                       const isAmountEntry = incomeExpenseEntryMode === 'amount';
-                      const displayedValue = isAmountEntry ? amount : Number(percentageOfDebt.toFixed(5));
+                      const displayedValue = isAmountEntry
+                        ? amount
+                        : incomeExpensePercentageInputs[expense.id] ?? percentageOfDebt;
                       return (
                         <div key={expense.id} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px] gap-4 items-center bg-white border border-blue-100 p-3.5">
                           <div>
@@ -2015,31 +2012,38 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                 step={isAmountEntry ? '1' : '0.01'}
                                 value={displayedValue || ''}
                                 onChange={(e) => {
-                                  const enteredValue = Math.max(0, Number(e.target.value) || 0);
-                                  const cappedValue = Math.min(
-                                    enteredValue,
-                                    isAmountEntry ? maxAmountForExpense : maxDebtPercentage
-                                  );
+                                  const rawValue = e.target.value;
+                                  const enteredValue = Math.max(0, Number(rawValue) || 0);
+                                  const maximum = isAmountEntry ? maxAmountForExpense : maxDebtPercentage;
+                                  const cappedValue = Math.min(enteredValue, maximum);
                                   const amountToApply = isAmountEntry
                                     ? cappedValue
                                     : Math.round((pendingAmount * cappedValue / 100) * 100) / 100;
-                                  const nextPercentage = incomeForAllocation.amount > 0
-                                    ? Math.round((amountToApply / incomeForAllocation.amount) * 100 * 100000) / 100000
-                                    : 0;
-                                  setIncomeExpensePercentages({ ...incomeExpensePercentages, [expense.id]: nextPercentage });
+                                  setIncomeExpenseAmounts({ ...incomeExpenseAmounts, [expense.id]: amountToApply });
+                                  if (!isAmountEntry) {
+                                    setIncomeExpensePercentageInputs({
+                                      ...incomeExpensePercentageInputs,
+                                      [expense.id]: enteredValue > maximum ? String(maximum) : rawValue,
+                                    });
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (isAmountEntry) return;
+                                  const nextInputs = { ...incomeExpensePercentageInputs };
+                                  delete nextInputs[expense.id];
+                                  setIncomeExpensePercentageInputs(nextInputs);
                                 }}
                                 className="w-full p-2 border border-[#DCD4C0] bg-[#FAF8F5] font-mono font-bold focus:outline-none"
                                 placeholder="0"
                               />
                               <span className="text-[#637568]">{isAmountEntry ? 'ARS' : '%'}</span>
                             </div>
-                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo disponible: ${maxAmountForExpense.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS ({maxDebtPercentage.toFixed(3)}% de esta deuda)</span>
+                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo disponible: ${maxAmountForExpense.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS ({maxDebtPercentage.toFixed(2)}% de esta deuda)</span>
                           </div>
                         </div>
                       );
                     })}
                     {(() => {
-                      const selectedAmount = Math.round((incomeForAllocation.amount * selectedPct / 100) * 100) / 100;
                       const remainderAmount = Math.max(0, Math.round((availableAmount - selectedAmount) * 100) / 100);
                       return (
                         <div className="mt-3 border-t border-blue-200 pt-3 space-y-2">
