@@ -1950,7 +1950,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                   <div className="border border-blue-200 bg-blue-50 p-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-bold text-[#163323]">Asignación del ingreso a gastos</span>
-                      <span className={`font-mono font-bold ${selectedPct > remainingPct + 0.01 ? 'text-red-700' : 'text-blue-900'}`}>{selectedPct.toFixed(2)}% elegido · ${(incomeForAllocation.amount * selectedPct / 100).toLocaleString()} ARS</span>
+                      <span className={`font-mono font-bold ${selectedPct > remainingPct + 0.01 ? 'text-red-700' : 'text-blue-900'}`}>{selectedPct.toFixed(2)}% del ingreso usado · ${(incomeForAllocation.amount * selectedPct / 100).toLocaleString()} ARS</span>
                     </div>
                     <p className="text-[11px] text-[#526657]">Disponible de este ingreso: ${availableAmount.toLocaleString()} ARS ({remainingPct.toFixed(2)}%). El saldo no asignado queda como dinero general en Caja.</p>
                     <div className="flex flex-wrap items-center gap-2 border-y border-blue-200 py-2.5">
@@ -1967,29 +1967,34 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                         onClick={() => setIncomeExpenseEntryMode('percentage')}
                         className={`px-3 py-1.5 border text-[11px] font-bold cursor-pointer ${incomeExpenseEntryMode === 'percentage' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#526657]'}`}
                       >
-                        Porcentaje (%)
+                        % de cada deuda
                       </button>
-                      <span className="text-[10px] text-[#637568]">Ejemplo: para pagar veinticinco mil, escribí 25000 en Monto (ARS).</span>
+                      <span className="text-[10px] text-[#637568]">El porcentaje es de cada deuda: $63.789 pendientes = 100% de esa deuda.</span>
                     </div>
                     {payableInvoices.length === 0 ? (
                       <p className="text-[11px] text-[#637568] py-2">No hay gastos cargados con saldo pendiente.</p>
                     ) : payableInvoices.map(({ expense, isOwnerAdvance, pendingAmount }) => {
-                      const percentage = Math.round((Number(incomeExpensePercentages[expense.id]) || 0) * 100000) / 100000;
-                      const amount = Math.round((incomeForAllocation.amount * percentage / 100) * 100) / 100;
-                      const otherPercentages = Math.max(0, selectedPct - percentage);
-                      const maxPctByPending = incomeForAllocation.amount > 0
-                        ? (pendingAmount / incomeForAllocation.amount) * 100
-                        : 0;
+                      // Se guarda internamente la participación sobre el
+                      // ingreso para calcular la operación; en pantalla el %
+                      // representa siempre el saldo de ESTA factura.
+                      const sourcePercentage = Math.round((Number(incomeExpensePercentages[expense.id]) || 0) * 100000) / 100000;
+                      const amount = Math.round((incomeForAllocation.amount * sourcePercentage / 100) * 100) / 100;
+                      const otherPercentages = Math.max(0, selectedPct - sourcePercentage);
                       // Además del pendiente de esta factura, cada fila sólo
                       // puede consumir el saldo no asignado por las demás.
                       const maxPctByAvailableBalance = Math.max(0, remainingPct - otherPercentages);
-                      const maxPctForExpense = Math.round(Math.min(100, maxPctByPending, maxPctByAvailableBalance) * 100000) / 100000;
                       const maxAmountForExpense = Math.round(Math.min(
                         pendingAmount,
                         Math.max(0, availableAmount - (incomeForAllocation.amount * otherPercentages / 100))
                       ) * 100) / 100;
+                      const maxDebtPercentage = pendingAmount > 0
+                        ? Math.round((maxAmountForExpense / pendingAmount) * 100 * 100000) / 100000
+                        : 0;
+                      const percentageOfDebt = pendingAmount > 0
+                        ? Math.round((amount / pendingAmount) * 100 * 100000) / 100000
+                        : 0;
                       const isAmountEntry = incomeExpenseEntryMode === 'amount';
-                      const displayedValue = isAmountEntry ? amount : Number(percentage.toFixed(5));
+                      const displayedValue = isAmountEntry ? amount : Number(percentageOfDebt.toFixed(5));
                       return (
                         <div key={expense.id} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px] gap-4 items-center bg-white border border-blue-100 p-3.5">
                           <div>
@@ -2001,23 +2006,26 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                             </div>
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-[#526657] uppercase mb-1">{isAmountEntry ? 'Monto a aplicar (ARS)' : '% del ingreso'}</label>
+                            <label className="block text-[10px] font-bold text-[#526657] uppercase mb-1">{isAmountEntry ? 'Monto a aplicar (ARS)' : '% del saldo pendiente'}</label>
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
                                 min="0"
-                                max={isAmountEntry ? maxAmountForExpense : maxPctForExpense}
+                                max={isAmountEntry ? maxAmountForExpense : maxDebtPercentage}
                                 step={isAmountEntry ? '1' : '0.01'}
                                 value={displayedValue || ''}
                                 onChange={(e) => {
                                   const enteredValue = Math.max(0, Number(e.target.value) || 0);
                                   const cappedValue = Math.min(
                                     enteredValue,
-                                    isAmountEntry ? maxAmountForExpense : maxPctForExpense
+                                    isAmountEntry ? maxAmountForExpense : maxDebtPercentage
                                   );
-                                  const nextPercentage = isAmountEntry && incomeForAllocation.amount > 0
-                                    ? Math.round((cappedValue / incomeForAllocation.amount) * 100 * 100000) / 100000
-                                    : Math.round(cappedValue * 100000) / 100000;
+                                  const amountToApply = isAmountEntry
+                                    ? cappedValue
+                                    : Math.round((pendingAmount * cappedValue / 100) * 100) / 100;
+                                  const nextPercentage = incomeForAllocation.amount > 0
+                                    ? Math.round((amountToApply / incomeForAllocation.amount) * 100 * 100000) / 100000
+                                    : 0;
                                   setIncomeExpensePercentages({ ...incomeExpensePercentages, [expense.id]: nextPercentage });
                                 }}
                                 className="w-full p-2 border border-[#DCD4C0] bg-[#FAF8F5] font-mono font-bold focus:outline-none"
@@ -2025,7 +2033,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                               />
                               <span className="text-[#637568]">{isAmountEntry ? 'ARS' : '%'}</span>
                             </div>
-                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo disponible: ${maxAmountForExpense.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS ({maxPctForExpense.toFixed(3)}%)</span>
+                            <span className="mt-1 block text-[10px] text-[#637568]">Máximo disponible: ${maxAmountForExpense.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS ({maxDebtPercentage.toFixed(3)}% de esta deuda)</span>
                           </div>
                         </div>
                       );
