@@ -141,6 +141,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [reimburseModalUser, setReimburseModalUser] = useState<{ userId: string; userName: string; balanceDue: number } | null>(null);
   const [reimburseAmount, setReimburseAmount] = useState<number>(0);
   const [reimburseNotes, setReimburseNotes] = useState('');
+  const [accountDetailUserId, setAccountDetailUserId] = useState<string | null>(null);
 
   // Auto-debit local toggle state for currentUser
   const [autoDebitEnabled, setAutoDebitEnabled] = useState<boolean>(
@@ -1099,6 +1100,37 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
+  // Detalle de cuenta que Administración puede auditar para cualquier socio.
+  const accountDetail = accountDetailUserId
+    ? accountsSummary.find((account) => account.userId === accountDetailUserId) || null
+    : null;
+  const accountDetailMovements = accountDetail
+    ? [
+        ...cashFlows
+          .filter((transaction) => transaction.id.startsWith('ledger-income-share-') && transaction.userId === accountDetail.userId)
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, category: 'Ingreso común distribuido', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+        ...effectiveCashFlows
+          .filter((transaction) => transaction.type === 'ingreso' && Boolean(transaction.userId && (transaction.userId === accountDetail.userId || transaction.userName?.toLowerCase() === accountDetail.userName.toLowerCase())))
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, category: transaction.category.replace('_', ' '), concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+        ...cashFlows
+          .filter((transaction) => transaction.id.startsWith('ledger-advance-') && transaction.userId === accountDetail.userId)
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'ingreso' as CashFlowType, category: 'Adelanto personal', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+        ...effectiveCashFlows
+          .filter((transaction) => (transaction.userId === accountDetail.userId || transaction.userName?.toLowerCase() === accountDetail.userName.toLowerCase()) && transaction.category === 'reintegro_gasto')
+          .map((transaction) => ({ id: `reimb-${transaction.id}`, date: transaction.date, type: 'egreso' as CashFlowType, category: 'Reintegro cobrado', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+        ...accountDetail.autoDebitedAllocations.map(({ collection, allocation }) => ({ id: `debit-${collection.id}-${allocation.userId}`, date: allocation.paidAt || collection.dueDate || '', type: 'egreso' as CashFlowType, category: 'Débito automático', concept: `Pago de expensas: ${collection.concept}`, amount: allocation.paidAmount || 0, notes: allocation.notes || '' })),
+        ...cashFlows
+          .filter((transaction) => transaction.id.startsWith('ledger-expense-share-') && transaction.userId === accountDetail.userId)
+          .map((transaction) => ({ id: transaction.id, date: transaction.date, type: 'egreso' as CashFlowType, category: 'Factura pagada por Caja', concept: transaction.concept, amount: transaction.amount, notes: transaction.notes || '' })),
+      ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+    : [];
+  const accountDetailBalanceById = new Map<string, number>();
+  let accountDetailRunningBalance = 0;
+  accountDetailMovements.forEach((movement) => {
+    accountDetailRunningBalance += movement.type === 'ingreso' ? Number(movement.amount) || 0 : -(Number(movement.amount) || 0);
+    accountDetailBalanceById.set(movement.id, Math.round(accountDetailRunningBalance * 100) / 100);
+  });
+
   const pendingExpenses = expenses.filter((e) => !e.approvalStatus || e.approvalStatus === 'pending');
 
   return (
@@ -1816,35 +1848,107 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     </div>
                   </div>
 
-                  {fullAdmin && hasBalance && (
+                  {fullAdmin && (
                     <div className="pt-3 border-t border-[#EFEAE0] flex items-center justify-between gap-2">
                       <button
                         type="button"
-                        onClick={() => handleToggleAutoDebit(acc.userId)}
-                        className="text-[11px] text-[#1B3B2B] hover:underline cursor-pointer"
+                        onClick={() => setAccountDetailUserId(acc.userId)}
+                        className="px-3 py-1.5 border border-[#DCD4C0] bg-[#FAF8F5] hover:bg-[#F2EEE5] text-[#1B3B2B] text-xs font-semibold uppercase tracking-wider cursor-pointer flex items-center gap-1"
                       >
-                        {acc.isAutoDebitOn ? 'Pausar Débito' : 'Activar Débito'}
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Ver cuenta</span>
                       </button>
-
-                      <button
-                        onClick={() => {
-                          setReimburseModalUser({
-                            userId: acc.userId,
-                            userName: acc.userName,
-                            balanceDue: acc.netAvailableBalance,
-                          });
-                          setReimburseAmount(acc.netAvailableBalance);
-                        }}
-                        className="px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                      >
-                        <span>Emitir Reintegro</span>
-                        <ArrowRight className="w-3.5 h-3.5 text-[#BFA270]" />
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {hasBalance && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAutoDebit(acc.userId)}
+                            className="text-[11px] text-[#1B3B2B] hover:underline cursor-pointer"
+                          >
+                            {acc.isAutoDebitOn ? 'Pausar Débito' : 'Activar Débito'}
+                          </button>
+                        )}
+                        {hasBalance && (
+                          <button
+                            onClick={() => {
+                              setReimburseModalUser({
+                                userId: acc.userId,
+                                userName: acc.userName,
+                                balanceDue: acc.netAvailableBalance,
+                              });
+                              setReimburseAmount(acc.netAvailableBalance);
+                            }}
+                            className="px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                          >
+                            <span>Emitir Reintegro</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-[#BFA270]" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DETALLE AUDITABLE DE CUENTA PARTICULAR (SOLO ADMIN) */}
+      {accountDetail && fullAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-6xl border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>Cuenta corriente de {accountDetail.userName}</h3>
+                <p className="text-[11px] text-[#C9D6CC] mt-0.5">{accountDetail.partName} · {accountDetail.sharePct.toFixed(2)}% de participación · Vista de auditoría</p>
+              </div>
+              <button type="button" onClick={() => setAccountDetailUserId(null)} className="text-[#C9D6CC] hover:text-white p-1 cursor-pointer" aria-label="Cerrar detalle de cuenta"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="border border-emerald-200 bg-emerald-50 p-3"><span className="block text-[10px] uppercase font-bold text-emerald-800">Ingresos acreditados</span><strong className="font-mono text-base text-emerald-900">${accountDetail.totalUserIncome.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-[#E3DFC8] bg-[#FAF8F5] p-3"><span className="block text-[10px] uppercase font-bold text-[#637568]">Adelantos personales</span><strong className="font-mono text-base text-[#163323]">${accountDetail.totalAdvanced.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-amber-200 bg-amber-50 p-3"><span className="block text-[10px] uppercase font-bold text-amber-800">Egresos / débitos</span><strong className="font-mono text-base text-amber-900">${(accountDetail.totalReimbursed + accountDetail.totalAutoDebited + accountDetail.totalInvoicePayments).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-[#1B3B2B] bg-[#F3F8F3] p-3"><span className="block text-[10px] uppercase font-bold text-[#1B3B2B]">Saldo disponible</span><strong className="font-mono text-base text-[#163323]">${accountDetail.netAvailableBalance.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+              </div>
+
+              <div className="border border-[#E3DFC8] overflow-x-auto">
+                <table className="w-full min-w-[760px] text-xs text-left">
+                  <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
+                    <tr>
+                      <th className="py-3 px-3">Fecha</th>
+                      <th className="py-3 px-3">Tipo</th>
+                      <th className="py-3 px-3">Categoría</th>
+                      <th className="py-3 px-4">Concepto / detalle</th>
+                      <th className="py-3 px-3 text-right">Ingreso</th>
+                      <th className="py-3 px-3 text-right">Egreso</th>
+                      <th className="py-3 px-4 text-right">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#EFEAE0]">
+                    {accountDetailMovements.length === 0 ? (
+                      <tr><td colSpan={7} className="py-10 text-center text-[#7A8E7E]">No hay movimientos registrados en la cuenta de este copropietario.</td></tr>
+                    ) : accountDetailMovements.map((movement) => {
+                      const isIncome = movement.type === 'ingreso';
+                      const balance = accountDetailBalanceById.get(movement.id) || 0;
+                      return (
+                        <tr key={movement.id} className="hover:bg-[#FAF8F5]">
+                          <td className="py-3 px-3 font-mono text-[#637568]">{movement.date}</td>
+                          <td className={`py-3 px-3 font-bold uppercase text-[10px] ${isIncome ? 'text-emerald-700' : 'text-amber-800'}`}>{isIncome ? 'Ingreso' : 'Egreso'}</td>
+                          <td className="py-3 px-3 uppercase text-[10px] text-[#526657]">{movement.category}</td>
+                          <td className="py-3 px-4"><strong className="text-[#163323] block">{movement.concept}</strong>{movement.notes && <span className="text-[10px] text-[#7A8E7E]">{movement.notes}</span>}</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800">{isIncome ? `$${Number(movement.amount).toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : '—'}</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-800">{!isIncome ? `$${Number(movement.amount).toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : '—'}</td>
+                          <td className={`py-3 px-4 text-right font-mono font-bold ${balance >= 0 ? 'text-[#163323]' : 'text-red-700'}`}>${balance.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="px-6 py-3 border-t border-[#EFEAE0] flex justify-end shrink-0"><button type="button" onClick={() => setAccountDetailUserId(null)} className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider cursor-pointer">Cerrar</button></div>
           </div>
         </div>
       )}
