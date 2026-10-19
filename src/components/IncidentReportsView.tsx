@@ -266,21 +266,6 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto">
-          {isAdmin && (
-            <button
-              onClick={() => {
-                if (confirm('¿Desea limpiar la caché local y reiniciar los reportes de novedades? Esto eliminará registros obsoletos.')) {
-                  storageService.resetIncidents();
-                  setIncidents(storageService.getIncidents());
-                  showToast('Caché de novedades restablecida.');
-                }
-              }}
-              className="px-3 py-2.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-              title="Limpiar caché local y registros obsoletos"
-            >
-              <span>Limpiar Caché</span>
-            </button>
-          )}
           <button
             onClick={() => {
               setPhotoPreview(null);
