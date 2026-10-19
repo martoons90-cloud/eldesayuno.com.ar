@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { User, Booking, DateBlock } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { User, Booking, DateBlock, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
 import { pushService } from '../services/notificationService';
 import {
@@ -18,6 +18,7 @@ interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: User;
+  users: User[];
   bookings: Booking[];
   blocks: DateBlock[];
   initialStartDate?: string | null;
@@ -29,6 +30,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   isOpen,
   onClose,
   currentUser,
+  users,
   bookings,
   blocks,
   initialStartDate,
@@ -43,6 +45,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [cloudBookings, setCloudBookings] = useState<Booking[]>(bookings);
+  const [reservationForUserId, setReservationForUserId] = useState(currentUser.id);
+  const canCreateForOthers = isUserIntendente(currentUser);
+  const eligibleReservationUsers = useMemo(
+    () => users.filter((user) => user.active !== false && user.role !== 'intendente'),
+    [users]
+  );
+  const reservationOwner = (canCreateForOthers
+    ? eligibleReservationUsers.find((user) => user.id === reservationForUserId)
+    : currentUser) || currentUser;
 
   useEffect(() => {
     setCloudBookings(bookings);
@@ -52,6 +63,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (initialStartDate) setCheckInDate(initialStartDate);
     if (initialEndDate) setCheckOutDate(initialEndDate);
     if (isOpen) {
+      if (!canCreateForOthers) {
+        setReservationForUserId(currentUser.id);
+      } else {
+        setReservationForUserId((currentSelection) =>
+          eligibleReservationUsers.some((user) => user.id === currentSelection)
+            ? currentSelection
+            : eligibleReservationUsers[0]?.id || currentUser.id
+        );
+      }
       // Re-hydrate from cloud to guarantee fresh reservations from all devices
       storageService.hydrateFromAppStateAsync();
       fetch('/api/bookings')
@@ -63,7 +83,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         })
         .catch(() => {});
     }
-  }, [initialStartDate, initialEndDate, isOpen]);
+  }, [initialStartDate, initialEndDate, isOpen, canCreateForOthers, currentUser.id, eligibleReservationUsers]);
 
   if (!isOpen) return null;
 
@@ -136,14 +156,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     try {
       // Create and lock booking authoritatively on cloud server with pending status
       const newBooking = await storageService.createBookingAsync({
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userColor: currentUser.color,
-        partName: currentUser.partName,
+        userId: reservationOwner.id,
+        userName: reservationOwner.name,
+        userColor: reservationOwner.color,
+        partName: reservationOwner.partName,
         checkInDate,
         checkOutDate,
         totalDays: daysRequested,
-        status: 'pending',
+        status: canCreateForOthers ? 'confirmed' : 'pending',
         guestsCount,
         arrivalTime,
         notes: notes.trim() || undefined,
@@ -153,7 +173,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       // Trigger native push notification
       pushService.triggerPush({
         title: 'Solicitud de Reserva Registrada',
-        body: `Solicitud registrada para ${currentUser.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días). Pendiente de aprobación del administrador.`,
+        body: `${canCreateForOthers ? 'Reserva confirmada' : 'Solicitud registrada'} para ${reservationOwner.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días).${canCreateForOthers ? '' : ' Pendiente de aprobación del administrador.'}`,
         type: 'booking_created',
         bookingId: newBooking.id,
       });
@@ -183,7 +203,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 Nueva Reserva de Estadía
               </h3>
               <p className="text-[11px] text-[#C9D6CC]">
-                {currentUser.name} · {currentUser.partName}
+                {canCreateForOthers ? 'Crear una reserva para un copropietario' : `${currentUser.name} · ${currentUser.partName}`}
               </p>
             </div>
           </div>
@@ -198,7 +218,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Stay summary strip */}
         <div className="px-6 py-2.5 bg-[#FAF8F4] border-b border-[#EAE3D3] flex items-center justify-between text-xs">
           <span className="text-[#526657]">
-            Estadía para: <strong className="text-[#17341B] font-semibold">{currentUser.name}</strong> ({currentUser.partName})
+            Estadía para: <strong className="text-[#17341B] font-semibold">{reservationOwner.name}</strong> ({reservationOwner.partName})
           </span>
           {daysRequested > 0 && (
             <span className="font-semibold font-mono tabular-nums text-emerald-800">
@@ -217,6 +237,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+          {canCreateForOthers && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1.5">Reservar para</label>
+              <select
+                value={reservationForUserId}
+                onChange={(e) => setReservationForUserId(e.target.value)}
+                className="w-full px-3 py-2 bg-[#F4F8FF] border border-blue-200 text-[#19231A] text-sm font-semibold focus:outline-none focus:border-[#1E3F20]"
+              >
+                {eligibleReservationUsers.map((user) => (
+                  <option key={user.id} value={user.id}>{user.name} · {user.partName}</option>
+                ))}
+              </select>
+              <span className="text-[10px] text-[#637568] block mt-1">Como Intendente, la reserva queda confirmada directamente a nombre de la persona elegida.</span>
+            </div>
+          )}
           {/* Dates row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -315,7 +350,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           <div className="flex items-center gap-2 text-[11px] text-[#637568] pt-2 border-t border-[#EFEAE0]">
             <ShieldCheck className="w-4 h-4 text-[#8C7A53] shrink-0" />
             <span>
-              La solicitud quedará registrada en estado <strong>Pendiente</strong> y bloqueará las fechas en el calendario hasta que sea aprobada por el administrador.
+              {canCreateForOthers
+                ? <>La reserva quedará registrada como <strong>Confirmada</strong> y bloqueará las fechas en el calendario.</>
+                : <>La solicitud quedará registrada en estado <strong>Pendiente</strong> y bloqueará las fechas en el calendario hasta que sea aprobada por el administrador.</>}
             </span>
           </div>
 
@@ -338,7 +375,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-[#BFA270]" />
-                  <span>Enviar Solicitud ({daysRequested} {daysRequested === 1 ? 'noche' : 'noches'})</span>
+                  <span>{canCreateForOthers ? 'Confirmar Reserva' : 'Enviar Solicitud'} ({daysRequested} {daysRequested === 1 ? 'noche' : 'noches'})</span>
                 </>
               )}
             </button>

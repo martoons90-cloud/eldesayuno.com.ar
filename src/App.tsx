@@ -696,6 +696,7 @@ export default function App() {
         isOpen={isBookingModalOpen}
         onClose={() => setIsBookingModalOpen(false)}
         currentUser={currentUser}
+        users={users}
         bookings={bookings}
         blocks={blocks}
         initialStartDate={initialBookingDates.start}

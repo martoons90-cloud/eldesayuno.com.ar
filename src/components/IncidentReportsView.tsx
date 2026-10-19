@@ -519,10 +519,10 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
                     onChange={(e) => setFormData({ ...formData, urgency: e.target.value as IncidentUrgency })}
                     className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
                   >
-                    <option value="baja">Baja (Informativo / Para revisar)</option>
-                    <option value="media">Media (Atención habitual del casero)</option>
-                    <option value="alta">Alta (Afecta el confort de la estadía)</option>
-                    <option value="urgente">Urgente (Requiere técnico de guardia)</option>
+                    <option value="baja">Baja</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                    <option value="urgente">Urgente</option>
                   </select>
                 </div>
 
