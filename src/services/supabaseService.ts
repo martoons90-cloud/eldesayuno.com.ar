@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { IncidentReport } from '../types';
 
 export interface SupabaseConfig {
   url: string;
@@ -856,6 +857,76 @@ class SupabaseService {
       created_at: collection.createdAt || new Date().toISOString(), notes: collection.notes || '',
       installments_count: Number(collection.installmentsCount) || 1, installment_number: Number(collection.installmentNumber) || 1,
       original_expense_id: collection.originalExpenseId || null,
+    });
+  }
+
+  /** Novedades: lectura directa desde la base, sin pasar por localStorage. */
+  public async fetchIncidents(): Promise<IncidentReport[]> {
+    if (!this.client) return [];
+    const { data, error } = await this.client
+      .from('incidents')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error || !Array.isArray(data)) {
+      console.error('Error leyendo novedades de Supabase:', error);
+      return [];
+    }
+
+    const urgencyBySeverity: Record<string, IncidentReport['urgency']> = {
+      low: 'baja', medium: 'media', high: 'alta', critical: 'urgente', urgent: 'urgente',
+      baja: 'baja', media: 'media', alta: 'alta', urgente: 'urgente',
+    };
+    const statusByDatabaseStatus: Record<string, IncidentReport['status']> = {
+      open: 'pendiente', pending: 'pendiente', in_review: 'en_revision', in_progress: 'en_reparacion',
+      resolved: 'resuelto', dismissed: 'desestimado', pendiente: 'pendiente', en_revision: 'en_revision',
+      en_reparacion: 'en_reparacion', resuelto: 'resuelto', desestimado: 'desestimado',
+    };
+    return data.map((incident: Record<string, any>) => ({
+      id: incident.id,
+      bookingId: incident.booking_id || undefined,
+      reporterUserId: incident.reporter_user_id || '',
+      reporterName: incident.reported_by || '',
+      reporterPartName: incident.reporter_part_name || '',
+      title: incident.title || '',
+      description: incident.description || '',
+      location: incident.location || '',
+      category: incident.category || 'otro',
+      urgency: urgencyBySeverity[incident.severity] || 'media',
+      status: statusByDatabaseStatus[incident.status] || 'pendiente',
+      photoUrl: incident.photo_url || undefined,
+      createdAt: incident.created_at || '',
+      adminResponse: incident.admin_response || undefined,
+      resolvedAt: incident.resolved_at || undefined,
+      resolvedBy: incident.resolved_by || undefined,
+    }));
+  }
+
+  /** Novedades: el alta y las actualizaciones se confirman en Supabase. */
+  public async saveIncident(incident: IncidentReport): Promise<boolean> {
+    const severityByUrgency: Record<IncidentReport['urgency'], string> = {
+      baja: 'low', media: 'medium', alta: 'high', urgente: 'critical',
+    };
+    const statusByAppStatus: Record<IncidentReport['status'], string> = {
+      pendiente: 'pending', en_revision: 'in_review', en_reparacion: 'in_progress',
+      resuelto: 'resolved', desestimado: 'dismissed',
+    };
+    return this.upsertRow('incidents', {
+      id: incident.id,
+      booking_id: incident.bookingId || null,
+      reporter_user_id: incident.reporterUserId || null,
+      reported_by: incident.reporterName || '',
+      reporter_part_name: incident.reporterPartName || '',
+      title: incident.title || '',
+      description: incident.description || '',
+      location: incident.location || '',
+      category: incident.category || 'otro',
+      severity: severityByUrgency[incident.urgency],
+      status: statusByAppStatus[incident.status],
+      photo_url: incident.photoUrl || null,
+      admin_response: incident.adminResponse || null,
+      resolved_at: incident.resolvedAt || null,
+      resolved_by: incident.resolvedBy || null,
+      created_at: incident.createdAt || new Date().toISOString(),
     });
   }
 

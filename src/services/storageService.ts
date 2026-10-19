@@ -27,7 +27,6 @@ const RULES_KEY = 'el_desayuno_rules_v3';
 const CONTACTS_KEY = 'el_desayuno_contacts_v3';
 const DOCUMENTS_KEY = 'el_desayuno_documents_v3';
 const INVENTORY_KEY = 'el_desayuno_inventory_v3';
-const INCIDENTS_KEY = 'el_desayuno_incidents_v3';
 const NOTIFICATIONS_KEY = 'el_desayuno_notifications_v3';
 const FEES_KEY = 'el_desayuno_fees_v3';
 const EXPENSES_KEY = 'el_desayuno_expenses_v1';
@@ -330,14 +329,6 @@ class StorageService {
           const serverInvRaw = JSON.stringify(data.data.inventory);
           if (currentInvRaw !== serverInvRaw) {
             localStorage.setItem(INVENTORY_KEY, serverInvRaw);
-            hasChanges = true;
-          }
-        }
-        if (Array.isArray(data.data.incidents)) {
-          const currentIncRaw = localStorage.getItem(INCIDENTS_KEY) || '[]';
-          const serverIncRaw = JSON.stringify(data.data.incidents);
-          if (currentIncRaw !== serverIncRaw) {
-            localStorage.setItem(INCIDENTS_KEY, serverIncRaw);
             hasChanges = true;
           }
         }
@@ -1188,21 +1179,24 @@ class StorageService {
 
   // Incident Reports (Daños, novedades, roturas con fotos)
   public getIncidents(): IncidentReport[] {
-    if (typeof window === 'undefined') return DEFAULT_INCIDENTS;
-    const raw = localStorage.getItem(INCIDENTS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_INCIDENTS;
+    // No se guarda una copia de novedades en este dispositivo. Esta función se
+    // conserva sólo por compatibilidad; la vista consulta la base directamente.
+    return DEFAULT_INCIDENTS;
   }
 
-  public createIncident(incident: Omit<IncidentReport, 'id' | 'createdAt' | 'status'>): IncidentReport {
-    const list = this.getIncidents();
+  public async fetchIncidentsFromDatabase(): Promise<IncidentReport[]> {
+    return supabaseService.fetchIncidents();
+  }
+
+  public async createIncident(incident: Omit<IncidentReport, 'id' | 'createdAt' | 'status'>): Promise<IncidentReport | null> {
     const newInc: IncidentReport = {
       ...incident,
       id: 'inc-' + Date.now(),
       createdAt: new Date().toISOString(),
       status: 'pendiente',
     };
-    const updated = [newInc, ...list];
-    localStorage.setItem(INCIDENTS_KEY, JSON.stringify(updated));
+    const saved = await supabaseService.saveIncident(newInc);
+    if (!saved) return null;
 
     // Send push notification to administrators and users
     this.addNotification({
@@ -1213,20 +1207,12 @@ class StorageService {
     });
 
     this.notify(false);
-
-    fetch('/api/incidents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newInc),
-    }).catch((err) => console.error('Error guardando incidente en servidor:', err));
-
     return newInc;
   }
 
-  public updateIncident(incident: IncidentReport) {
-    const list = this.getIncidents();
-    const updated = list.map((i) => (i.id === incident.id ? incident : i));
-    localStorage.setItem(INCIDENTS_KEY, JSON.stringify(updated));
+  public async updateIncident(incident: IncidentReport): Promise<boolean> {
+    const saved = await supabaseService.saveIncident(incident);
+    if (!saved) return false;
 
     if (incident.status === 'resuelto') {
       this.addNotification({
@@ -1238,12 +1224,7 @@ class StorageService {
     }
 
     this.notify(false);
-
-    fetch('/api/incidents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(incident),
-    }).catch((err) => console.error('Error actualizando incidente en servidor:', err));
+    return true;
   }
 
   public async deleteIncident(incidentId: string): Promise<boolean> {
@@ -1252,14 +1233,12 @@ class StorageService {
       await this.hydrateFromAppStateAsync();
       return false;
     }
-    const list = this.getIncidents().filter((i) => i.id !== incidentId);
-    localStorage.setItem(INCIDENTS_KEY, JSON.stringify(list));
     this.notify(false);
     return true;
   }
 
-  public async resetIncidents() {
-    await this.hydrateFromAppStateAsync();
+  public async resetIncidents(): Promise<IncidentReport[]> {
+    return this.fetchIncidentsFromDatabase();
   }
 
   // Fee Collections & Cobranzas
@@ -1928,7 +1907,6 @@ class StorageService {
       contacts: this.getContacts(),
       documents: this.getDocuments(),
       inventory: this.getInventory(),
-      incidents: this.getIncidents(),
       notifications: this.getNotifications(),
       fees: this.getFeeCollections(),
       expenses: this.getExpenses(),
@@ -1953,7 +1931,6 @@ class StorageService {
       if (Array.isArray(data.contacts)) localStorage.setItem(CONTACTS_KEY, JSON.stringify(data.contacts));
       if (Array.isArray(data.documents)) localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(data.documents));
       if (Array.isArray(data.inventory)) localStorage.setItem(INVENTORY_KEY, JSON.stringify(data.inventory));
-      if (Array.isArray(data.incidents)) localStorage.setItem(INCIDENTS_KEY, JSON.stringify(data.incidents));
       if (Array.isArray(data.notifications)) localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(data.notifications));
       if (Array.isArray(data.fees)) localStorage.setItem(FEES_KEY, JSON.stringify(data.fees));
       if (Array.isArray(data.expenses)) localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
@@ -1976,7 +1953,6 @@ class StorageService {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(DEFAULT_NOTIFICATIONS));
     localStorage.setItem(INVENTORY_KEY, JSON.stringify(DEFAULT_INVENTORY));
-    localStorage.setItem(INCIDENTS_KEY, JSON.stringify(DEFAULT_INCIDENTS));
     localStorage.setItem(FEES_KEY, JSON.stringify(DEFAULT_FEE_COLLECTIONS));
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(DEFAULT_EXPENSES));
     const recalculated = recalculateUsersUsedDays(DEFAULT_USERS, DEFAULT_BOOKINGS);

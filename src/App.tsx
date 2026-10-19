@@ -88,7 +88,6 @@ export default function App() {
     setSettings(storageService.getSettings());
     setNotifications(storageService.getNotifications());
     setInventory(storageService.getInventory());
-    setIncidents(storageService.getIncidents());
 
     const loggedIn = storageService.getCurrentUser();
     setCurrentUser(loggedIn);
@@ -96,6 +95,7 @@ export default function App() {
 
   useEffect(() => {
     refreshData();
+    void storageService.fetchIncidentsFromDatabase().then(setIncidents);
     // Direct authoritative database query on application open
     storageService.fetchLatestSettingsFromDatabase().then((dbSettings) => {
       if (dbSettings) setSettings(dbSettings);
@@ -103,9 +103,11 @@ export default function App() {
     });
     storageService.hydrateFromAppStateAsync().finally(() => {
       refreshData();
+      void storageService.fetchIncidentsFromDatabase().then(setIncidents);
     });
     const unsubscribe = storageService.subscribe(() => {
       refreshData();
+      void storageService.fetchIncidentsFromDatabase().then(setIncidents);
     });
     return () => {
       unsubscribe();

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { IncidentReport, IncidentStatus, IncidentUrgency, User, Booking, TrustSettings, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
@@ -36,7 +36,8 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
 }) => {
   const isAdmin = isUserIntendente(currentUser);
 
-  const [incidents, setIncidents] = useState<IncidentReport[]>(storageService.getIncidents());
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [isLoadingIncidents, setIsLoadingIncidents] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -67,6 +68,19 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3500);
   };
+
+  const loadIncidents = async () => {
+    setIsLoadingIncidents(true);
+    try {
+      setIncidents(await storageService.fetchIncidentsFromDatabase());
+    } finally {
+      setIsLoadingIncidents(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadIncidents();
+  }, []);
 
   // Filtered upcoming or recent bookings of the user
   const relevantBookings = bookings.filter((b) =>
@@ -105,14 +119,14 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleSubmitNewIncident = (e: React.FormEvent) => {
+  const handleSubmitNewIncident = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.description.trim()) {
       alert('Por favor complete el título y la descripción del reporte.');
       return;
     }
 
-    storageService.createIncident({
+    const created = await storageService.createIncident({
       bookingId: formData.bookingId || undefined,
       reporterUserId: currentUser.id,
       reporterName: currentUser.name,
@@ -124,8 +138,12 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
       urgency: formData.urgency,
       photoUrl: photoPreview || undefined,
     });
+    if (!created) {
+      alert('No se pudo guardar el reporte en la base de datos. No se realizó ningún cambio local.');
+      return;
+    }
 
-    setIncidents(storageService.getIncidents());
+    await loadIncidents();
     setIsNewModalOpen(false);
     setPhotoPreview(null);
     setFormData({
@@ -139,7 +157,7 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
     showToast('Reporte enviado con éxito. El Administrador y el casero han sido notificados.');
   };
 
-  const handleSaveAdminResponse = (e: React.FormEvent) => {
+  const handleSaveAdminResponse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!respondingIncident) return;
 
@@ -151,17 +169,25 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
       resolvedBy: responseStatus === 'resuelto' ? `${currentUser.name} (Admin)` : undefined,
     };
 
-    storageService.updateIncident(updated);
-    setIncidents(storageService.getIncidents());
+    const saved = await storageService.updateIncident(updated);
+    if (!saved) {
+      alert('No se pudo actualizar el reporte en la base de datos.');
+      return;
+    }
+    await loadIncidents();
     setRespondingIncident(null);
     setResponseText('');
     showToast(`Estado del reporte actualizado a: ${responseStatus.toUpperCase()}`);
   };
 
-  const handleDeleteIncident = (id: string) => {
+  const handleDeleteIncident = async (id: string) => {
     if (confirm('¿Eliminar este reporte de novedad del registro histórico?')) {
-      storageService.deleteIncident(id);
-      setIncidents(storageService.getIncidents());
+      const deleted = await storageService.deleteIncident(id);
+      if (!deleted) {
+        alert('No se pudo eliminar el reporte de la base de datos.');
+        return;
+      }
+      await loadIncidents();
       showToast('Reporte eliminado.');
     }
   };
@@ -332,7 +358,9 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
 
       {/* Incidents Feed */}
       <div className="space-y-4">
-        {filteredIncidents.length === 0 ? (
+      {isLoadingIncidents ? (
+        <div className="p-10 text-center text-sm text-[#637568] border border-[#E3DFC8] bg-white">Cargando novedades desde la base de datos…</div>
+      ) : filteredIncidents.length === 0 ? (
           <div className="bg-white border border-[#E3DFC8] p-12 text-center text-[#7A8E7E]">
             <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-700/60 mb-3" />
             <h4 className="text-base font-bold text-[#163323]">Sin novedades pendientes</h4>
