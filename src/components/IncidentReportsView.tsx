@@ -14,7 +14,6 @@ import {
   Trash2,
   MessageSquare,
   Sparkles,
-  MapPin,
   Calendar,
   Image as ImageIcon,
   Upload,
@@ -47,8 +46,6 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
   const [formData, setFormData] = useState({
     bookingId: '',
     title: '',
-    location: '',
-    category: 'rotura' as IncidentReport['category'],
     urgency: 'media' as IncidentUrgency,
     description: '',
   });
@@ -133,8 +130,8 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
       reporterPartName: currentUser.partName,
       title: formData.title,
       description: formData.description,
-      location: formData.location || 'Área General de la Estancia',
-      category: formData.category,
+      location: '',
+      category: 'otro',
       urgency: formData.urgency,
       photoUrl: photoPreview || undefined,
     });
@@ -149,8 +146,6 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
     setFormData({
       bookingId: '',
       title: '',
-      location: '',
-      category: 'rotura',
       urgency: 'media',
       description: '',
     });
@@ -298,8 +293,6 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
               setFormData({
                 bookingId: relevantBookings[0]?.id || '',
                 title: '',
-                location: '',
-                category: 'rotura',
                 urgency: 'media',
                 description: '',
               });
@@ -379,9 +372,6 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   {getStatusBadge(incident.status)}
                   {getUrgencyBadge(incident.urgency)}
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-[#F2EDE1] text-[#163323]">
-                    {incident.category}
-                  </span>
                   <span className="text-[11px] text-[#7A8E7E] flex items-center gap-1 font-mono">
                     <Calendar className="w-3 h-3" />
                     {new Date(incident.createdAt).toLocaleDateString('es-AR', {
@@ -394,15 +384,10 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
                   </span>
                 </div>
 
-                {/* Title and location */}
+                {/* Title and reporter */}
                 <div>
                   <h3 className="text-base font-bold text-[#163323]">{incident.title}</h3>
                   <div className="flex items-center gap-2 text-xs text-[#637568] mt-0.5">
-                    <span className="flex items-center gap-1 font-semibold text-[#1B3B2B]">
-                      <MapPin className="w-3 h-3 text-red-700" />
-                      {incident.location}
-                    </span>
-                    <span>·</span>
                     <span>Reportado por: <strong>{incident.reporterName}</strong> ({incident.reporterPartName})</span>
                   </div>
                 </div>
@@ -516,40 +501,6 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
                   required
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs"
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Ubicación en la Casa
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="ej. Deck Pileta, Cocina, Suite 2"
-                    required
-                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                    Categoría
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as IncidentReport['category'] })}
-                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  >
-                    <option value="rotura">Rotura / Daño de Mobiliario o Vajilla</option>
-                    <option value="desperfecto_tecnico">Desperfecto Eléctrico / Agua / Caldera</option>
-                    <option value="faltante">Faltante de Ítem de Inventario</option>
-                    <option value="limpieza">Higiene / Limpieza Especial</option>
-                    <option value="mantenimiento">Mantenimiento General Parque / Pileta</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -678,7 +629,7 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
 
             <div className="mt-3 p-3 bg-[#FAF8F5] border border-[#EFEAE0] text-xs">
               <span className="font-bold text-[#163323] block">{respondingIncident.title}</span>
-              <span className="text-[11px] text-[#637568]">Lugar: {respondingIncident.location} · {respondingIncident.reporterName}</span>
+              <span className="text-[11px] text-[#637568]">Reportado por: {respondingIncident.reporterName}</span>
             </div>
 
             <form onSubmit={handleSaveAdminResponse} className="space-y-4 mt-4 text-xs">
