@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Booking, DateBlock, User } from '../types';
+import { Booking, DateBlock, User, isUserIntendente } from '../types';
 import {
   ChevronLeft,
   ChevronRight,
@@ -297,12 +297,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             </button>
           </div>
 
-          {currentUser.role === 'owner' && (
+          {(currentUser.role === 'owner' || isUserIntendente(currentUser)) && (
             <button
               onClick={onOpenBookingModal}
               className="px-3.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer shrink-0"
             >
-              Reservar
+              {isUserIntendente(currentUser) ? 'Nueva Reserva' : 'Reservar'}
             </button>
           )}
         </div>

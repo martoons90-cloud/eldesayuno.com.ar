@@ -64,6 +64,7 @@ interface AdminPanelProps {
   settings: TrustSettings;
   activeSection: AdminSectionType;
   onNavigateSection: (sec: AdminSectionType) => void;
+  onOpenNewBooking: () => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -74,6 +75,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   settings,
   activeSection,
   onNavigateSection,
+  onOpenNewBooking,
 }) => {
   // --- Section 1: User / Owner Management State ---
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -640,6 +642,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {activeSection === 'reservations' && (
             <>
+              <button
+                type="button"
+                onClick={onOpenNewBooking}
+                className="px-3.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#BFA270]" />
+                <span>Nueva Reserva</span>
+              </button>
               {canViewAccountPasswords && <button
                 onClick={handleExportCSV}
                 className="px-3 py-1.5 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] transition-colors cursor-pointer flex items-center gap-1.5"

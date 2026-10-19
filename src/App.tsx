@@ -642,6 +642,7 @@ export default function App() {
               blocks={blocks}
               settings={settings}
               activeSection={adminSection}
+              onOpenNewBooking={handleOpenNewBooking}
               onNavigateSection={(sec) => {
                 setAdminSection(sec);
                 setActiveTab(sec);
