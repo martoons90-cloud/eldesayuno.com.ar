@@ -965,6 +965,22 @@ class SupabaseService {
   public async deleteIncident(incidentId: string): Promise<boolean> {
     return this.deleteRow('incidents', incidentId);
   }
+
+  /** Un reporte de novedad sólo puede borrarse si pertenece al usuario que lo creó. */
+  public async deleteOwnedIncident(incidentId: string, reporterUserId: string): Promise<boolean> {
+    if (!this.client || !reporterUserId) return false;
+    const { data, error } = await this.client
+      .from('incidents')
+      .delete()
+      .eq('id', incidentId)
+      .eq('reporter_user_id', reporterUserId)
+      .select('id');
+    if (error || !data?.some((row: { id: string }) => row.id === incidentId)) {
+      console.error('La base no autorizó eliminar esta novedad:', error || 'El reporte no pertenece al usuario.');
+      return false;
+    }
+    return true;
+  }
 }
 
 export const supabaseService = new SupabaseService();

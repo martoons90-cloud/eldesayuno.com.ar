@@ -175,9 +175,13 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
     showToast(`Estado del reporte actualizado a: ${responseStatus.toUpperCase()}`);
   };
 
-  const handleDeleteIncident = async (id: string) => {
+  const handleDeleteIncident = async (incident: IncidentReport) => {
+    if (incident.reporterUserId !== currentUser.id) {
+      alert('Sólo puede eliminar una novedad quien la creó.');
+      return;
+    }
     if (confirm('¿Eliminar este reporte de novedad del registro histórico?')) {
-      const deleted = await storageService.deleteIncident(id);
+      const deleted = await storageService.deleteIncident(incident.id, currentUser.id);
       if (!deleted) {
         alert('No se pudo eliminar el reporte de la base de datos.');
         return;
@@ -455,14 +459,16 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
                         <span>Gestionar</span>
                       </button>
 
-                      <button
-                        onClick={() => handleDeleteIncident(incident.id)}
-                        className="p-1.5 hover:bg-red-50 text-red-700 transition-colors cursor-pointer"
-                        title="Eliminar reporte"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </>
+                  )}
+                  {incident.reporterUserId === currentUser.id && (
+                    <button
+                      onClick={() => handleDeleteIncident(incident)}
+                      className="p-1.5 hover:bg-red-50 text-red-700 transition-colors cursor-pointer"
+                      title="Eliminar mi reporte"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   )}
                 </div>
               </div>

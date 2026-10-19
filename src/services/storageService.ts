@@ -1227,8 +1227,8 @@ class StorageService {
     return true;
   }
 
-  public async deleteIncident(incidentId: string): Promise<boolean> {
-    const deleted = await supabaseService.deleteIncident(incidentId);
+  public async deleteIncident(incidentId: string, reporterUserId: string): Promise<boolean> {
+    const deleted = await supabaseService.deleteOwnedIncident(incidentId, reporterUserId);
     if (!deleted) {
       await this.hydrateFromAppStateAsync();
       return false;
