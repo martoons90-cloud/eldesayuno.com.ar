@@ -769,26 +769,22 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       (!collection.originalExpenseId && collection.notes?.includes(exp.concept))
   );
 
-  const getExpenseCollectionStatus = (exp: ExpenseItem) => {
-    const matchingCollections = getLinkedCollections(exp);
-    if (matchingCollections.length === 0) {
-      return exp.transferredPercentage
-        ? { label: `Enviado (${exp.transferredPercentage}%)`, color: 'bg-blue-100 text-blue-800 border border-blue-300' }
-        : { label: 'Aún No', color: 'bg-neutral-100 text-neutral-600 border border-neutral-300' };
+  const getExpenseReimbursementStatus = (exp: ExpenseItem) => {
+    // Solo un gasto pagado personalmente genera un saldo a favor que debe
+    // reintegrarse. Para los demás, un reintegro no aplica.
+    if (!storageService.isOwnerAdvanceExpense(exp)) {
+      return { label: 'No aplica', color: 'bg-neutral-100 text-neutral-600 border border-neutral-300' };
     }
-    const totalEmitted = matchingCollections.reduce((sum, collection) => sum + collection.totalAmount, 0);
-    const totalCollected = matchingCollections.reduce(
-      (sum, collection) => sum + collection.allocations.reduce((allocSum, allocation) => allocSum + (Number(allocation.paidAmount) || 0), 0),
-      0
-    );
-    const collectedPercentage = totalEmitted > 0 ? Math.round((totalCollected / totalEmitted) * 100) : 0;
-    if (totalEmitted > 0 && totalCollected >= totalEmitted - 0.01) {
-      return { label: 'Cobrado (100%)', color: 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold' };
-    } else if (totalCollected > 0) {
-      return { label: `Cobrado (${collectedPercentage}%)`, color: 'bg-amber-100 text-amber-800 border border-amber-300' };
-    } else {
-      return { label: 'Pendiente Cobro', color: 'bg-indigo-100 text-indigo-800 border border-indigo-300' };
+
+    const reimbursedAmount = Number(exp.reimbursedAmount) || 0;
+    const reimbursedPercentage = exp.amount > 0 ? Math.min(100, Math.round((reimbursedAmount / exp.amount) * 100)) : 0;
+    if (exp.reimbursementStatus === 'fully_repaid' || reimbursedPercentage >= 100) {
+      return { label: 'Reintegrado (100%)', color: 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold' };
     }
+    if (reimbursedAmount > 0 || exp.reimbursementStatus === 'partial') {
+      return { label: `Reintegrado (${reimbursedPercentage}%)`, color: 'bg-amber-100 text-amber-800 border border-amber-300' };
+    }
+    return { label: 'Pendiente de reintegro', color: 'bg-indigo-100 text-indigo-800 border border-indigo-300' };
   };
 
   return (
@@ -1005,7 +1001,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <th className="py-2.5 px-3">Realizado por</th>
                 <th className="py-2.5 px-3 text-right">Monto ($ ARS)</th>
                 <th className="py-2.5 px-3 text-center">Estado Pago</th>
-                <th className="py-2.5 px-3 text-center">Estado Cobro</th>
+                <th className="py-2.5 px-3 text-center">Estado Reintegro</th>
                 <th className="py-2.5 px-3 text-center">Factura / Comprobante</th>
                 {isAdmin && <th className="py-2.5 px-3 text-right">Acciones</th>}
               </tr>
@@ -1083,10 +1079,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     </td>
                     <td className="py-3 px-3 text-center whitespace-nowrap">
                       {(() => {
-                        const colStatus = getExpenseCollectionStatus(exp);
+                        const reimbursementStatus = getExpenseReimbursementStatus(exp);
                         return (
-                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${colStatus.color}`}>
-                            {colStatus.label}
+                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${reimbursementStatus.color}`}>
+                            {reimbursementStatus.label}
                           </span>
                         );
                       })()}
