@@ -141,6 +141,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
   const [reimburseModalUser, setReimburseModalUser] = useState<{ userId: string; userName: string; balanceDue: number } | null>(null);
   const [reimburseAmount, setReimburseAmount] = useState<number>(0);
   const [reimburseNotes, setReimburseNotes] = useState('');
+  const [isExecutingReimbursement, setIsExecutingReimbursement] = useState(false);
   const [accountDetailUserId, setAccountDetailUserId] = useState<string | null>(null);
 
   // Auto-debit local toggle state for currentUser
@@ -222,6 +223,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
     .reduce((sum, t) => sum + t.amount, 0);
 
   const cajaBalanceGeneral = totalIngresosGeneral - totalEgresosGeneral;
+  const cajaDisponibleParaReintegros = Math.max(0, Math.round(cajaBalanceGeneral * 100) / 100);
 
   // Compromisos pendientes por compras pagadas personalmente por un
   // copropietario. Son gastos reales, aunque el efectivo no haya salido de
@@ -422,6 +424,30 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       isAutoDebitOn,
     };
   });
+
+  // Antes de confirmar, Administración puede ver exactamente cómo se aplicará
+  // el reintegro entre las facturas adelantadas por el copropietario. El orden
+  // coincide con el servicio que actualiza los saldos: fecha e identificador.
+  const reimbursementInvoiceBreakdown = useMemo(() => {
+    if (!reimburseModalUser || reimburseAmount <= 0) return [];
+    let remaining = Math.min(reimburseAmount, reimburseModalUser.balanceDue, cajaDisponibleParaReintegros);
+    return expenses
+      .filter((expense) => storageService.isOwnerAdvanceExpense(expense) && expense.userId === reimburseModalUser.userId)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+      .map((expense) => {
+        const previouslyReimbursed = Number(expense.reimbursedAmount) || 0;
+        const pendingBefore = Math.max(0, Math.round((Number(expense.amount) - previouslyReimbursed) * 100) / 100);
+        const appliedNow = Math.min(pendingBefore, remaining);
+        remaining = Math.max(0, Math.round((remaining - appliedNow) * 100) / 100);
+        return {
+          expense,
+          pendingBefore,
+          appliedNow,
+          pendingAfter: Math.max(0, Math.round((pendingBefore - appliedNow) * 100) / 100),
+        };
+      })
+      .filter((item) => item.pendingBefore > 0.01);
+  }, [cajaDisponibleParaReintegros, expenses, reimburseAmount, reimburseModalUser]);
 
   // Current user's particular account summary
   const myAccount =
@@ -922,13 +948,24 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
 
   const handleExecuteReimbursement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reimburseModalUser || reimburseAmount <= 0) {
+    if (isExecutingReimbursement || !reimburseModalUser || reimburseAmount <= 0) {
       alert('Monto de reintegro no válido.');
       return;
     }
 
-    if (reimburseAmount > cajaBalanceGeneral + 1) {
-      alert('Advertencia: El monto a reintegrar supera el saldo disponible actual en caja común.');
+    if (cajaDisponibleParaReintegros <= 0) {
+      alert('No se puede emitir el reintegro: la Caja no tiene saldo disponible. Primero registrá un ingreso de dinero en Caja.');
+      return;
+    }
+
+    if (reimburseAmount > cajaDisponibleParaReintegros + 0.01) {
+      alert(`El reintegro no puede superar el dinero disponible en Caja ($${cajaDisponibleParaReintegros.toLocaleString('es-AR')} ARS).`);
+      return;
+    }
+
+    if (reimburseAmount > reimburseModalUser.balanceDue + 0.01) {
+      alert(`El reintegro no puede superar el saldo a favor de ${reimburseModalUser.userName}.`);
+      return;
     }
 
     const tx: CashFlowTransaction = {
@@ -946,19 +983,24 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    const savedCashMovement = await storageService.saveCashFlowTransaction(tx);
-    if (!savedCashMovement) {
-      alert('La base de datos no confirmó el reintegro. No se actualizó el saldo del socio.');
-      return;
+    setIsExecutingReimbursement(true);
+    try {
+      const savedCashMovement = await storageService.saveCashFlowTransaction(tx);
+      if (!savedCashMovement) {
+        alert('La base de datos no confirmó el reintegro. No se actualizó el saldo del socio.');
+        return;
+      }
+      const applied = await storageService.applyReimbursementToAdvances(reimburseModalUser.userId, reimburseAmount);
+      if (!applied) {
+        alert('El reintegro quedó registrado, pero no se pudo aplicar completo contra los adelantos. Revisá la cuenta corriente.');
+      }
+      setReimburseModalUser(null);
+      setReimburseAmount(0);
+      setReimburseNotes('');
+      alert(`Reintegro de $${reimburseAmount.toLocaleString('es-AR')} ARS registrado correctamente.`);
+    } finally {
+      setIsExecutingReimbursement(false);
     }
-    const applied = await storageService.applyReimbursementToAdvances(reimburseModalUser.userId, reimburseAmount);
-    if (!applied) {
-      alert('El reintegro quedó registrado, pero no se pudo aplicar completo contra los adelantos. Revisá la cuenta corriente.');
-    }
-    setReimburseModalUser(null);
-    setReimburseAmount(0);
-    setReimburseNotes('');
-    alert(`Reintegro de $${reimburseAmount.toLocaleString()} ARS registrado correctamente.`);
   };
 
   // Filtered cash flows for General Ledger
@@ -1869,20 +1911,28 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                           </button>
                         )}
                         {hasBalance && (
-                          <button
-                            onClick={() => {
-                              setReimburseModalUser({
-                                userId: acc.userId,
-                                userName: acc.userName,
-                                balanceDue: acc.netAvailableBalance,
-                              });
-                              setReimburseAmount(acc.netAvailableBalance);
-                            }}
-                            className="px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                          >
-                            <span>Emitir Reintegro</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-[#BFA270]" />
-                          </button>
+                          <div className="flex flex-col items-end gap-1">
+                            <button
+                              type="button"
+                              disabled={cajaDisponibleParaReintegros <= 0}
+                              onClick={() => {
+                                const maxReimbursement = Math.min(acc.netAvailableBalance, cajaDisponibleParaReintegros);
+                                if (maxReimbursement <= 0) return;
+                                setReimburseModalUser({
+                                  userId: acc.userId,
+                                  userName: acc.userName,
+                                  balanceDue: acc.netAvailableBalance,
+                                });
+                                setReimburseAmount(maxReimbursement);
+                              }}
+                              title={cajaDisponibleParaReintegros <= 0 ? 'No hay saldo disponible en Caja para emitir este reintegro' : 'Emitir reintegro desde Caja'}
+                              className="px-3 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] disabled:bg-[#9AA69D] disabled:text-white/80 disabled:cursor-not-allowed text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                            >
+                              <span>{cajaDisponibleParaReintegros <= 0 ? 'Sin saldo en Caja' : 'Emitir Reintegro'}</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-[#BFA270]" />
+                            </button>
+                            {cajaDisponibleParaReintegros <= 0 && <span className="text-[10px] text-amber-800">Primero debe ingresar dinero a Caja.</span>}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2625,7 +2675,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       {/* ========================================================= */}
       {reimburseModalUser && fullAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-[#FFFFFF] w-full max-w-md border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col">
+          <div className="bg-[#FFFFFF] w-full max-w-3xl border border-[#DCD4C0] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between shrink-0">
               <h3 className="text-base font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>
                 Reintegro de Saldo a {reimburseModalUser.userName}
@@ -2635,9 +2685,20 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleExecuteReimbursement} className="p-6 space-y-4 text-xs">
-              <div className="p-3 bg-blue-50 border border-blue-200 text-blue-950 text-xs">
-                Saldo total disponible a favor del socio: <strong>${reimburseModalUser.balanceDue.toLocaleString()} ARS</strong>.
+            <form onSubmit={handleExecuteReimbursement} className="p-6 space-y-4 text-xs overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="p-3 bg-blue-50 border border-blue-200 text-blue-950">
+                  <span className="block text-[10px] uppercase font-bold text-blue-800">Saldo a favor</span>
+                  <strong className="font-mono text-sm">${reimburseModalUser.balanceDue.toLocaleString('es-AR')} ARS</strong>
+                </div>
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-950">
+                  <span className="block text-[10px] uppercase font-bold text-emerald-800">Caja disponible</span>
+                  <strong className="font-mono text-sm">${cajaDisponibleParaReintegros.toLocaleString('es-AR')} ARS</strong>
+                </div>
+                <div className="p-3 bg-[#FAF8F5] border border-[#E3DFC8] text-[#163323]">
+                  <span className="block text-[10px] uppercase font-bold text-[#637568]">Máximo a reintegrar hoy</span>
+                  <strong className="font-mono text-sm">${Math.min(reimburseModalUser.balanceDue, cajaDisponibleParaReintegros).toLocaleString('es-AR')} ARS</strong>
+                </div>
               </div>
 
               <div>
@@ -2646,15 +2707,43 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                   type="number"
                   step="any"
                   min="1"
-                  max={reimburseModalUser.balanceDue}
+                  max={Math.min(reimburseModalUser.balanceDue, cajaDisponibleParaReintegros)}
                   required
                   value={reimburseAmount || ''}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value) || 0;
-                    setReimburseAmount(val);
+                    setReimburseAmount(Math.min(val, reimburseModalUser.balanceDue, cajaDisponibleParaReintegros));
                   }}
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-mono font-bold text-base focus:outline-none text-[#163323]"
                 />
+                <p className="mt-1 text-[10px] text-[#637568]">No puede superar ni el saldo a favor ni el dinero físico disponible en Caja.</p>
+              </div>
+
+              <div className="border border-[#D9E6F7] bg-[#F4F8FF] p-3">
+                <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <div>
+                    <h4 className="font-bold text-[#163323]">Así se aplicará este reintegro</h4>
+                    <p className="text-[10px] text-[#637568]">Se descuenta por orden de fecha de cada factura adelantada por {reimburseModalUser.userName}.</p>
+                  </div>
+                  <strong className="font-mono text-[#0F5B47] whitespace-nowrap">${reimburseAmount.toLocaleString('es-AR')} ARS</strong>
+                </div>
+                <div className="border border-[#D9E6F7] bg-white divide-y divide-[#E5EDF8]">
+                  <div className="hidden sm:grid grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] gap-3 px-2.5 py-2 bg-[#F8FBFF] text-[10px] uppercase font-bold text-[#637568]">
+                    <span>Factura / gasto</span><span>Pendiente actual</span><span>Reintegro ahora</span><span>Queda pendiente</span>
+                  </div>
+                  {reimbursementInvoiceBreakdown.map(({ expense, pendingBefore, appliedNow, pendingAfter }) => (
+                    <div key={expense.id} className="grid grid-cols-1 sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] gap-1 sm:gap-3 p-2.5 items-center">
+                      <div>
+                        <strong className="block text-[#163323]">{expense.concept}</strong>
+                        <span className="text-[10px] text-[#7A8E7E]">{expense.date}{expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}</span>
+                      </div>
+                      <div><span className="block sm:hidden text-[10px] uppercase text-[#637568]">Pendiente actual</span><span className="font-mono text-[#7B341E]">${pendingBefore.toLocaleString('es-AR')}</span></div>
+                      <div><span className="block sm:hidden text-[10px] uppercase text-[#637568]">Reintegro ahora</span><strong className="font-mono text-[#0F5B47]">${appliedNow.toLocaleString('es-AR')}</strong></div>
+                      <div><span className="block sm:hidden text-[10px] uppercase text-[#637568]">Queda pendiente</span><span className="font-mono text-[#55695B]">${pendingAfter.toLocaleString('es-AR')}</span></div>
+                    </div>
+                  ))}
+                </div>
+                {reimbursementInvoiceBreakdown.length === 0 && <p className="pt-2 text-[#7A8E7E]">No hay facturas adelantadas pendientes para aplicar.</p>}
               </div>
 
               <div>
@@ -2678,10 +2767,11 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+                  disabled={isExecutingReimbursement || reimburseAmount <= 0 || cajaDisponibleParaReintegros <= 0 || reimbursementInvoiceBreakdown.length === 0}
+                  className="px-5 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] disabled:bg-[#9AA69D] disabled:cursor-not-allowed text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
                 >
                   <Check className="w-4 h-4 text-[#BFA270]" />
-                  <span>Confirmar Reintegro</span>
+                  <span>{isExecutingReimbursement ? 'Registrando…' : 'Confirmar Reintegro'}</span>
                 </button>
               </div>
             </form>

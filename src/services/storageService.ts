@@ -1624,7 +1624,7 @@ class StorageService {
     let remaining = Math.max(0, Number(amount) || 0);
     const advances = this.getExpenses()
       .filter((expense) => this.isOwnerAdvanceExpense(expense) && expense.userId === userId)
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
 
     for (const expense of advances) {
       if (remaining <= 0) break;
