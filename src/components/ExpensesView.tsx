@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode } from '../types';
+import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, canUploadExpenses } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import { CustomDialogModal } from './CustomDialogModal';
@@ -70,6 +70,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   isAdmin,
   onNavigateToCobranzas,
 }) => {
+  const canSubmitExpense = canUploadExpenses(currentUser);
+  const isGroupLeaderSubmitter = canSubmitExpense && !isAdmin;
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-10');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -330,9 +332,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return;
     }
 
-    const foundUser = allCurrentUsers.find((u) => u.id === expenseForm.userId || u.name === expenseForm.userId);
-    const finalUserId = foundUser ? foundUser.id : (expenseForm.userId || undefined);
-    const finalUserName = foundUser ? foundUser.name : (expenseForm.userName || (expenseForm.userId ? expenseForm.userId : undefined));
+    const submittedPayerId = isGroupLeaderSubmitter ? currentUser.id : expenseForm.userId;
+    const foundUser = allCurrentUsers.find((u) => u.id === submittedPayerId || u.name === submittedPayerId);
+    const finalUserId = foundUser ? foundUser.id : (submittedPayerId || undefined);
+    const finalUserName = foundUser ? foundUser.name : (expenseForm.userName || (submittedPayerId ? submittedPayerId : undefined));
     const finalPartName = foundUser ? foundUser.partName : (expenseForm.partName || undefined);
 
     if (expenseForm.fundingSource === 'owner_advance' && !finalUserId) {
@@ -364,6 +367,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       // pendiente. El egreso físico se registra desde Caja al decidir cuánto
       // abonar, por lo que puede ser parcial o total.
       status: expenseForm.fundingSource === 'project_funds' ? 'pending' : expenseForm.status,
+      approvalStatus: isAdmin ? 'approved' : 'pending',
+      approvedAt: isAdmin ? (editingExpense?.approvedAt || new Date().toISOString()) : undefined,
+      approvedBy: isAdmin ? (editingExpense?.approvedBy || currentUser.name) : undefined,
       reimbursementStatus: expenseForm.fundingSource === 'owner_advance'
         ? (editingExpense?.reimbursementStatus === 'fully_repaid' ? 'fully_repaid' : editingExpense?.reimbursementStatus === 'partial' ? 'partial' : 'unpaid')
         : 'not_applicable',
@@ -391,7 +397,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return;
     }
 
-    if (expenseForm.fundingSource === 'owner_advance' && expenseForm.status === 'paid' && expenseForm.autoCollectForOthers && !editingExpense?.transferredToFeeCollectionId) {
+    if (isAdmin && expenseForm.fundingSource === 'owner_advance' && expenseForm.status === 'paid' && expenseForm.autoCollectForOthers && !editingExpense?.transferredToFeeCollectionId) {
       const collectionSaved = await createAutomaticCollectionForExpense(itemToSave);
       if (!collectionSaved) {
         setDialog({
@@ -812,7 +818,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {isAdmin && (
+            {canSubmitExpense && (
               <button
                 onClick={() => {
                     setEditingExpense(null);
@@ -825,12 +831,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       date: new Date().toISOString().split('T')[0],
                       provider: '',
                       invoiceNumber: '',
-                      userId: '',
-                      userName: '',
-                      partName: '',
+                      userId: isGroupLeaderSubmitter ? currentUser.id : '',
+                      userName: isGroupLeaderSubmitter ? currentUser.name : '',
+                      partName: isGroupLeaderSubmitter ? currentUser.partName : '',
                       status: 'paid',
                       fundingSource: 'project_funds',
-                      autoCollectForOthers: true,
+                      autoCollectForOthers: isAdmin,
                       paymentMethod: 'transfer',
                       receiptUrl: '',
                       notes: '',
@@ -840,7 +846,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-xs font-semibold uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm cursor-pointer"
                 >
                   <Plus className="w-4 h-4 text-[#BFA270]" />
-                  <span>+ Registrar Gasto / Factura</span>
+                  <span>+ {isGroupLeaderSubmitter ? 'Cargar Gasto / Factura' : 'Registrar Gasto / Factura'}</span>
                 </button>
             )}
           </div>
@@ -1184,6 +1190,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   {editingExpense ? 'Modificar Gasto Registrado' : 'Registrar Nuevo Gasto / Factura'}
                 </h3>
                 <p className="text-xs text-[#637568]">Ingrese los detalles del gasto operativo del fideicomiso.</p>
+                {isGroupLeaderSubmitter && (
+                  <p className="text-[11px] text-amber-800 mt-1">La carga quedará pendiente de revisión de Administración o Intendencia.</p>
+                )}
               </div>
             </div>
 
@@ -1264,7 +1273,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     👤 ¿Quién realizó / pagó el gasto?
                   </label>
                   <select
-                    value={expenseForm.userId}
+                    value={isGroupLeaderSubmitter ? currentUser.id : expenseForm.userId}
                     onChange={(e) => {
                       const selectedId = e.target.value;
                       const foundUser = allCurrentUsers.find((u) => u.id === selectedId);
@@ -1276,6 +1285,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       });
                     }}
                     className="w-full px-3 py-2 bg-white border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                    disabled={isGroupLeaderSubmitter}
                   >
                     <option value="">-- Fideicomiso / Fondo Común --</option>
                     {allCurrentUsers.map((u) => (
@@ -1322,7 +1332,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     ? 'No disminuye Caja ahora: genera saldo a favor para quien adelantó el pago.'
                     : 'Se registra como factura pendiente. El pago (total o parcial) se decide después desde Caja/Banco.'}
                 </p>
-                {expenseForm.fundingSource === 'owner_advance' && (
+                {expenseForm.fundingSource === 'owner_advance' && isAdmin && (
                   <label className="mt-3 flex items-start gap-2 cursor-pointer text-xs text-[#163323]">
                     <input
                       type="checkbox"

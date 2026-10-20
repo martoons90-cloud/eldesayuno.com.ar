@@ -1548,6 +1548,7 @@ class StorageService {
 
     const list = this.getExpenses();
     const index = list.findIndex((e) => e.id === expense.id);
+    const isNewPendingSubmission = index < 0 && expense.approvalStatus === 'pending';
     let updated: ExpenseItem[];
     if (index >= 0) {
       updated = [...list];
@@ -1556,6 +1557,14 @@ class StorageService {
       updated = [expense, ...list];
     }
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
+
+    if (isNewPendingSubmission) {
+      this.addNotification({
+        title: 'Nuevo gasto pendiente de revisión',
+        body: `${expense.createdBy} cargó “${expense.concept}” por $${Number(expense.amount).toLocaleString('es-AR')} ARS.`,
+        type: 'system',
+      });
+    }
 
     const fundingSaved = await this.syncExpenseFunding(expense);
     if (!fundingSaved) return false;
@@ -1582,7 +1591,8 @@ class StorageService {
     const advanceLedgerId = `ledger-advance-${expense.id}`;
     const existingIds = new Set(this.getCashFlows().map((transaction) => transaction.id));
     const removeIfExists = async (id: string) => !existingIds.has(id) || await this.deleteCashFlowTransaction(id);
-    const isApprovedAndPaid = expense.status === 'paid' && expense.approvalStatus !== 'rejected';
+    const isApprovedAndPaid = expense.status === 'paid' &&
+      (expense.approvalStatus === 'approved' || !expense.approvalStatus);
 
     if (!isApprovedAndPaid) {
       // No se elimina un pago físico ya asentado. Una factura puede volver a
