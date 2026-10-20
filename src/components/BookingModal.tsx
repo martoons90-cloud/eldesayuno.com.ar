@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, Booking, DateBlock, isUserIntendente } from '../types';
+import { User, Booking, DateBlock, isUserCabezaDeEquipo, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
 import { pushService } from '../services/notificationService';
 import {
@@ -48,15 +48,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [cloudBookings, setCloudBookings] = useState<Booking[]>(bookings);
   const [reservationForUserId, setReservationForUserId] = useState(currentUser.id);
-  const canCreateForOthers = isUserIntendente(currentUser);
+  const isIntendente = isUserIntendente(currentUser);
+  const isGroupLeader = !isIntendente && isUserCabezaDeEquipo(currentUser) && Boolean(currentUser.cabezaNumber);
+  const canCreateForOthers = isIntendente || isGroupLeader;
   const eligibleReservationUsers = useMemo(
-    () => users.filter((user) => user.active !== false && user.role !== 'intendente'),
-    [users]
+    () => {
+      const activeOwners = users.filter((user) => user.active !== false && user.role !== 'intendente');
+      if (isIntendente) return activeOwners;
+      if (isGroupLeader) return activeOwners.filter((user) => user.cabezaNumber === currentUser.cabezaNumber);
+      return [];
+    },
+    [users, isIntendente, isGroupLeader, currentUser.cabezaNumber]
   );
   const reservationOwner = (canCreateForOthers
     ? eligibleReservationUsers.find((user) => user.id === reservationForUserId)
     : currentUser) || currentUser;
-  const isMaintenanceBlock = canCreateForOthers && reservationForUserId === MAINTENANCE_BLOCK_OPTION;
+  const isMaintenanceBlock = isIntendente && reservationForUserId === MAINTENANCE_BLOCK_OPTION;
 
   useEffect(() => {
     setCloudBookings(bookings);
@@ -182,7 +189,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         checkInDate,
         checkOutDate,
         totalDays: daysRequested,
-        status: canCreateForOthers ? 'confirmed' : 'pending',
+        status: isIntendente ? 'confirmed' : 'pending',
         guestsCount,
         arrivalTime,
         notes: notes.trim() || undefined,
@@ -192,7 +199,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       // Trigger native push notification
       pushService.triggerPush({
         title: 'Solicitud de Reserva Registrada',
-        body: `${canCreateForOthers ? 'Reserva confirmada' : 'Solicitud registrada'} para ${reservationOwner.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días).${canCreateForOthers ? '' : ' Pendiente de aprobación del administrador.'}`,
+        body: `${isIntendente ? 'Reserva confirmada' : 'Solicitud registrada'} para ${reservationOwner.name} del ${checkInDate} al ${checkOutDate} (${daysRequested} días).${isIntendente ? '' : ' Pendiente de aprobación del administrador.'}`,
         type: 'booking_created',
         bookingId: newBooking.id,
       });
@@ -222,7 +229,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 Nueva Reserva de Estadía
               </h3>
               <p className="text-[11px] text-[#C9D6CC]">
-                {canCreateForOthers ? 'Crear una reserva o bloquear fechas por mantenimiento' : `${currentUser.name} · ${currentUser.partName}`}
+                {isIntendente
+                  ? 'Crear una reserva o bloquear fechas por mantenimiento'
+                  : isGroupLeader
+                  ? `Reservar dentro de ${currentUser.partName}`
+                  : `${currentUser.name} · ${currentUser.partName}`}
               </p>
             </div>
           </div>
@@ -268,7 +279,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 onChange={(e) => setReservationForUserId(e.target.value)}
                 className="w-full px-3 py-2 bg-[#F4F8FF] border border-blue-200 text-[#19231A] text-sm font-semibold focus:outline-none focus:border-[#1E3F20]"
               >
-                <option value={MAINTENANCE_BLOCK_OPTION}>Mantenimiento</option>
+                {isIntendente && <option value={MAINTENANCE_BLOCK_OPTION}>Mantenimiento</option>}
                 {eligibleReservationUsers.map((user) => (
                   <option key={user.id} value={user.id}>{user.name} · {user.partName}</option>
                 ))}
@@ -276,7 +287,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <span className="text-[10px] text-[#637568] block mt-1">
                 {isMaintenanceBlock
                   ? 'Se crearán fechas bloqueadas por mantenimiento, sin asignarlas a un copropietario.'
-                  : 'Como Intendente, la reserva queda confirmada directamente a nombre de la persona elegida.'}
+                  : isIntendente
+                  ? 'Como Intendente, la reserva queda confirmada directamente a nombre de la persona elegida.'
+                  : 'Como Cabeza de Grupo, solo podés reservar para integrantes de tu misma cabeza. La solicitud queda pendiente de aprobación.'}
               </span>
             </div>
           )}
@@ -380,7 +393,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <span>
               {isMaintenanceBlock
                 ? <>El bloqueo quedará guardado en la base y podrá eliminarse desde el calendario por el Intendente.</>
-                : canCreateForOthers
+                : isIntendente
                 ? <>La reserva quedará registrada como <strong>Confirmada</strong> y bloqueará las fechas en el calendario.</>
                 : <>La solicitud quedará registrada en estado <strong>Pendiente</strong> y bloqueará las fechas en el calendario hasta que sea aprobada por el administrador.</>}
             </span>
@@ -405,7 +418,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-[#BFA270]" />
-                  <span>{isMaintenanceBlock ? 'Confirmar Mantenimiento' : canCreateForOthers ? 'Confirmar Reserva' : 'Enviar Solicitud'} ({daysRequested} {daysRequested === 1 ? 'día' : 'días'})</span>
+                  <span>{isMaintenanceBlock ? 'Confirmar Mantenimiento' : isIntendente ? 'Confirmar Reserva' : 'Enviar Solicitud'} ({daysRequested} {daysRequested === 1 ? 'día' : 'días'})</span>
                 </>
               )}
             </button>
