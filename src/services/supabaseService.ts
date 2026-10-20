@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import type { IncidentReport, NotificationPush } from '../types';
+import type { DateBlock, IncidentReport, NotificationPush } from '../types';
 
 export interface SupabaseConfig {
   url: string;
@@ -975,6 +975,21 @@ class SupabaseService {
 
   public async deleteBlock(blockId: string): Promise<boolean> {
     return this.deleteRow('blocks', blockId);
+  }
+
+  /** Los bloqueos operativos se confirman primero en la base central. */
+  public async saveBlock(block: DateBlock): Promise<boolean> {
+    return this.upsertRow('blocks', {
+      id: block.id,
+      start_date: block.startDate,
+      end_date: block.endDate,
+      total_days: block.totalDays,
+      reason: block.reason,
+      title: block.title,
+      notes: block.notes || null,
+      created_by: block.createdBy,
+      created_at: block.createdAt,
+    });
   }
 
   public async deleteRule(ruleId: string): Promise<boolean> {

@@ -14,6 +14,8 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
+const MAINTENANCE_BLOCK_OPTION = '__maintenance_block__';
+
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -23,7 +25,7 @@ interface BookingModalProps {
   blocks: DateBlock[];
   initialStartDate?: string | null;
   initialEndDate?: string | null;
-  onBookingSuccess: (newBooking: Booking) => void;
+  onBookingSuccess: () => void;
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({
@@ -54,6 +56,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const reservationOwner = (canCreateForOthers
     ? eligibleReservationUsers.find((user) => user.id === reservationForUserId)
     : currentUser) || currentUser;
+  const isMaintenanceBlock = canCreateForOthers && reservationForUserId === MAINTENANCE_BLOCK_OPTION;
 
   useEffect(() => {
     setCloudBookings(bookings);
@@ -134,7 +137,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     // Capacity check
-    if (guestsCount > 12) {
+    if (!isMaintenanceBlock && guestsCount > 12) {
       return 'La capacidad máxima de la propiedad es de 12 huéspedes según reglamento.';
     }
 
@@ -154,6 +157,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setLoading(true);
 
     try {
+      if (isMaintenanceBlock) {
+        await storageService.createBlockAsync({
+          startDate: checkInDate,
+          endDate: checkOutDate,
+          totalDays: daysRequested,
+          reason: 'maintenance',
+          title: notes.trim() || 'Mantenimiento',
+          notes: notes.trim() || undefined,
+          createdBy: `${currentUser.name} (Intendente)`,
+        });
+        setLoading(false);
+        onBookingSuccess();
+        onClose();
+        return;
+      }
+
       // Create and lock booking authoritatively on cloud server with pending status
       const newBooking = await storageService.createBookingAsync({
         userId: reservationOwner.id,
@@ -179,7 +198,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       });
 
       setLoading(false);
-      onBookingSuccess(newBooking);
+      onBookingSuccess();
       onClose();
     } catch (err: unknown) {
       setLoading(false);
@@ -203,7 +222,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 Nueva Reserva de Estadía
               </h3>
               <p className="text-[11px] text-[#C9D6CC]">
-                {canCreateForOthers ? 'Crear una reserva para un copropietario' : `${currentUser.name} · ${currentUser.partName}`}
+                {canCreateForOthers ? 'Crear una reserva o bloquear fechas por mantenimiento' : `${currentUser.name} · ${currentUser.partName}`}
               </p>
             </div>
           </div>
@@ -218,7 +237,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Stay summary strip */}
         <div className="px-6 py-2.5 bg-[#FAF8F4] border-b border-[#EAE3D3] flex items-center justify-between text-xs">
           <span className="text-[#526657]">
-            Estadía para: <strong className="text-[#17341B] font-semibold">{reservationOwner.name}</strong> ({reservationOwner.partName})
+            {isMaintenanceBlock ? (
+              <>Bloqueo para: <strong className="text-[#17341B] font-semibold">Mantenimiento</strong></>
+            ) : (
+              <>Estadía para: <strong className="text-[#17341B] font-semibold">{reservationOwner.name}</strong> ({reservationOwner.partName})</>
+            )}
           </span>
           {daysRequested > 0 && (
             <span className="font-semibold font-mono tabular-nums text-emerald-800">
@@ -245,18 +268,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 onChange={(e) => setReservationForUserId(e.target.value)}
                 className="w-full px-3 py-2 bg-[#F4F8FF] border border-blue-200 text-[#19231A] text-sm font-semibold focus:outline-none focus:border-[#1E3F20]"
               >
+                <option value={MAINTENANCE_BLOCK_OPTION}>Mantenimiento</option>
                 {eligibleReservationUsers.map((user) => (
                   <option key={user.id} value={user.id}>{user.name} · {user.partName}</option>
                 ))}
               </select>
-              <span className="text-[10px] text-[#637568] block mt-1">Como Intendente, la reserva queda confirmada directamente a nombre de la persona elegida.</span>
+              <span className="text-[10px] text-[#637568] block mt-1">
+                {isMaintenanceBlock
+                  ? 'Se crearán fechas bloqueadas por mantenimiento, sin asignarlas a un copropietario.'
+                  : 'Como Intendente, la reserva queda confirmada directamente a nombre de la persona elegida.'}
+              </span>
             </div>
           )}
           {/* Dates row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1.5">
-                Fecha de Check-in
+                {isMaintenanceBlock ? 'Inicio del Bloqueo' : 'Fecha de Check-in'}
               </label>
               <input
                 type="date"
@@ -275,7 +303,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1.5">
-                Fecha de Check-out
+                {isMaintenanceBlock ? 'Fin del Bloqueo' : 'Fecha de Check-out'}
               </label>
               <input
                 type="date"
@@ -294,7 +322,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </div>
 
           {/* Guests count & Arrival time */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          {!isMaintenanceBlock && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1.5">
                 Cantidad de Huéspedes
@@ -330,18 +358,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
               <span className="text-[10px] text-[#7A8E7E] block mt-1">Para recepción por casero</span>
             </div>
-          </div>
+          </div>}
 
           {/* Notes / Special requests */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[#35483A] mb-1.5">
-              Observaciones Adicionales (Opcional)
+              {isMaintenanceBlock ? 'Detalle del Mantenimiento (Opcional)' : 'Observaciones Adicionales (Opcional)'}
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              placeholder="Ej. Viajamos con 2 niños, requerimos cuna funcional en suite principal y leña lista para asado de bienvenida."
+              placeholder={isMaintenanceBlock ? 'Ej. Revisión anual de caldera.' : 'Ej. Viajamos con 2 niños, requerimos cuna funcional en suite principal y leña lista para asado de bienvenida.'}
               className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] text-[#19231A] text-xs focus:outline-none focus:border-[#1E3F20]"
             />
           </div>
@@ -350,7 +378,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           <div className="flex items-center gap-2 text-[11px] text-[#637568] pt-2 border-t border-[#EFEAE0]">
             <ShieldCheck className="w-4 h-4 text-[#8C7A53] shrink-0" />
             <span>
-              {canCreateForOthers
+              {isMaintenanceBlock
+                ? <>El bloqueo quedará guardado en la base y podrá eliminarse desde el calendario por el Intendente.</>
+                : canCreateForOthers
                 ? <>La reserva quedará registrada como <strong>Confirmada</strong> y bloqueará las fechas en el calendario.</>
                 : <>La solicitud quedará registrada en estado <strong>Pendiente</strong> y bloqueará las fechas en el calendario hasta que sea aprobada por el administrador.</>}
             </span>
@@ -375,7 +405,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-[#BFA270]" />
-                  <span>{canCreateForOthers ? 'Confirmar Reserva' : 'Enviar Solicitud'} ({daysRequested} {daysRequested === 1 ? 'noche' : 'noches'})</span>
+                  <span>{isMaintenanceBlock ? 'Confirmar Mantenimiento' : canCreateForOthers ? 'Confirmar Reserva' : 'Enviar Solicitud'} ({daysRequested} {daysRequested === 1 ? 'día' : 'días'})</span>
                 </>
               )}
             </button>

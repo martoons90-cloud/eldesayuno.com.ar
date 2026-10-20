@@ -974,6 +974,21 @@ class StorageService {
     return newBlock;
   }
 
+  /** Crea un bloqueo sólo después de que Supabase confirma el alta. */
+  public async createBlockAsync(block: Omit<DateBlock, 'id' | 'createdAt'>): Promise<DateBlock> {
+    const newBlock: DateBlock = {
+      ...block,
+      id: 'block-' + Date.now(),
+      createdAt: new Date().toISOString(),
+    };
+    const saved = await supabaseService.saveBlock(newBlock);
+    if (!saved) {
+      throw new Error('La base de datos no confirmó el bloqueo de mantenimiento.');
+    }
+    await this.hydrateFromAppStateAsync();
+    return newBlock;
+  }
+
   public async deleteBlock(blockId: string): Promise<boolean> {
     const deleted = await supabaseService.deleteBlock(blockId);
     if (!deleted) {

@@ -495,6 +495,16 @@ export default function App() {
             currentUser={currentUser}
             onSelectDateRange={handleCalendarSelectRange}
             onOpenBookingModal={handleOpenNewBooking}
+            onDeleteBlock={async (block) => {
+              if (!isUserIntendente(currentUser)) return;
+              if (!window.confirm(`¿Eliminar el bloqueo de mantenimiento del ${block.startDate} al ${block.endDate}?`)) return;
+              const deleted = await storageService.deleteBlock(block.id);
+              if (!deleted) {
+                alert('La base de datos no confirmó la eliminación del bloqueo.');
+                return;
+              }
+              refreshData();
+            }}
           />
         )}
 

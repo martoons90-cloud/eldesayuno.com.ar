@@ -8,6 +8,7 @@ import {
   Check,
   Clock,
   Layers,
+  Trash2,
 } from 'lucide-react';
 
 interface CalendarViewProps {
@@ -17,6 +18,7 @@ interface CalendarViewProps {
   currentUser: User;
   onSelectDateRange: (startDate: string, endDate: string) => void;
   onOpenBookingModal: () => void;
+  onDeleteBlock: (block: DateBlock) => void;
 }
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
@@ -26,6 +28,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   currentUser,
   onSelectDateRange,
   onOpenBookingModal,
+  onDeleteBlock,
 }) => {
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -457,6 +460,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               } else if (info.type === 'block') {
                 cellBg = 'bg-[#FFFBEB]';
                 cellBorder = 'border-amber-300';
+                if (isUserIntendente(currentUser) && dateStr === info.block.startDate) {
+                  badge = (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteBlock(info.block);
+                      }}
+                      className="mt-1 w-full px-1.5 py-0.5 text-[9px] font-semibold text-red-700 bg-white border border-red-200 hover:bg-red-50 flex items-center justify-center gap-1 cursor-pointer"
+                      title="Eliminar bloqueo de mantenimiento"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                      Eliminar
+                    </button>
+                  );
+                }
               } else if (info.type === 'cleaning') {
                 cellBg = 'bg-[#F2F7F2]';
                 cellBorder = 'border-emerald-200';
