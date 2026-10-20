@@ -146,15 +146,14 @@ export default function App() {
     setIsBookingModalOpen(true);
   };
 
-  // Filter notifications according to privacy:
-  // Rejections and targeted alerts are ONLY visible to the applicant (targetUserId) or admin
+  // El Intendente recibe toda la actividad. Los copropietarios ven reservas
+  // comunes y sólo los movimientos que afectan su propia cuenta.
   const userNotifications = useMemo(() => {
     if (!currentUser) return [];
     return notifications.filter((n) => {
-      if (n.targetUserId) {
-        return n.targetUserId === currentUser.id || currentUser.role === 'admin';
-      }
-      return true;
+      if (isUserIntendente(currentUser)) return true;
+      if (n.targetUserId) return n.targetUserId === currentUser.id;
+      return n.type === 'booking_created' || n.type === 'booking_approved' || n.type === 'booking_cancelled';
     });
   }, [notifications, currentUser]);
 

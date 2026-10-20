@@ -185,6 +185,7 @@ export interface NotificationPush {
     | 'quota_updated'
     | 'incident_reported'
     | 'incident_resolved'
+    | 'account_movement'
     | 'system';
   targetUserId?: string | null; // null/undefined means all users. If set, ONLY that user or admin sees it
   bookingUserId?: string | null; // The applicant user whose dates were approved or rejected

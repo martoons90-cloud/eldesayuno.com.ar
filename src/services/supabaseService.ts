@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import type { IncidentReport } from '../types';
+import type { IncidentReport, NotificationPush } from '../types';
 
 export interface SupabaseConfig {
   url: string;
@@ -736,7 +736,20 @@ class SupabaseService {
       if (!documentsRes.error && Array.isArray(documentsRes.data)) data.documents = documentsRes.data;
       if (!notificationsRes.error && Array.isArray(notificationsRes.data)) {
         data.notifications = notificationsRes.data.map((notification: any) => ({
-          ...notification, timestamp: notification.created_at || notification.timestamp || '',
+          id: notification.id,
+          title: notification.title || '',
+          body: notification.body || '',
+          type: notification.type || 'system',
+          read: Boolean(notification.read),
+          timestamp: notification.created_at || notification.timestamp || '',
+          targetUserId: notification.target_user_id || null,
+          bookingId: notification.booking_id || null,
+          bookingUserId: notification.booking_user_id || null,
+          bookingUserName: notification.booking_user_name || null,
+          bookingPartName: notification.booking_part_name || null,
+          checkInDate: notification.check_in_date || null,
+          checkOutDate: notification.check_out_date || null,
+          totalDays: notification.total_days ?? null,
         }));
       }
 
@@ -844,6 +857,26 @@ class SupabaseService {
       date: transaction.date || null, user_id: transaction.userId || null, user_name: transaction.userName || '',
       part_name: transaction.partName || '', expense_id: transaction.expenseId || null, notes: transaction.notes || '',
       created_by: transaction.createdBy || '', created_at: transaction.createdAt || new Date().toISOString(),
+    });
+  }
+
+  /** Notificaciones compartidas: se persisten para que cada usuario las reciba al ingresar. */
+  public async saveNotification(notification: NotificationPush): Promise<boolean> {
+    return this.upsertRow('notifications', {
+      id: notification.id,
+      title: notification.title || '',
+      body: notification.body || '',
+      type: notification.type || 'system',
+      booking_id: notification.bookingId || null,
+      target_user_id: notification.targetUserId || null,
+      booking_user_id: notification.bookingUserId || null,
+      booking_user_name: notification.bookingUserName || null,
+      booking_part_name: notification.bookingPartName || null,
+      check_in_date: notification.checkInDate || null,
+      check_out_date: notification.checkOutDate || null,
+      total_days: notification.totalDays ?? null,
+      read: false,
+      created_at: notification.timestamp || new Date().toISOString(),
     });
   }
 

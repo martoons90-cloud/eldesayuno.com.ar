@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, CheckCircle2, AlertTriangle, X, ShieldAlert, XCircle } from 'lucide-react';
 import { pushService } from '../services/notificationService';
 import { storageService } from '../services/storageService';
-import { NotificationPush, User } from '../types';
+import { NotificationPush, User, isUserIntendente } from '../types';
 
 interface ToastItem {
   id: string;
@@ -30,7 +30,7 @@ export const PushNotificationToast: React.FC<{ currentUser?: User }> = ({ curren
       // Privacy check: If notification is targeted to a specific user (e.g. rejection),
       // ONLY show to that user or admins!
       if (detail.targetUserId && currentUser) {
-        if (detail.targetUserId !== currentUser.id && currentUser.role !== 'admin') {
+        if (detail.targetUserId !== currentUser.id && !isUserIntendente(currentUser)) {
           return; // Suppress for other coproprietors
         }
       }
@@ -224,6 +224,9 @@ export const NotificationCenterDrawer: React.FC<{
               } else if (n.type === 'block_added') {
                 typeLabel = 'Mantenimiento';
                 badgeClass = 'bg-amber-100 text-amber-950 border border-amber-200';
+              } else if (n.type === 'account_movement') {
+                typeLabel = 'Tu cuenta';
+                badgeClass = 'bg-sky-50 text-sky-900 border border-sky-200';
               }
 
               return (

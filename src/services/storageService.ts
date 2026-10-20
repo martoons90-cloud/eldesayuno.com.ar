@@ -725,11 +725,20 @@ class StorageService {
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
     // Add push notification
+    const isDirectlyConfirmed = newBooking.status === 'confirmed';
     this.addNotification({
-      title: 'Nueva Solicitud de Reserva',
-      body: `${newBooking.userName} solicitó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches). En espera de aprobación administrativa.`,
+      title: isDirectlyConfirmed ? 'Nueva Reserva Registrada' : 'Nueva Solicitud de Reserva',
+      body: isDirectlyConfirmed
+        ? `${newBooking.userName} reservó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches).`
+        : `${newBooking.userName} solicitó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches). En espera de aprobación administrativa.`,
       type: 'booking_created',
       bookingId: newBooking.id,
+      bookingUserId: newBooking.userId,
+      bookingUserName: newBooking.userName,
+      bookingPartName: newBooking.partName,
+      checkInDate: newBooking.checkInDate,
+      checkOutDate: newBooking.checkOutDate,
+      totalDays: newBooking.totalDays,
     });
 
     this.notify(false);
@@ -752,11 +761,20 @@ class StorageService {
     const recalculated = recalculateUsersUsedDays(users, updated);
     localStorage.setItem(USERS_KEY, JSON.stringify(recalculated));
 
+    const isDirectlyConfirmed = newBooking.status === 'confirmed';
     this.addNotification({
-      title: 'Nueva Solicitud de Reserva',
-      body: `${newBooking.userName} solicitó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches). En espera de aprobación administrativa.`,
+      title: isDirectlyConfirmed ? 'Nueva Reserva Registrada' : 'Nueva Solicitud de Reserva',
+      body: isDirectlyConfirmed
+        ? `${newBooking.userName} reservó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches).`
+        : `${newBooking.userName} solicitó del ${newBooking.checkInDate} al ${newBooking.checkOutDate} (${newBooking.totalDays} noches). En espera de aprobación administrativa.`,
       type: 'booking_created',
       bookingId: newBooking.id,
+      bookingUserId: newBooking.userId,
+      bookingUserName: newBooking.userName,
+      bookingPartName: newBooking.partName,
+      checkInDate: newBooking.checkInDate,
+      checkOutDate: newBooking.checkOutDate,
+      totalDays: newBooking.totalDays,
     });
 
     this.notify(false);
@@ -1307,6 +1325,16 @@ class StorageService {
     const savedAllocation = updatedAllocations.find((allocation) => allocation.userId === userId);
     if (!savedAllocation) return false;
 
+    const previousAllocation = collection.allocations.find((allocation) => allocation.userId === userId);
+    if ((Number(previousAllocation?.paidAmount) || 0) !== (Number(savedAllocation.paidAmount) || 0)) {
+      this.addNotification({
+        title: 'Movimiento en tu cuenta',
+        body: `Se aplicaron $${(Number(savedAllocation.paidAmount) || 0).toLocaleString('es-AR')} ARS a la cobranza “${collection.concept}”.`,
+        type: 'account_movement',
+        targetUserId: userId,
+      });
+    }
+
     // Un pago informado mueve dinero real solo cuando entra por un medio externo.
     // Las compensaciones por saldo a favor cancelan deuda, pero no ingresan dinero a Caja.
     const paymentCashFlowId = `cf-fee-payment-${collectionId}-${userId}`;
@@ -1455,6 +1483,9 @@ class StorageService {
     };
     const updated = [newNotif, ...list].slice(0, 50); // Keep last 50
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated));
+    void supabaseService.saveNotification(newNotif).then((saved) => {
+      if (!saved) console.warn('La notificación no pudo guardarse en la base central.');
+    });
     return newNotif;
   }
 
@@ -1681,6 +1712,15 @@ class StorageService {
     const exists = list.some((t) => t.id === tx.id);
     const updated = exists ? list.map((t) => (t.id === tx.id ? tx : t)) : [tx, ...list];
     localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(updated));
+
+    if (!exists && !tx.id.startsWith('ledger-') && tx.userId) {
+      this.addNotification({
+        title: 'Movimiento en tu cuenta',
+        body: `${tx.type === 'ingreso' ? 'Ingreso' : 'Egreso'} de $${Number(tx.amount).toLocaleString('es-AR')} ARS: ${tx.concept}.`,
+        type: 'account_movement',
+        targetUserId: tx.userId,
+      });
+    }
     this.notify(false);
     return true;
   }

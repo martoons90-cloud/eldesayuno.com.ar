@@ -1081,9 +1081,16 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
         title: n.title || '',
         body: n.body || '',
         type: n.type || '',
-        booking_id: n.bookingId || '',
+        booking_id: n.bookingId || null,
+        target_user_id: n.targetUserId || null,
+        booking_user_id: n.bookingUserId || null,
+        booking_user_name: n.bookingUserName || null,
+        booking_part_name: n.bookingPartName || null,
+        check_in_date: n.checkInDate || null,
+        check_out_date: n.checkOutDate || null,
+        total_days: n.totalDays ?? null,
         read: n.read ?? false,
-        created_at: n.createdAt || new Date().toISOString(),
+        created_at: n.timestamp || n.createdAt || new Date().toISOString(),
       }));
       try { await supabaseServerClient.from('notifications').upsert(rows, { onConflict: 'id' }); } catch {}
     }
