@@ -27,8 +27,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onSelectDateRange,
   onOpenBookingModal,
 }) => {
-  const [viewMode, setViewMode] = useState<'month' | 'year'>('year');
-  const [currentDate, setCurrentDate] = useState(new Date(2027, 0, 1)); // January 2027
+  const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
+  const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [selectedEnd, setSelectedEnd] = useState<string | null>(null);
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   const goToToday = () => {
-    setCurrentDate(new Date(2026, 9, 1)); // October 2026
+    setCurrentDate(new Date());
   };
 
   // Helper to get formatted string YYYY-MM-DD
@@ -215,13 +215,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   // Quick stats for the month
   let freeCount = 0;
   let bookedCount = 0;
-  let blockedCount = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const dStr = formatDateString(year, month, d);
     const info = getDayInfo(dStr);
     if (info.type === 'free') freeCount++;
     else if (info.type === 'booking') bookedCount++;
-    else blockedCount++;
   }
 
   const selectedDaysCount =
@@ -381,10 +379,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <span>
                 <strong className="text-[#8C4A28] font-mono tabular-nums">{bookedCount}</strong> días reservados
               </span>
-              <span>·</span>
-              <span>
-                <strong className="text-amber-800 font-mono tabular-nums">{blockedCount}</strong> no disponibles
-              </span>
             </div>
 
             <div className="flex items-center gap-1">
@@ -463,19 +457,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               } else if (info.type === 'block') {
                 cellBg = 'bg-[#FFFBEB]';
                 cellBorder = 'border-amber-300';
-                badge = (
-                  <div className="mt-1 px-1.5 py-0.5 text-[9px] font-semibold text-amber-900 bg-amber-100 truncate">
-                    No disponible
-                  </div>
-                );
               } else if (info.type === 'cleaning') {
                 cellBg = 'bg-[#F2F7F2]';
                 cellBorder = 'border-emerald-200';
-                badge = (
-                  <div className="mt-1 px-1.5 py-0.5 text-[9px] font-medium text-emerald-800 bg-emerald-50 truncate">
-                    No disponible
-                  </div>
-                );
               }
 
               if (isInSelectedRange) {
@@ -547,17 +531,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   </div>
                 ))}
 
-              {/* Fechas operativas no disponibles */}
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 bg-amber-400 border border-amber-500 shrink-0" />
-                <span className="text-[#35483A] font-medium truncate">No disponible</span>
-              </div>
-
-              {/* Fechas operativas no disponibles */}
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 bg-emerald-200 border border-emerald-400 shrink-0" />
-                <span className="text-[#35483A] font-medium truncate">No disponible</span>
-              </div>
             </div>
           </div>
         </div>
@@ -589,7 +562,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               </div>
             </div>
             <span className="text-xs text-[#7A8E7E]">
-              Distribución de ocupación de las 4 partes y fechas no disponibles
+              Distribución de ocupación de las 4 partes
             </span>
           </div>
 
@@ -637,10 +610,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         title = `${d} de ${mName}: ${info.booking.userName}${isPending ? ' (Pendiente de Aprobación)' : ''}`;
                       } else if (info.type === 'block') {
                         bg = 'bg-amber-400 text-amber-950 font-bold';
-                        title = `${d} de ${mName}: No disponible`;
                       } else if (info.type === 'cleaning') {
                         bg = 'bg-emerald-200 text-emerald-950';
-                        title = `${d} de ${mName}: No disponible`;
                       }
 
                       return (
