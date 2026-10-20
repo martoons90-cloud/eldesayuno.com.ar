@@ -176,6 +176,8 @@ export interface NotificationPush {
   body: string;
   timestamp: string;
   read: boolean;
+  readByUserIds?: string[];
+  dismissedByUserIds?: string[];
   type:
     | 'booking_created'
     | 'booking_approved'

@@ -154,7 +154,11 @@ export default function App() {
       if (isUserIntendente(currentUser)) return true;
       if (n.targetUserId) return n.targetUserId === currentUser.id;
       return n.type === 'booking_created' || n.type === 'booking_approved' || n.type === 'booking_cancelled';
-    });
+    }).filter((n) => !(n.dismissedByUserIds || []).includes(currentUser.id))
+      .map((n) => ({
+        ...n,
+        read: n.readByUserIds ? n.readByUserIds.includes(currentUser.id) : n.read,
+      }));
   }, [notifications, currentUser]);
 
   // If user is not logged in, display strictly the private login gate
@@ -721,7 +725,18 @@ export default function App() {
         isOpen={isNotificationDrawerOpen}
         onClose={() => setIsNotificationDrawerOpen(false)}
         notifications={userNotifications}
-        onMarkAllRead={() => storageService.markAllNotificationsAsRead()}
+        onMarkAllRead={() => {
+          void storageService.markNotificationsAsReadForUser(
+            userNotifications.map((notification) => notification.id),
+            currentUser.id
+          );
+        }}
+        onDeleteNotification={(notificationId) => {
+          if (!userNotifications.some((notification) => notification.id === notificationId)) return;
+          void storageService.dismissNotificationForUser(notificationId, currentUser.id).then((dismissed) => {
+            if (!dismissed) alert('La base de datos no confirmó la eliminación de la notificación.');
+          });
+        }}
         currentUser={currentUser}
       />
 

@@ -742,6 +742,8 @@ class SupabaseService {
           body: notification.body || '',
           type: notification.type || 'system',
           read: Boolean(notification.read),
+          readByUserIds: Array.isArray(notification.read_by_user_ids) ? notification.read_by_user_ids : [],
+          dismissedByUserIds: Array.isArray(notification.dismissed_by_user_ids) ? notification.dismissed_by_user_ids : [],
           timestamp: notification.created_at || notification.timestamp || '',
           targetUserId: notification.target_user_id || null,
           bookingId: notification.booking_id || null,
@@ -878,8 +880,48 @@ class SupabaseService {
       check_out_date: notification.checkOutDate || null,
       total_days: notification.totalDays ?? null,
       read: false,
+      read_by_user_ids: notification.readByUserIds || [],
+      dismissed_by_user_ids: notification.dismissedByUserIds || [],
       created_at: notification.timestamp || new Date().toISOString(),
     });
+  }
+
+  private notificationRow(notification: NotificationPush, changes: Partial<NotificationPush> = {}) {
+    const merged = { ...notification, ...changes };
+    return {
+      id: merged.id,
+      title: merged.title || '',
+      body: merged.body || '',
+      type: merged.type || 'system',
+      booking_id: merged.bookingId || null,
+      target_user_id: merged.targetUserId || null,
+      booking_user_id: merged.bookingUserId || null,
+      booking_user_name: merged.bookingUserName || null,
+      booking_part_name: merged.bookingPartName || null,
+      check_in_date: merged.checkInDate || null,
+      check_out_date: merged.checkOutDate || null,
+      total_days: merged.totalDays ?? null,
+      read: merged.read,
+      read_by_user_ids: merged.readByUserIds || [],
+      dismissed_by_user_ids: merged.dismissedByUserIds || [],
+      created_at: merged.timestamp || new Date().toISOString(),
+    };
+  }
+
+  public async markNotificationsAsReadForUser(notifications: NotificationPush[], userId: string): Promise<boolean> {
+    const results = await Promise.all(notifications.map((notification) => {
+      const readByUserIds = [...new Set([...(notification.readByUserIds || []), userId])];
+      return this.upsertRow('notifications', this.notificationRow(notification, { readByUserIds }));
+    }));
+    return results.every(Boolean);
+  }
+
+  public async dismissNotificationsForUser(notifications: NotificationPush[], userId: string): Promise<boolean> {
+    const results = await Promise.all(notifications.map((notification) => {
+      const dismissedByUserIds = [...new Set([...(notification.dismissedByUserIds || []), userId])];
+      return this.upsertRow('notifications', this.notificationRow(notification, { dismissedByUserIds }));
+    }));
+    return results.every(Boolean);
   }
 
   public async saveFeeCollection(collection: Record<string, any>): Promise<boolean> {
@@ -975,6 +1017,26 @@ class SupabaseService {
 
   public async deleteBlock(blockId: string): Promise<boolean> {
     return this.deleteRow('blocks', blockId);
+  }
+
+  public async deleteNotification(notificationId: string): Promise<boolean> {
+    return this.deleteRow('notifications', notificationId);
+  }
+
+  public async markNotificationsAsRead(notificationIds: string[]): Promise<boolean> {
+    const ids = [...new Set(notificationIds.filter(Boolean))];
+    if (ids.length === 0) return true;
+    if (!this.client) return false;
+    const { data, error } = await this.client
+      .from('notifications')
+      .update({ read: true })
+      .in('id', ids)
+      .select('id');
+    if (error || (data?.length || 0) !== ids.length) {
+      console.error('Error marcando notificaciones como leídas:', error || 'La base no confirmó todos los avisos.');
+      return false;
+    }
+    return true;
   }
 
   /** Los bloqueos operativos se confirman primero en la base central. */

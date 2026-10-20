@@ -1504,18 +1504,51 @@ class StorageService {
     return newNotif;
   }
 
-  public markNotificationAsRead(id: string) {
-    const list = this.getNotifications();
-    const updated = list.map((n) => (n.id === id ? { ...n, read: true } : n));
-    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated));
-    this.notify();
+  public async markNotificationAsRead(id: string, userId: string): Promise<boolean> {
+    return this.markNotificationsAsReadForUser([id], userId);
   }
 
-  public markAllNotificationsAsRead() {
+  public async markNotificationsAsReadForUser(ids: string[], userId: string): Promise<boolean> {
     const list = this.getNotifications();
-    const updated = list.map((n) => ({ ...n, read: true }));
+    const unreadNotifications = list.filter((notification) =>
+      ids.includes(notification.id) && !(notification.readByUserIds || []).includes(userId)
+    );
+    if (unreadNotifications.length === 0) return true;
+    const saved = await supabaseService.markNotificationsAsReadForUser(unreadNotifications, userId);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
+    const idsToMark = new Set(unreadNotifications.map((notification) => notification.id));
+    const updated = list.map((notification) => idsToMark.has(notification.id)
+      ? { ...notification, readByUserIds: [...new Set([...(notification.readByUserIds || []), userId])] }
+      : notification
+    );
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated));
-    this.notify();
+    this.notify(false);
+    return true;
+  }
+
+  public async markAllNotificationsAsRead(userId: string): Promise<boolean> {
+    return this.markNotificationsAsReadForUser(this.getNotifications().map((notification) => notification.id), userId);
+  }
+
+  public async dismissNotificationForUser(id: string, userId: string): Promise<boolean> {
+    const list = this.getNotifications();
+    const notification = list.find((item) => item.id === id);
+    if (!notification) return true;
+    const saved = await supabaseService.dismissNotificationsForUser([notification], userId);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
+    const updated = list.map((item) => item.id === id
+      ? { ...item, dismissedByUserIds: [...new Set([...(item.dismissedByUserIds || []), userId])] }
+      : item
+    );
+    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated));
+    this.notify(false);
+    return true;
   }
 
   // Apply complete dataset pulled from Cloudflare D1

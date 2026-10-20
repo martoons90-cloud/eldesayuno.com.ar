@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Bell, CheckCircle2, AlertTriangle, X, ShieldAlert, XCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Bell, CheckCircle2, AlertTriangle, X, ShieldAlert, Trash2 } from 'lucide-react';
 import { pushService } from '../services/notificationService';
-import { storageService } from '../services/storageService';
 import { NotificationPush, User, isUserIntendente } from '../types';
 
 interface ToastItem {
@@ -140,8 +139,23 @@ export const NotificationCenterDrawer: React.FC<{
   onClose: () => void;
   notifications: NotificationPush[];
   onMarkAllRead: () => void;
+  onDeleteNotification: (notificationId: string) => void;
   currentUser?: User;
-}> = ({ isOpen, onClose, notifications, onMarkAllRead, currentUser }) => {
+}> = ({ isOpen, onClose, notifications, onMarkAllRead, onDeleteNotification, currentUser }) => {
+  const orderedNotifications = useMemo(
+    () => [...notifications].sort((a, b) => {
+      if (a.read !== b.read) return Number(a.read) - Number(b.read);
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    }),
+    [notifications]
+  );
+
+  useEffect(() => {
+    if (isOpen && notifications.some((notification) => !notification.read)) {
+      onMarkAllRead();
+    }
+  }, [isOpen, notifications, onMarkAllRead]);
+
   if (!isOpen) return null;
 
   return (
@@ -171,23 +185,20 @@ export const NotificationCenterDrawer: React.FC<{
           <span className="text-[#637568] font-medium">
             Historial de eventos y confirmaciones
           </span>
-          <button
-            onClick={onMarkAllRead}
-            className="text-[11px] font-semibold text-[#1B3B2B] hover:underline cursor-pointer"
-          >
-            Marcar todas como leídas
-          </button>
+          <span className="text-[11px] font-semibold text-[#1B3B2B]">
+            Se marcan como leídas al abrir
+          </span>
         </div>
 
         {/* Notification list */}
         <div className="flex-1 overflow-y-auto divide-y divide-[#EFEAE0]">
-          {notifications.length === 0 ? (
+          {orderedNotifications.length === 0 ? (
             <div className="p-8 text-center text-[#7A8E7E]">
               <Bell className="w-8 h-8 mx-auto text-[#BFA270] opacity-40 mb-2" />
               <p className="text-xs">No hay notificaciones registradas.</p>
             </div>
           ) : (
-            notifications.map((n) => {
+            orderedNotifications.map((n) => {
               const isMyBooking = currentUser && n.bookingUserId && n.bookingUserId === currentUser.id;
 
               let displayTitle = n.title;
@@ -232,28 +243,39 @@ export const NotificationCenterDrawer: React.FC<{
               return (
                 <div
                   key={n.id}
-                  onClick={() => storageService.markNotificationAsRead(n.id)}
-                  className={`p-4 transition-colors cursor-pointer ${
-                    !n.read ? 'bg-[#F9F7F2]' : 'bg-[#FFFFFF] hover:bg-[#FAF8F5]'
+                  className={`p-4 transition-colors ${
+                    !n.read ? 'bg-amber-50/70 border-l-4 border-l-[#D4A72C]' : 'bg-[#FFFFFF] hover:bg-[#FAF8F5]'
                   } ${isMyBooking && n.type === 'booking_approved' ? 'border-l-4 border-l-emerald-600' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
                       {!n.read && (
-                        <span className="w-2 h-2 rounded-full bg-[#1B3B2B] shrink-0" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shrink-0 animate-pulse ring-4 ring-amber-200/70" />
                       )}
                       <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 ${badgeClass}`}>
                         {typeLabel}
                       </span>
                     </div>
-                    <span className="text-[10px] text-[#7A8E7E]">
-                      {new Date(n.timestamp).toLocaleDateString('es-AR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-[#7A8E7E]">
+                        {new Date(n.timestamp).toLocaleDateString('es-AR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('¿Eliminar esta notificación?')) onDeleteNotification(n.id);
+                        }}
+                        className="p-1 text-[#9A7B70] hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                        title="Eliminar notificación"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <h4 className="text-xs font-semibold text-[#19231A] mt-1.5">{displayTitle}</h4>
                   <p className="text-xs text-[#4F6254] mt-0.5 leading-relaxed">{displayBody}</p>
