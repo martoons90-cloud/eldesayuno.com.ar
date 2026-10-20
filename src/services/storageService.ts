@@ -1600,27 +1600,8 @@ class StorageService {
   }
 
   public async applyReimbursementToAdvances(userId: string, amount: number): Promise<boolean> {
-    let remaining = Math.max(0, Number(amount) || 0);
-    const advances = this.getExpenses()
-      .filter((expense) => this.isOwnerAdvanceExpense(expense) && expense.userId === userId)
-      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-
-    for (const expense of advances) {
-      if (remaining <= 0) break;
-      const reimbursed = Number(expense.reimbursedAmount) || 0;
-      const pending = Math.max(0, Number(expense.amount) - reimbursed);
-      if (pending <= 0) continue;
-      const applied = Math.min(pending, remaining);
-      const totalReimbursed = Math.round((reimbursed + applied) * 100) / 100;
-      const saved = await this.saveExpense({
-        ...expense,
-        reimbursedAmount: totalReimbursed,
-        reimbursementStatus: totalReimbursed >= Number(expense.amount) ? 'fully_repaid' : 'partial',
-      });
-      if (!saved) return false;
-      remaining = Math.round((remaining - applied) * 100) / 100;
-    }
-    return remaining <= 0.01;
+    if (Math.max(0, Number(amount) || 0) <= 0) return false;
+    return (await this.recalculateOwnerAdvanceReimbursements(userId)).success;
   }
 
   /** Aplica un reintegro a un adelanto puntual, sin modificar otros gastos del socio. */
@@ -1728,9 +1709,13 @@ class StorageService {
 
     const idsToDelete = new Set<string>([txId]);
     const affectedExpenseIds = new Set<string>();
+    const affectedAdvanceUserIds = new Set<string>();
     const addPaymentAndShares = (payment: CashFlowTransaction) => {
       idsToDelete.add(payment.id);
       if (payment.expenseId) affectedExpenseIds.add(payment.expenseId);
+      if (payment.category === 'reintegro_gasto' && payment.userId) {
+        affectedAdvanceUserIds.add(payment.userId);
+      }
       flows
         .filter((flow) => flow.id.startsWith(`ledger-expense-share-${payment.id}-`))
         .forEach((flow) => idsToDelete.add(flow.id));
@@ -1752,6 +1737,9 @@ class StorageService {
     if (!target.id.startsWith('ledger-') && target.type === 'egreso' && target.expenseId) {
       addPaymentAndShares(target);
     }
+    if (!target.id.startsWith('ledger-') && target.category === 'reintegro_gasto' && target.userId) {
+      affectedAdvanceUserIds.add(target.userId);
+    }
 
     const deletionOrder = [...idsToDelete]
       .filter((id) => id !== txId)
@@ -1766,6 +1754,12 @@ class StorageService {
 
     for (const expenseId of affectedExpenseIds) {
       if (!await this.recalculateExpensePaymentState(expenseId)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
+    for (const userId of affectedAdvanceUserIds) {
+      if (!(await this.recalculateOwnerAdvanceReimbursements(userId)).success) {
         await this.hydrateFromAppStateAsync();
         return false;
       }
@@ -1806,12 +1800,13 @@ class StorageService {
       }
     });
 
-    if (orphanIds.size === 0) return false;
+    let reconciled = false;
     for (const id of orphanIds) {
       if (!await this.deleteCashFlowTransaction(id)) {
         await this.hydrateFromAppStateAsync();
         return false;
       }
+      reconciled = true;
     }
     for (const expenseId of affectedExpenseIds) {
       if (!await this.recalculateExpensePaymentState(expenseId)) {
@@ -1819,7 +1814,74 @@ class StorageService {
         return false;
       }
     }
-    return true;
+    const advanceUserIds = new Set(
+      this.getExpenses()
+        .filter((expense) => this.isOwnerAdvanceExpense(expense) && expense.userId)
+        .map((expense) => expense.userId as string)
+    );
+    for (const userId of advanceUserIds) {
+      const result = await this.recalculateOwnerAdvanceReimbursements(userId);
+      if (!result.success) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+      if (result.changed) reconciled = true;
+    }
+    return reconciled;
+  }
+
+  /**
+   * Reconstituye cada adelanto desde los movimientos que todavía existen.
+   * Los reintegros antiguos sin factura vinculada se aplican por fecha, igual
+   * que la pantalla de "Emitir reintegro". Así nunca queda un gasto marcado
+   * como devuelto si su movimiento de Caja fue eliminado.
+   */
+  private async recalculateOwnerAdvanceReimbursements(userId: string): Promise<{ success: boolean; changed: boolean }> {
+    const advances = this.getExpenses()
+      .filter((expense) => this.isOwnerAdvanceExpense(expense) && expense.userId === userId)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    if (advances.length === 0) return { success: true, changed: false };
+
+    const reimbursements = this.getCashFlows().filter(
+      (flow) => !flow.id.startsWith('ledger-') &&
+        flow.type === 'egreso' &&
+        flow.category === 'reintegro_gasto' &&
+        flow.userId === userId
+    );
+    const linkedByExpense = new Map<string, number>();
+    let unassignedAmount = 0;
+    reimbursements.forEach((flow) => {
+      const amount = Math.max(0, Number(flow.amount) || 0);
+      if (flow.expenseId) {
+        linkedByExpense.set(flow.expenseId, (linkedByExpense.get(flow.expenseId) || 0) + amount);
+      } else {
+        unassignedAmount += amount;
+      }
+    });
+    unassignedAmount = Math.round(unassignedAmount * 100) / 100;
+
+    let changed = false;
+    for (const expense of advances) {
+      const linkedAmount = Math.min(Number(expense.amount), linkedByExpense.get(expense.id) || 0);
+      const pendingAfterLinked = Math.max(0, Number(expense.amount) - linkedAmount);
+      const appliedFromGeneral = Math.min(pendingAfterLinked, unassignedAmount);
+      unassignedAmount = Math.max(0, Math.round((unassignedAmount - appliedFromGeneral) * 100) / 100);
+      const reimbursedAmount = Math.round((linkedAmount + appliedFromGeneral) * 100) / 100;
+      const reimbursementStatus: ExpenseItem['reimbursementStatus'] = reimbursedAmount <= 0.01
+        ? 'unpaid'
+        : reimbursedAmount >= Number(expense.amount) - 0.01 ? 'fully_repaid' : 'partial';
+
+      if (
+        Math.abs((Number(expense.reimbursedAmount) || 0) - reimbursedAmount) <= 0.01 &&
+        expense.reimbursementStatus === reimbursementStatus
+      ) continue;
+
+      if (!await this.saveExpense({ ...expense, reimbursedAmount, reimbursementStatus })) {
+        return { success: false, changed };
+      }
+      changed = true;
+    }
+    return { success: true, changed };
   }
 
   private async recalculateExpensePaymentState(expenseId: string): Promise<boolean> {
