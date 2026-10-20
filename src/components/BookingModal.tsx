@@ -82,16 +82,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             : eligibleReservationUsers[0]?.id || currentUser.id
         );
       }
-      // Re-hydrate from cloud to guarantee fresh reservations from all devices
-      storageService.hydrateFromAppStateAsync();
-      fetch('/api/bookings')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && Array.isArray(data.bookings)) {
-            setCloudBookings(data.bookings);
-          }
-        })
-        .catch(() => {});
+      // Se consulta siempre la base central antes de validar las fechas.
+      let active = true;
+      void storageService.hydrateFromAppStateAsync().then(() => {
+        if (active) setCloudBookings(storageService.getBookings());
+      });
+      return () => {
+        active = false;
+      };
     }
   }, [initialStartDate, initialEndDate, isOpen, canCreateForOthers, currentUser.id, eligibleReservationUsers]);
 

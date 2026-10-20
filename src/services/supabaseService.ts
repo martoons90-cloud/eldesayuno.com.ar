@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import type { DateBlock, IncidentReport, NotificationPush } from '../types';
+import type { Booking, DateBlock, IncidentReport, NotificationPush } from '../types';
 
 export interface SupabaseConfig {
   url: string;
@@ -1051,6 +1051,27 @@ class SupabaseService {
       notes: block.notes || null,
       created_by: block.createdBy,
       created_at: block.createdAt,
+    });
+  }
+
+  /** Una reserva sólo se considera creada o modificada cuando la base central la confirma. */
+  public async saveBooking(booking: Booking): Promise<boolean> {
+    return this.upsertRow('bookings', {
+      id: booking.id,
+      user_id: booking.userId,
+      user_name: booking.userName,
+      check_in_date: booking.checkInDate,
+      check_out_date: booking.checkOutDate,
+      total_days: booking.totalDays,
+      guests_count: booking.guestsCount,
+      status: booking.status,
+      user_color: booking.userColor,
+      part_name: booking.partName,
+      arrival_time: booking.arrivalTime || '',
+      cancellation_reason: booking.cancellationReason || '',
+      cancelled_at: booking.cancelledAt || null,
+      cancelled_by: booking.cancelledBy || '',
+      created_at: booking.createdAt,
     });
   }
 

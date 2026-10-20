@@ -135,7 +135,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // --- Section 3: Consolidated Bookings Filters ---
   const [filterOwner, setFilterOwner] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('pending');
   const [searchQuery, setSearchQuery] = useState('');
 
   // --- Section 4: Settings State ---
@@ -323,23 +323,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Pending bookings count & list
-  const pendingBookings = bookings.filter((b) => b.status === 'pending');
+  const pendingBookings = bookings
+    .filter((b) => b.status === 'pending')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // Filtered Bookings for consolidated list
-  const filteredBookings = bookings.filter((b) => {
-    if (filterOwner !== 'all' && b.userId !== filterOwner) return false;
-    if (filterStatus !== 'all' && b.status !== filterStatus) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const match =
-        b.userName.toLowerCase().includes(q) ||
-        b.partName.toLowerCase().includes(q) ||
-        b.checkInDate.includes(q) ||
-        (b.notes && b.notes.toLowerCase().includes(q));
-      if (!match) return false;
-    }
-    return true;
-  });
+  const filteredBookings = bookings
+    .filter((b) => {
+      if (filterOwner !== 'all' && b.userId !== filterOwner) return false;
+      if (filterStatus !== 'all' && b.status !== filterStatus) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const match =
+          b.userName.toLowerCase().includes(q) ||
+          b.partName.toLowerCase().includes(q) ||
+          b.checkInDate.includes(q) ||
+          (b.notes && b.notes.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // Export Bookings to CSV
   const handleExportCSV = () => {

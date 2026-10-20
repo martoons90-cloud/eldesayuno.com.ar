@@ -694,27 +694,22 @@ class StorageService {
     return raw ? JSON.parse(raw) : DEFAULT_BOOKINGS;
   }
 
-  // Primary Authoritative Cloud Booking Method (Validates against Cloud Server)
+  // La base central es la fuente de verdad para todas las reservas.
   public async createBookingAsync(booking: Omit<Booking, 'id' | 'createdAt'>): Promise<Booking> {
-    const bookingToCreate = {
+    const bookingToCreate: Booking = {
       ...booking,
       status: booking.status || ('pending' as BookingStatus),
+      id: 'booking-' + Date.now(),
+      createdAt: new Date().toISOString(),
     };
 
-    const res = await fetch('/api/bookings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bookingToCreate),
-    });
-
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      // Instantly refresh cache from cloud so user sees what is occupied
+    const saved = await supabaseService.saveBooking(bookingToCreate);
+    if (!saved) {
       await this.hydrateFromAppStateAsync();
-      throw new Error(data.error || 'Conflicto de fechas: no fue posible registrar la reserva.');
+      throw new Error('La base central no confirmó la reserva. No se registró ningún cambio.');
     }
 
-    const newBooking: Booking = data.booking;
+    const newBooking = bookingToCreate;
     const currentBookings = this.getBookings().filter((b) => b.id !== newBooking.id);
     const updated = [newBooking, ...currentBookings];
     localStorage.setItem(BOOKINGS_KEY, JSON.stringify(updated));
@@ -793,12 +788,19 @@ class StorageService {
     const booking = bookings.find((b) => b.id === bookingId);
     if (!booking) return null;
 
+    const confirmedBooking: Booking = {
+      ...booking,
+      status: 'confirmed' as BookingStatus,
+    };
+    const saved = await supabaseService.saveBooking(confirmedBooking);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      throw new Error('La base central no confirmó la aprobación de la reserva.');
+    }
+
     const updated = bookings.map((b) => {
       if (b.id === bookingId) {
-        return {
-          ...b,
-          status: 'confirmed' as BookingStatus,
-        };
+        return confirmedBooking;
       }
       return b;
     });
@@ -840,13 +842,6 @@ class StorageService {
 
     this.notify(false);
 
-    // Call cloud server
-    fetch(`/api/bookings/${bookingId}/approve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approvedByName }),
-    }).catch((err) => console.error('Error aprobando en servidor:', err));
-
     return updated.find((b) => b.id === bookingId) || null;
   }
 
@@ -856,22 +851,28 @@ class StorageService {
     });
   }
 
-  public cancelBooking(bookingId: string, reason: string, cancelledByName: string) {
+  public async cancelBookingAsync(bookingId: string, reason: string, cancelledByName: string): Promise<Booking | null> {
     const bookings = this.getBookings();
     const booking = bookings.find((b) => b.id === bookingId);
-    if (!booking) return;
+    if (!booking) return null;
 
     const isRejection = booking.status === 'pending';
+    const cancelledBooking: Booking = {
+      ...booking,
+      status: 'cancelled' as BookingStatus,
+      cancellationReason: reason,
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: cancelledByName,
+    };
+    const saved = await supabaseService.saveBooking(cancelledBooking);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      throw new Error('La base central no confirmó el rechazo o la cancelación de la reserva.');
+    }
 
     const updated = bookings.map((b) => {
       if (b.id === bookingId) {
-        return {
-          ...b,
-          status: 'cancelled' as BookingStatus,
-          cancellationReason: reason,
-          cancelledAt: new Date().toISOString(),
-          cancelledBy: cancelledByName,
-        };
+        return cancelledBooking;
       }
       return b;
     });
@@ -932,12 +933,13 @@ class StorageService {
 
     this.notify(false);
 
-    // Cancel on cloud server
-    fetch(`/api/bookings/${bookingId}/cancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason, cancelledByName }),
-    }).catch((err) => console.error('Error cancelando en servidor:', err));
+    return cancelledBooking;
+  }
+
+  public cancelBooking(bookingId: string, reason: string, cancelledByName: string) {
+    this.cancelBookingAsync(bookingId, reason, cancelledByName).catch((err) => {
+      console.warn('Error ejecutando cancelBookingAsync:', err);
+    });
   }
 
   // Blocks
