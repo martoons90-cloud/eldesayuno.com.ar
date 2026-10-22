@@ -526,7 +526,11 @@ class SupabaseService {
         this.client.from('rules').select('*'),
         this.client.from('contacts').select('*'),
         this.client.from('documents').select('*'),
-        this.client.from('notifications').select('*'),
+        this.client
+          .from('notifications')
+          .select('id,title,body,type,read,read_by_user_ids,dismissed_by_user_ids,created_at,target_user_id,booking_id,booking_user_id,booking_user_name,booking_part_name,check_in_date,check_out_date,total_days')
+          .order('created_at', { ascending: false })
+          .limit(100),
       ]);
 
       const essentialFailures = [

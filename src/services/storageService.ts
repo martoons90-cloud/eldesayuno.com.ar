@@ -143,63 +143,29 @@ class StorageService {
     // provocaba que la pantalla mostrara datos inexistentes cuando había demora o
     // un error transitorio de red.
 
-    // Hydrate server state and settings directly from database for cross-browser synchronization
-    this.fetchLatestSettingsFromDatabase();
-    this.hydrateFromAppStateAsync();
+    // La carga inicial la realiza App una sola vez. No se abre un stream de SSE:
+    // ese endpoint se cerraba de inmediato y el navegador lo reconectaba en bucle,
+    // descargando la base completa en cada reconexión.
 
-    // Real-time synchronization stream via SSE (< 50ms sync across all browser sessions)
-    this.initRealtimeSyncStream();
-
-    // Auto-refresh from cloud server on focus, visibility change, and periodic fallback
+    // Actualizar sólo cuando la persona vuelve a usar la aplicación y con una
+    // comprobación de respaldo espaciada. Las altas y cambios se reflejan en el
+    // momento porque se guardan directamente en la base central.
     window.addEventListener('focus', () => {
-      this.fetchLatestSettingsFromDatabase();
-      this.hydrateFromAppStateAsync();
+      void this.hydrateFromAppStateAsync();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        this.fetchLatestSettingsFromDatabase();
-        this.hydrateFromAppStateAsync();
+        void this.hydrateFromAppStateAsync();
       }
     });
 
-    // Smart background sync: only poll every 30s as a fallback when tab is active
+    // Una verificación cada 20 minutos evita descargas repetidas y mantiene el
+    // consumo del proyecto dentro del plan gratuito.
     setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        this.hydrateFromAppStateAsync();
+        void this.hydrateFromAppStateAsync();
       }
-    }, 30000);
-  }
-
-  private initRealtimeSyncStream() {
-    if (typeof window === 'undefined') return;
-    try {
-      const eventSource = new EventSource('/api/sync/events');
-      const handleSyncMessage = (e: MessageEvent) => {
-        try {
-          if (e.data) {
-            const parsed = JSON.parse(e.data);
-            if (parsed.payload?.settings && typeof parsed.payload.settings === 'object') {
-              const current = this.getSettings();
-              const merged = { ...DEFAULT_SETTINGS, ...current, ...parsed.payload.settings };
-              localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
-              if (merged.logoUrl) {
-                localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
-              }
-              this.notify(false, true);
-            }
-          }
-        } catch {}
-        this.hydrateFromAppStateAsync();
-      };
-
-      eventSource.addEventListener('sync', handleSyncMessage);
-      eventSource.onmessage = handleSyncMessage;
-      eventSource.onerror = () => {
-        // EventSource handles auto-reconnect
-      };
-    } catch (err) {
-      console.warn('Realtime sync stream fallback to polling:', err);
-    }
+    }, 20 * 60 * 1000);
   }
 
   public async hydrateFromAppStateAsync() {

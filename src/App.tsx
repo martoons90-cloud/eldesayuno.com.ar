@@ -95,19 +95,13 @@ export default function App() {
 
   useEffect(() => {
     refreshData();
-    void storageService.fetchIncidentsFromDatabase().then(setIncidents);
-    // Direct authoritative database query on application open
-    storageService.fetchLatestSettingsFromDatabase().then((dbSettings) => {
-      if (dbSettings) setSettings(dbSettings);
-      refreshData();
-    });
+    // Una sola carga completa al abrir la aplicación.
     storageService.hydrateFromAppStateAsync().finally(() => {
       refreshData();
       void storageService.fetchIncidentsFromDatabase().then(setIncidents);
     });
     const unsubscribe = storageService.subscribe(() => {
       refreshData();
-      void storageService.fetchIncidentsFromDatabase().then(setIncidents);
     });
     return () => {
       unsubscribe();
@@ -119,12 +113,9 @@ export default function App() {
     setCurrentUser(user);
     setActiveTab('dashboard');
     refreshData();
-    storageService.fetchLatestSettingsFromDatabase().then((dbSettings) => {
-      if (dbSettings) setSettings(dbSettings);
-      refreshData();
-    });
     storageService.hydrateFromAppStateAsync().finally(() => {
       refreshData();
+      void storageService.fetchIncidentsFromDatabase().then(setIncidents);
     });
   };
 
