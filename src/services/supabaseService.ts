@@ -719,12 +719,22 @@ class SupabaseService {
         });
       }
 
-      const categoriesReadSuccessfully = !expCatRes.error && !cfCatRes.error && !feeCatRes.error && !invCatRes.error && !opCatsRes.error;
-      if (categoriesReadSuccessfully && data.settings) {
-        data.settings.expenseCategories = expCats.length > 0 ? expCats : DEFAULT_EXPENSE_CATEGORIES;
-        data.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : DEFAULT_CASHFLOW_CATEGORIES;
-        data.settings.feeCategories = feeCats.length > 0 ? feeCats : DEFAULT_FEE_CATEGORIES;
-        data.settings.inventoryCategories = invCats.length > 0 ? invCats : DEFAULT_INVENTORY_CATEGORIES;
+      // Cada familia de categorías se confirma por separado. Si una tabla no
+      // está disponible, no debe ocultar las categorías de Gastos que sí se
+      // recibieron correctamente.
+      if (data.settings) {
+        if (!expCatRes.error || !opCatsRes.error) {
+          data.settings.expenseCategories = expCats.length > 0 ? expCats : DEFAULT_EXPENSE_CATEGORIES;
+        }
+        if (!cfCatRes.error || !opCatsRes.error) {
+          data.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : DEFAULT_CASHFLOW_CATEGORIES;
+        }
+        if (!feeCatRes.error || !opCatsRes.error) {
+          data.settings.feeCategories = feeCats.length > 0 ? feeCats : DEFAULT_FEE_CATEGORIES;
+        }
+        if (!invCatRes.error || !opCatsRes.error) {
+          data.settings.inventoryCategories = invCats.length > 0 ? invCats : DEFAULT_INVENTORY_CATEGORIES;
+        }
       }
 
       if (!blocksRes.error && Array.isArray(blocksRes.data)) {

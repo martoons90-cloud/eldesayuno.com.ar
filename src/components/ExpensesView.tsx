@@ -215,8 +215,22 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     .reduce((sum, e) => sum + e.amount, 0);
   const periodPendingAmount = periodTotalAmount - periodPaidAmount;
 
-  // Dynamic Expense Categories from Settings
-  const expenseCategories = storageService.getExpenseCategories();
+  // Las categorías confirmadas llegan desde la base. Mientras se completa esa
+  // lectura, las categorías ya presentes en los gastos se muestran de inmediato
+  // en vez de dejar el panel vacío.
+  const configuredExpenseCategories = storageService.getExpenseCategories();
+  const categoryIds = new Set(configuredExpenseCategories.map((category) => category.id));
+  const expenseCategories = [...configuredExpenseCategories];
+  expenses.forEach((expense) => {
+    if (!expense.category || categoryIds.has(expense.category)) return;
+    categoryIds.add(expense.category);
+    expenseCategories.push({
+      id: expense.category,
+      name: expense.category
+        .replace(/[_-]+/g, ' ')
+        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    });
+  });
 
   // Breakdown per Category
   const categoryTotals: Record<string, number> = {};
