@@ -372,8 +372,9 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       .filter((t) => t.id.startsWith('ledger-expense-share-') && t.userId === u.id)
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-    // 6. Net available balance in owner's particular account
-    // (+) Incomes credited + (+) Expenses advanced - (-) Reimbursements - (-) Auto debits applied
+    // 6. Saldo a favor disponible para reintegros o para pagar cuotas.
+    // Las cuotas pendientes se descuentan luego para mostrar el saldo neto
+    // de la cuenta, que puede ser negativo cuando el socio adeuda dinero.
     const totalCredited = totalUserIncome + totalAdvanced;
     const totalDeductions = totalReimbursed + totalAutoDebited + totalInvoicePayments;
     const netAvailableBalance = Math.max(0, totalCredited - totalDeductions);
@@ -394,6 +395,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
         }))
     );
     const totalPendingDebt = pendingAllocations.reduce((sum, item) => sum + item.pendingAmount, 0);
+    const accountBalance = netAvailableBalance - totalPendingDebt;
 
     const pendingExpensesCount = expenses.filter(
       (e) =>
@@ -418,6 +420,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       totalInvoicePayments,
       netAvailableBalance,
       totalPendingDebt,
+      accountBalance,
       pendingAllocations,
       autoDebitedAllocations,
       pendingExpensesCount,
@@ -467,6 +470,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
       totalInvoicePayments: 0,
       netAvailableBalance: 0,
       totalPendingDebt: 0,
+      accountBalance: 0,
       pendingAllocations: [],
       autoDebitedAllocations: [],
       pendingExpensesCount: 0,
@@ -1302,12 +1306,12 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
               <span className="text-[10px] uppercase font-bold tracking-wider text-[#7A8E7E] block">
                 Saldo Disponible en Mi Cuenta
               </span>
-              <div className="text-2xl font-bold font-mono text-[#163323] mt-1">
-                ${myAccount.netAvailableBalance.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
+              <div className={`text-2xl font-bold font-mono mt-1 ${myAccount.accountBalance < 0 ? 'text-red-700' : 'text-[#163323]'}`}>
+                ${myAccount.accountBalance.toLocaleString()} <span className="text-xs text-[#7A8E7E]">ARS</span>
               </div>
               <p className="text-[11px] text-[#526657] mt-1 flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${myAccount.netAvailableBalance > 0 ? 'bg-emerald-600 animate-pulse' : 'bg-neutral-400'}`} />
-                <span>Monto disponible para reintegro o débito de cuotas</span>
+                <span className={`w-2 h-2 rounded-full ${myAccount.accountBalance > 0 ? 'bg-emerald-600 animate-pulse' : myAccount.accountBalance < 0 ? 'bg-red-600' : 'bg-neutral-400'}`} />
+                <span>{myAccount.accountBalance < 0 ? 'Deuda pendiente en tu cuenta' : 'Monto disponible para reintegro o débito de cuotas'}</span>
               </p>
             </div>
 
@@ -1781,7 +1785,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                                 </span>
                                               </td>
                                               <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
-                                                ${acc.netAvailableBalance.toLocaleString()} ARS
+                                                ${acc.accountBalance.toLocaleString()} ARS
                                               </td>
                                             </tr>
                                           );
@@ -1878,8 +1882,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       </div>
                       <div className="p-2.5 bg-[#FAF8F5] border border-[#E8E2D2]">
                         <span className="text-[10px] text-[#7A8E7E] block uppercase">Saldo Disponible</span>
-                        <span className={`font-mono font-bold text-sm ${hasBalance ? 'text-emerald-800' : 'text-[#163323]'}`}>
-                          ${acc.netAvailableBalance.toLocaleString()}
+                        <span className={`font-mono font-bold text-sm ${acc.accountBalance < 0 ? 'text-red-700' : hasBalance ? 'text-emerald-800' : 'text-[#163323]'}`}>
+                          ${acc.accountBalance.toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -1960,7 +1964,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                 <div className="border border-emerald-200 bg-emerald-50 p-3"><span className="block text-[10px] uppercase font-bold text-emerald-800">Acreditaciones recibidas</span><strong className="font-mono text-base text-emerald-900">${accountDetail.totalUserIncome.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
                 <div className="border border-[#E3DFC8] bg-[#FAF8F5] p-3"><span className="block text-[10px] uppercase font-bold text-[#637568]">Adelantos a reintegrar</span><strong className="font-mono text-base text-[#163323]">${accountDetail.totalAdvanced.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
                 <div className="border border-amber-200 bg-amber-50 p-3"><span className="block text-[10px] uppercase font-bold text-amber-800">Reintegros / débitos</span><strong className="font-mono text-base text-amber-900">${(accountDetail.totalReimbursed + accountDetail.totalAutoDebited + accountDetail.totalInvoicePayments).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
-                <div className="border border-[#1B3B2B] bg-[#F3F8F3] p-3"><span className="block text-[10px] uppercase font-bold text-[#1B3B2B]">Saldo a favor</span><strong className="font-mono text-base text-[#163323]">${accountDetail.netAvailableBalance.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
+                <div className="border border-[#1B3B2B] bg-[#F3F8F3] p-3"><span className="block text-[10px] uppercase font-bold text-[#1B3B2B]">Saldo neto</span><strong className={`font-mono text-base ${accountDetail.accountBalance < 0 ? 'text-red-700' : 'text-[#163323]'}`}>${accountDetail.accountBalance.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong></div>
               </div>
 
               <p className="border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-900">Los <strong>adelantos</strong> no son ingresos: representan gastos que el copropietario pagó de su bolsillo y que el fideicomiso le debe reintegrar.</p>
