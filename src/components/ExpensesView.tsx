@@ -156,6 +156,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
   const [viewingExpenseCollections, setViewingExpenseCollections] = useState<ExpenseItem | null>(null);
+  const [expenseCategories, setExpenseCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [areExpenseCategoriesLoaded, setAreExpenseCategoriesLoaded] = useState(false);
 
   const getLinkedCollections = (expense: ExpenseItem) => feeCollections.filter(
     (collection) => collection.originalExpenseId === expense.id ||
@@ -182,9 +184,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }
   };
 
+  const loadExpenseCategories = async () => {
+    setAreExpenseCategoriesLoaded(false);
+    const result = await storageService.fetchExpenseCategoriesFromDatabase();
+    if (result.success) setExpenseCategories(result.categories);
+    setAreExpenseCategoriesLoaded(true);
+  };
+
   useEffect(() => {
     loadExpenses();
     loadFeeCollections();
+    loadExpenseCategories();
     const unsub = storageService.subscribe(() => {
       void loadExpenses();
       void loadFeeCollections();
@@ -193,6 +203,13 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    if (!areExpenseCategoriesLoaded || expenseCategories.length === 0) return;
+    if (!expenseCategories.some((category) => category.id === expenseForm.category)) {
+      setExpenseForm((current) => ({ ...current, category: expenseCategories[0].id as ExpenseCategory }));
+    }
+  }, [areExpenseCategoriesLoaded, expenseCategories, expenseForm.category]);
 
   // Distinct Periods available in expenses
   const availablePeriods = Array.from(
@@ -229,23 +246,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     .reduce((sum, e) => sum + e.amount, 0);
   const periodPendingAmount = periodTotalAmount - periodPaidAmount;
 
-  // Las categorías confirmadas llegan desde la base. Mientras se completa esa
-  // lectura, las categorías ya presentes en los gastos se muestran de inmediato
-  // en vez de dejar el panel vacío.
-  const configuredExpenseCategories = storageService.getExpenseCategories();
-  const categoryIds = new Set(configuredExpenseCategories.map((category) => category.id));
-  const expenseCategories = [...configuredExpenseCategories];
-  expenses.forEach((expense) => {
-    if (!expense.category || categoryIds.has(expense.category)) return;
-    categoryIds.add(expense.category);
-    expenseCategories.push({
-      id: expense.category,
-      name: expense.category
-        .replace(/[_-]+/g, ' ')
-        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
-    });
-  });
-
   // Breakdown per Category
   const categoryTotals: Record<string, number> = {};
   expenseCategories.forEach((cat) => {
@@ -273,7 +273,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   // Dynamic Category Badges
   const getCategoryBadge = (catId: string) => {
     const matched = expenseCategories.find((c) => c.id === catId);
-    const label = matched ? matched.name : catId;
+    const label = !areExpenseCategoriesLoaded
+      ? 'Cargando rótulo...'
+      : matched?.name || 'Sin rótulo configurado';
     const palette = getAutoExpenseColor(catId);
     return (
       <span className={`px-2 py-0.5 ${palette.badgeBg} ${palette.badgeText} ${palette.badgeBorder} border text-[10px] font-bold uppercase rounded inline-flex items-center gap-1.5 shadow-2xs`}>
@@ -947,12 +949,16 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         {/* Card 3: Gastos por Categoría (Dinámico) */}
         <div className="md:col-span-6 bg-white border border-[#E3DFC8] p-3.5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-[#637568] font-bold uppercase tracking-wider mb-2">
-            <span>Gastos por Categoría ({expenseCategories.length})</span>
+            <span>Gastos por Categoría {areExpenseCategoriesLoaded ? `(${expenseCategories.length})` : '(cargando...)'}</span>
             <Tag className="w-3.5 h-3.5 text-[#BFA270]" />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-xs max-h-40 overflow-y-auto">
-            {expenseCategories.map((cat) => {
+            {!areExpenseCategoriesLoaded ? (
+              <div className="col-span-full py-4 text-center text-[11px] text-[#7A8E7E]">
+                Cargando los rótulos configurados...
+              </div>
+            ) : expenseCategories.map((cat) => {
               const total = categoryTotals[cat.id] || 0;
               const palette = getAutoExpenseColor(cat.id);
               return (
@@ -1021,14 +1027,21 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
+            disabled={!areExpenseCategoriesLoaded}
             className="px-2.5 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-medium text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
           >
-            <option value="all">Todas las Categorías</option>
-            {expenseCategories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
+            {!areExpenseCategoriesLoaded ? (
+              <option value="all">Cargando categorías...</option>
+            ) : (
+              <>
+                <option value="all">Todas las Categorías</option>
+                {expenseCategories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </>
+            )}
           </select>
         </div>
       </div>
@@ -1276,13 +1289,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <select
                     value={expenseForm.category}
                     onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value as ExpenseCategory })}
+                    disabled={!areExpenseCategoriesLoaded}
                     className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]"
                   >
-                    {expenseCategories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
+                    {!areExpenseCategoriesLoaded ? (
+                      <option value="">Cargando categorías...</option>
+                    ) : (
+                      expenseCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 

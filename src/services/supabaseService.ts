@@ -151,6 +151,34 @@ class SupabaseService {
     };
   }
 
+  /** Lee únicamente los rótulos de Gastos desde la base central. */
+  public async fetchExpenseCategories(): Promise<{ success: boolean; categories: Array<{ id: string; name: string }> }> {
+    if (!this.client) return { success: false, categories: [] };
+
+    const [expenseCategoriesResult, operationalCategoriesResult] = await Promise.all([
+      this.client.from('expense_categories').select('id, name'),
+      this.client.from('operational_categories').select('id, name, type').eq('type', 'expense'),
+    ]);
+
+    if (expenseCategoriesResult.error && operationalCategoriesResult.error) {
+      console.error('Error leyendo categorías de gastos de Supabase:', expenseCategoriesResult.error, operationalCategoriesResult.error);
+      return { success: false, categories: [] };
+    }
+
+    const categoriesById = new Map<string, { id: string; name: string }>();
+    for (const category of expenseCategoriesResult.data || []) {
+      categoriesById.set(String(category.id), { id: String(category.id), name: String(category.name || category.id) });
+    }
+    for (const category of operationalCategoriesResult.data || []) {
+      const id = String(category.id);
+      if (!categoriesById.has(id)) {
+        categoriesById.set(id, { id, name: String(category.name || category.id) });
+      }
+    }
+
+    return { success: true, categories: Array.from(categoriesById.values()) };
+  }
+
   public async saveSettingsToSupabase(settings: Record<string, any>): Promise<Record<string, any>> {
     if (!this.client) throw new Error('Supabase no está configurado.');
     const { data, error } = await this.client

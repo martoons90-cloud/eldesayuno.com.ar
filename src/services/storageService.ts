@@ -2092,6 +2092,12 @@ class StorageService {
     const s = this.getSettings();
     return Array.isArray(s.expenseCategories) ? s.expenseCategories : DEFAULT_EXPENSE_CATEGORIES;
   }
+
+  // Los rótulos visibles de Gastos se consultan directamente en Supabase para
+  // evitar que una etiqueta antigua del navegador aparezca antes de la actual.
+  public async fetchExpenseCategoriesFromDatabase(): Promise<{ success: boolean; categories: CustomCategory[] }> {
+    return supabaseService.fetchExpenseCategories();
+  }
   public saveExpenseCategories(cats: CustomCategory[]) {
     const s = this.getSettings();
     s.expenseCategories = cats;
