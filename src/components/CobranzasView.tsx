@@ -470,9 +470,10 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
   // Filtrado de cobranzas para la lista principal
   const filteredCollections = collectionsInScope.filter((c) => {
-    // Filtro por mes seleccionado
+    // El listado es de emisiones: una cobranza creada este mes debe verse
+    // enseguida aunque su vencimiento sea el mes siguiente.
     if (selectedMonthKey !== 'all') {
-      const cMonthKey = c.dueDate ? c.dueDate.slice(0, 7) : c.issueDate.slice(0, 7);
+      const cMonthKey = c.issueDate ? c.issueDate.slice(0, 7) : c.dueDate.slice(0, 7);
       if (cMonthKey !== selectedMonthKey) return false;
     }
 

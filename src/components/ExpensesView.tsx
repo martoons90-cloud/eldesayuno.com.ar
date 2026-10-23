@@ -157,6 +157,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [feeCollections, setFeeCollections] = useState<FeeCollection[]>([]);
   const [viewingExpenseCollections, setViewingExpenseCollections] = useState<ExpenseItem | null>(null);
 
+  const getLinkedCollections = (expense: ExpenseItem) => feeCollections.filter(
+    (collection) => collection.originalExpenseId === expense.id ||
+      collection.id === expense.transferredToFeeCollectionId ||
+      (!collection.originalExpenseId && collection.notes?.includes(expense.concept))
+  );
+
+  // Una factura enviada conserva su marca aunque la lista de cobranzas tarde
+  // un instante en actualizarse. Así nunca se puede emitir dos veces.
+  const isExpenseAlreadyTransferred = (expense: ExpenseItem) =>
+    Boolean(expense.transferredToFeeCollectionId) || getLinkedCollections(expense).length > 0;
+
   const loadExpenses = async () => {
     const fresh = await storageService.fetchExpensesFromDatabase();
     if (fresh && Array.isArray(fresh)) {
@@ -207,6 +218,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }
     return true;
   });
+
+  const transferableExpenses = filteredExpenses.filter((expense) => !isExpenseAlreadyTransferred(expense));
+  const transferablePeriodTotal = transferableExpenses.reduce((sum, expense) => sum + expense.amount, 0);
 
   // Financial Metrics for Selected Period
   const periodTotalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -457,7 +471,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const currentBaseAmount =
     transferTarget === 'selected_expense' && selectedExpenseForTransfer
       ? selectedExpenseForTransfer.amount
-      : periodTotalAmount;
+      : transferablePeriodTotal;
 
   const currentTotalToCollect = Math.round((currentBaseAmount * (transferPercentage / 100)) * 100) / 100;
   const currentFinancingCharge = installmentsCount > 1
@@ -651,6 +665,34 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES OR INDIVIDUAL INVOICE)
   const handleTransferToCobranza = async () => {
+    const expensesToTransfer = transferTarget === 'selected_expense'
+      ? (selectedExpenseForTransfer ? [selectedExpenseForTransfer] : [])
+      : transferableExpenses;
+
+    if (expensesToTransfer.some(isExpenseAlreadyTransferred)) {
+      setDialog({
+        isOpen: true,
+        title: 'Gasto ya enviado a cobranza',
+        message: 'Esta factura ya tiene una cobranza emitida. Consultala con el ícono de vista; no es posible emitirla otra vez.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
+
+    if (expensesToTransfer.length === 0) {
+      setDialog({
+        isOpen: true,
+        title: 'Sin gastos para enviar',
+        message: 'Todos los gastos seleccionados ya fueron enviados a cobranzas.',
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
+
     if (currentTotalToCollect <= 0) {
       setDialog({
         isOpen: true,
@@ -692,7 +734,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       } else {
         conceptTitle = `Expensas Ordinarias ${formattedPeriodLabel}${instSuffix}${pctSuffix}`;
         notesDetail = `Gastos consolidados del mes (${transferPercentage}% en ${createdCount} cuotas):\n` +
-          filteredExpenses.map((e) => `• ${e.concept}: $${e.amount.toLocaleString()} ARS`).join('\n');
+          expensesToTransfer.map((e) => `• ${e.concept}: $${e.amount.toLocaleString()} ARS`).join('\n');
       }
 
       const installmentAmount = i === createdCount
@@ -762,7 +804,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       });
       if (!expenseSaved) return;
     } else {
-      for (const expense of filteredExpenses) {
+      for (const expense of expensesToTransfer) {
         const expenseSaved = await storageService.saveExpense({
           ...expense,
           transferredToFeeCollectionId: 'transferred-multi-' + Date.now(),
@@ -782,12 +824,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       if (onNavigateToCobranzas) onNavigateToCobranzas();
     }, 2000);
   };
-
-  const getLinkedCollections = (exp: ExpenseItem) => feeCollections.filter(
-    (collection) => collection.originalExpenseId === exp.id ||
-      collection.id === exp.transferredToFeeCollectionId ||
-      (!collection.originalExpenseId && collection.notes?.includes(exp.concept))
-  );
 
   const getExpenseReimbursementStatus = (exp: ExpenseItem) => {
     // Solo un gasto pagado personalmente genera un saldo a favor que debe
@@ -1037,6 +1073,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 filteredExpenses.map((exp) => {
                   const expPalette = getAutoExpenseColor(exp.id || exp.concept);
                   const linkedCollections = getLinkedCollections(exp);
+                  const alreadyTransferred = isExpenseAlreadyTransferred(exp);
                   return (
                     <tr key={exp.id} className={`hover:${expPalette.bg} transition-colors border-l-4 ${expPalette.bar}`}>
                       <td className="py-3 px-3 whitespace-nowrap font-mono text-[#56685B]">
@@ -1142,21 +1179,31 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                               <Eye className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          <button
-                            onClick={() => {
-                              setSelectedExpenseForTransfer(exp);
-                              setTransferTarget('selected_expense');
-                              setTransferPercentage(100);
-                              setInstallmentsCount(1);
-                              setInstallmentInterestPercentage(0);
-                              setIsTransferModalOpen(true);
-                            }}
-                            className="px-2 py-1 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs cursor-pointer rounded"
-                            title="Enviar esta factura individual a Cobranza"
-                          >
-                            <Send className="w-3 h-3 text-[#BFA270]" />
-                            <span>Enviar a Cobranza</span>
-                          </button>
+                          {alreadyTransferred ? (
+                            <span
+                              className="px-2 py-1 bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 rounded"
+                              title="Esta factura ya fue enviada a cobranzas"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>En cobranza</span>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setSelectedExpenseForTransfer(exp);
+                                setTransferTarget('selected_expense');
+                                setTransferPercentage(100);
+                                setInstallmentsCount(1);
+                                setInstallmentInterestPercentage(0);
+                                setIsTransferModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs cursor-pointer rounded"
+                              title="Enviar esta factura individual a Cobranza"
+                            >
+                              <Send className="w-3 h-3 text-[#BFA270]" />
+                              <span>Enviar a Cobranza</span>
+                            </button>
+                          )}
 
                           <button
                             onClick={() => handleEditExpense(exp)}
@@ -1513,16 +1560,16 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                           : 'bg-[#FAF8F5] text-[#163323] border-[#DDD5BF] hover:bg-[#F4EFE6]'
                       }`}
                     >
-                      <div className="text-xs font-bold">Todos los Gastos del Mes</div>
-                      <div className="text-[10px] opacity-80 mt-0.5 font-mono">${periodTotalAmount.toLocaleString()} ARS</div>
+                      <div className="text-xs font-bold">Gastos sin cobranza del Mes</div>
+                      <div className="text-[10px] opacity-80 mt-0.5 font-mono">${transferablePeriodTotal.toLocaleString()} ARS</div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => {
                         setTransferTarget('selected_expense');
-                        if (!selectedExpenseForTransfer && filteredExpenses.length > 0) {
-                          setSelectedExpenseForTransfer(filteredExpenses[0]);
+                        if (!selectedExpenseForTransfer && transferableExpenses.length > 0) {
+                          setSelectedExpenseForTransfer(transferableExpenses[0]);
                         }
                       }}
                       className={`p-2 border text-left cursor-pointer transition-all ${
@@ -1546,12 +1593,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     <select
                       value={selectedExpenseForTransfer?.id || ''}
                       onChange={(e) => {
-                        const found = filteredExpenses.find((ex) => ex.id === e.target.value);
+                        const found = transferableExpenses.find((ex) => ex.id === e.target.value);
                         setSelectedExpenseForTransfer(found || null);
                       }}
                       className="w-full px-2.5 py-1.5 bg-white border border-[#DDD5BF] font-semibold text-xs text-[#163323] focus:outline-none"
                     >
-                      {filteredExpenses.map((ex) => (
+                      {transferableExpenses.map((ex) => (
                         <option key={ex.id} value={ex.id}>
                           {ex.concept} — ${ex.amount.toLocaleString()} ARS ({ex.provider || 'S/D'})
                         </option>
