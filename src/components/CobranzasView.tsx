@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { User, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, RecurrenceType, PaymentStatus } from '../types';
+import { User, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, RecurrenceType, PaymentStatus, ExpenseItem } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import { CustomDialogModal } from './CustomDialogModal';
@@ -169,7 +169,8 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     customPercentages?: Record<string, number>,
     customAmounts?: Record<string, number>
   ): OwnerFeeAllocation[] => {
-    const activeUsers = allUsers.filter((u) => u.active !== false);
+    // Quien no tiene acciones no debe recibir cuota ni aparecer en el padrón.
+    const activeUsers = allUsers.filter((u) => u.active !== false && (Number(u.sharePercentage) || 0) > 0);
     if (activeUsers.length === 0) return [];
 
     if (mode === 'share_percentage') {
@@ -284,6 +285,11 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
       });
     }
   };
+
+  const billableAllocations = (collection: FeeCollection) =>
+    collection.allocations.filter((allocation) =>
+      (Number(allocation.percentage) || 0) > 0.00001 || (Number(allocation.assignedAmount) || 0) > 0.004
+    );
 
   // Open Payment Recording Modal
   const handleOpenRecordPayment = (collectionId: string, alloc: OwnerFeeAllocation) => {
@@ -402,7 +408,8 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
       const isCurrent = i === 0;
 
       const monthCols = feeCollections.filter((c) => {
-        const mKey = c.dueDate ? c.dueDate.slice(0, 7) : c.issueDate.slice(0, 7);
+        // La deuda pertenece al mes en que se emite, aunque venza después.
+        const mKey = c.issueDate ? c.issueDate.slice(0, 7) : c.dueDate.slice(0, 7);
         return mKey === key;
       });
 
@@ -412,7 +419,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
       const items: Array<{ collection: FeeCollection; allocation?: OwnerFeeAllocation }> = [];
 
       monthCols.forEach((col) => {
-        const alloc = col.allocations.find((a) => a.userId === currentUser.id);
+        const alloc = billableAllocations(col).find((a) => a.userId === currentUser.id);
         if (alloc) {
           userAmount += alloc.assignedAmount;
           userPaid += alloc.paidAmount || 0;
@@ -437,13 +444,13 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
               (s, c) =>
                 s +
                 (c.totalAmount -
-                  c.allocations.reduce((pa, a) => pa + (a.paidAmount || 0), 0)),
+                  billableAllocations(c).reduce((pa, a) => pa + (a.paidAmount || 0), 0)),
               0
             )
           : userPending,
         userPaid: isAdmin
           ? monthCols.reduce(
-              (s, c) => s + c.allocations.reduce((pa, a) => pa + (a.paidAmount || 0), 0),
+              (s, c) => s + billableAllocations(c).reduce((pa, a) => pa + (a.paidAmount || 0), 0),
               0
             )
           : userPaid,
@@ -464,7 +471,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
   // Colecciones al alcance según rol (copropietarios ven todas las que les corresponden)
   const myCollections = feeCollections.filter((collection) =>
-    collection.allocations.some((allocation) => allocation.userId === currentUser.id)
+    billableAllocations(collection).some((allocation) => allocation.userId === currentUser.id)
   );
   const collectionsInScope = isAdmin ? feeCollections : myCollections;
 
@@ -480,7 +487,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     // Búsqueda
     const matchesSearch =
       c.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.allocations.some((a) => a.userName.toLowerCase().includes(searchTerm.toLowerCase()));
+      billableAllocations(c).some((a) => a.userName.toLowerCase().includes(searchTerm.toLowerCase()));
 
     if (!matchesSearch) return false;
 
@@ -491,7 +498,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
     if (activeTabFilter === 'active') return c.status === 'active';
     if (activeTabFilter === 'completed') return c.status === 'completed';
     if (activeTabFilter === 'my_pending') {
-      return c.allocations.some(
+      return billableAllocations(c).some(
         (a) =>
           a.userId === currentUser.id &&
           (a.status === 'pending' || a.status === 'overdue' || a.status === 'partial')
@@ -504,12 +511,12 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
   // Calculate Metrics
   const totalCollectionsAmount = collectionsInScope.reduce((sum, collection) => {
     if (isAdmin) return sum + collection.totalAmount;
-    const myAllocation = collection.allocations.find((allocation) => allocation.userId === currentUser.id);
+    const myAllocation = billableAllocations(collection).find((allocation) => allocation.userId === currentUser.id);
     return sum + (myAllocation?.assignedAmount || 0);
   }, 0);
   const totalCollectedAmount = collectionsInScope.reduce((sum, collection) => {
-    if (isAdmin) return sum + collection.allocations.reduce((allocSum, allocation) => allocSum + (allocation.paidAmount || 0), 0);
-    const myAllocation = collection.allocations.find((allocation) => allocation.userId === currentUser.id);
+    if (isAdmin) return sum + billableAllocations(collection).reduce((allocSum, allocation) => allocSum + (allocation.paidAmount || 0), 0);
+    const myAllocation = billableAllocations(collection).find((allocation) => allocation.userId === currentUser.id);
     return sum + (myAllocation?.paidAmount || 0);
   }, 0);
   const totalPendingAmount = totalCollectionsAmount - totalCollectedAmount;
@@ -519,7 +526,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
 
   // Mis cuotas pendientes (del mes o general)
   const myPendingAllocations = collectionsInScope.flatMap((c) =>
-    c.allocations
+    billableAllocations(c)
       .filter((a) => a.userId === currentUser.id && a.status !== 'paid')
       .map((a) => ({ collection: c, allocation: a }))
   );
@@ -1151,13 +1158,14 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
         ) : (
           filteredCollections.map((collection) => {
             const isExpanded = expandedCollectionId === collection.id;
-            const collectedAmount = collection.allocations.reduce((sum, a) => sum + (a.paidAmount || 0), 0);
-            const myAlloc = collection.allocations.find((a) => a.userId === currentUser.id);
-            const visibleAllocations = isAdmin ? collection.allocations : (myAlloc ? [myAlloc] : []);
+            const chargeableAllocations = billableAllocations(collection);
+            const collectedAmount = chargeableAllocations.reduce((sum, a) => sum + (a.paidAmount || 0), 0);
+            const myAlloc = chargeableAllocations.find((a) => a.userId === currentUser.id);
+            const visibleAllocations = isAdmin ? chargeableAllocations : (myAlloc ? [myAlloc] : []);
             const displayedAmount = isAdmin ? collection.totalAmount : (myAlloc?.assignedAmount || 0);
             const displayedCollected = isAdmin ? collectedAmount : (myAlloc?.paidAmount || 0);
             const progressPct = displayedAmount > 0 ? Math.round((displayedCollected / displayedAmount) * 100) : 0;
-            const paidCount = collection.allocations.filter((a) => a.status === 'paid').length;
+            const paidCount = chargeableAllocations.filter((a) => a.status === 'paid').length;
 
             // Recurrence Badge
             const getRecurrenceLabel = (rec: RecurrenceType, days?: number) => {
@@ -1306,10 +1314,10 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                       <div className="text-right">
                         <div className="text-[10px] font-semibold uppercase tracking-wider text-[#7A8E7E]">Copropietarios</div>
                         <div className="text-sm font-bold text-[#163323]">
-                          {paidCount} / {collection.allocations.length} al día
+                          {paidCount} / {chargeableAllocations.length} al día
                         </div>
                         <div className="text-[11px] text-amber-700 font-medium">
-                          {collection.allocations.length - paidCount} pendientes
+                          {chargeableAllocations.length - paidCount} pendientes
                         </div>
                       </div>
 
@@ -1375,7 +1383,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                       <h4 className="text-xs font-bold text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
                         <Users className="w-4 h-4 text-[#BFA270]" />
                         {isAdmin
-                          ? `Padrón de Distribución y Estado de Pago Individual (${collection.allocations.length} Copropietarios)`
+                          ? `Padrón de Distribución y Estado de Pago Individual (${chargeableAllocations.length} Copropietarios)`
                           : 'Mi cuota y estado de pago'}
                       </h4>
 
@@ -1521,6 +1529,18 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
           users={users}
           currentUser={currentUser}
           onSave={async (col) => storageService.saveFeeCollection(col)}
+          expenses={storageService.getExpenses()}
+          onMarkExpenseAsCharged={async (expenseId, collectionId, installments) => {
+            const expense = storageService.getExpenses().find((item) => item.id === expenseId);
+            return expense
+              ? storageService.saveExpense({
+                  ...expense,
+                  transferredToFeeCollectionId: collectionId,
+                  transferredPercentage: 100,
+                  transferredInstallments: installments,
+                })
+              : false;
+          }}
           calculateAllocationsForMode={calculateAllocationsForMode}
         />
       )}
@@ -1879,7 +1899,9 @@ interface CreateFeeModalProps {
   onClose: () => void;
   users: User[];
   currentUser: User;
+  expenses: ExpenseItem[];
   onSave: (collection: FeeCollection) => Promise<boolean>;
+  onMarkExpenseAsCharged: (expenseId: string, collectionId: string, installments: number) => Promise<boolean>;
   calculateAllocationsForMode: (
     mode: DistributionMode,
     total: number,
@@ -1893,7 +1915,9 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
   onClose,
   users,
   currentUser,
+  expenses,
   onSave,
+  onMarkExpenseAsCharged,
   calculateAllocationsForMode,
 }) => {
   const [concept, setConcept] = useState('');
@@ -1910,6 +1934,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
   const [installmentsCount, setInstallmentsCount] = useState<number>(1); // 1, 2, 3, 6, 12, 24
   const [installmentInterestPercentage, setInstallmentInterestPercentage] = useState<number>(0);
   const [notes, setNotes] = useState('');
+  const [selectedExpenseId, setSelectedExpenseId] = useState('');
 
   // Custom percentages & amounts mapping
   const [customPercentages, setCustomPercentages] = useState<Record<string, number>>({});
@@ -1929,7 +1954,12 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
     onConfirm: () => {},
   });
 
-  const activeUsers = users.filter((u) => u.active !== false);
+  const activeUsers = users.filter((u) => u.active !== false && (Number(u.sharePercentage) || 0) > 0);
+  const selectableExpenses = expenses.filter((expense) =>
+    Number(expense.amount) > 0 &&
+    expense.approvalStatus !== 'rejected' &&
+    !expense.transferredToFeeCollectionId
+  );
 
   const financingCharge = installmentsCount > 1
     ? Math.round((totalAmount * (installmentInterestPercentage / 100)) * 100) / 100
@@ -1976,6 +2006,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
     }
 
     const createdCount = Math.max(1, installmentsCount);
+    const createdCollectionIds: string[] = [];
     const baseDueDateObj = new Date(dueDate || Date.now());
 
     for (let i = 1; i <= createdCount; i++) {
@@ -2022,6 +2053,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
         notes: `${notes.trim()}${installmentsCount > 1 ? `${notes.trim() ? '\n' : ''}Financiación: ${installmentInterestPercentage.toFixed(2)}% de recargo total ($${financingCharge.toLocaleString()} ARS).` : ''}`,
         installmentsCount: createdCount,
         installmentNumber: i,
+        originalExpenseId: selectedExpenseId || undefined,
       };
 
       const saved = await onSave(newCollection);
@@ -2031,6 +2063,22 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
           title: 'Cobranza no guardada',
           message: 'La base de datos no confirmó la emisión. No se mostrará como creada.',
           type: 'alert',
+          confirmText: 'Aceptar',
+          onConfirm: () => {},
+        });
+        return;
+      }
+      createdCollectionIds.push(newCollection.id);
+    }
+
+    if (selectedExpenseId) {
+      const linked = await onMarkExpenseAsCharged(selectedExpenseId, createdCollectionIds[0], createdCount);
+      if (!linked) {
+        setDialog({
+          isOpen: true,
+          title: 'Factura pendiente de vinculación',
+          message: 'La cobranza fue emitida, pero no se pudo marcar la factura como enviada. No emita otra: recargue y verifique la cobranza creada.',
+          type: 'warning',
           confirmText: 'Aceptar',
           onConfirm: () => {},
         });
@@ -2059,6 +2107,37 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div className="bg-blue-50/60 border border-blue-200 p-3">
+            <label className="block font-bold text-[#163323] mb-1">Factura / gasto a cobrar</label>
+            <select
+              value={selectedExpenseId}
+              onChange={(e) => {
+                const expenseId = e.target.value;
+                setSelectedExpenseId(expenseId);
+                const expense = selectableExpenses.find((item) => item.id === expenseId);
+                if (!expense) return;
+
+                setConcept(expense.concept);
+                setTotalAmount(Number(expense.amount) || 0);
+                setCurrency(expense.currency || 'ARS');
+                if (expense.date) setIssueDate(expense.date);
+                const matchingFeeCategory = storageService.getFeeCategories().find((item) => item.id === expense.category);
+                if (matchingFeeCategory) setCategory(matchingFeeCategory.id as FeeCollection['category']);
+              }}
+              className="w-full px-3 py-2 bg-white border border-blue-200 text-xs text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+            >
+              <option value="">Cobranza manual — sin factura asociada</option>
+              {selectableExpenses.map((expense) => (
+                <option key={expense.id} value={expense.id}>
+                  {expense.concept} · ${Number(expense.amount).toLocaleString('es-AR')} · {expense.periodMonth || expense.date}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-[#526657] mt-1.5">
+              Al elegir una factura, completa el concepto y el importe y queda marcada para que no se emita dos veces.
+            </p>
+          </div>
+
           {/* Concept and Category */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">

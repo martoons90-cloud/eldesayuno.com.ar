@@ -346,6 +346,9 @@ class SupabaseService {
           // un adelanto personal como unpaid/partial/fully_repaid.
           reimbursement_status: e.reimbursementStatus || 'not_applicable',
           reimbursed_amount: e.reimbursedAmount || 0,
+          transferred_to_fee_collection_id: e.transferredToFeeCollectionId || null,
+          transferred_percentage: e.transferredPercentage ?? null,
+          transferred_installments: e.transferredInstallments ?? null,
           created_at: e.createdAt || new Date().toISOString(),
         }));
         const { error: expError } = await this.client.from('expenses').upsert(expRows, { onConflict: 'id' });
@@ -705,6 +708,9 @@ class SupabaseService {
           rejectionReason: e.rejection_reason || '',
           reimbursementStatus: e.reimbursement_status || 'not_applicable',
           reimbursedAmount: Number(e.reimbursed_amount) || 0,
+          transferredToFeeCollectionId: e.transferred_to_fee_collection_id || undefined,
+          transferredPercentage: e.transferred_percentage === null || e.transferred_percentage === undefined ? undefined : Number(e.transferred_percentage),
+          transferredInstallments: e.transferred_installments === null || e.transferred_installments === undefined ? undefined : Number(e.transferred_installments),
         }));
       }
       if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) {

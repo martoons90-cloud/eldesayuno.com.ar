@@ -4,6 +4,13 @@ alter table public.inventory
   add column if not exists unit_price numeric(14, 2) not null default 0
   check (unit_price >= 0);
 
+-- Vínculo persistente entre una factura y su cobranza, para impedir que la
+-- misma se vuelva a emitir luego de recargar la página.
+alter table public.expenses
+  add column if not exists transferred_to_fee_collection_id text,
+  add column if not exists transferred_percentage numeric(7, 4),
+  add column if not exists transferred_installments integer;
+
 -- Bitácora mínima de cambios: el navegador consulta sólo estas columnas antes
 -- de pedir datos. No contiene datos personales ni copias de las tablas.
 create table if not exists public.app_sync_events (
