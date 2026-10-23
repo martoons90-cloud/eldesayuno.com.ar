@@ -55,6 +55,32 @@ const attachmentMimeTypeOf = (document: DocumentItem) => {
 
 const isImageAttachment = (document: DocumentItem) => attachmentMimeTypeOf(document).startsWith('image/');
 const isPdfAttachment = (document: DocumentItem) => attachmentMimeTypeOf(document) === 'application/pdf';
+const isWordAttachment = (document: DocumentItem) => {
+  const mimeType = attachmentMimeTypeOf(document);
+  return mimeType === 'application/msword' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    /\.docx?$/i.test(document.attachmentName || '');
+};
+
+const formatActaDate = (date: string) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [year, month, day] = date.split('-');
+    return `${day}/${month}/${year}`;
+  }
+  return date || 'Sin fecha';
+};
+
+const currentDateInputValue = () => {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+};
+
+const wordViewerUrl = (document: DocumentItem) => {
+  const attachmentUrl = attachmentUrlOf(document);
+  if (!attachmentUrl || typeof window === 'undefined') return '';
+  const publicUrl = new URL(attachmentUrl, window.location.origin).href;
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicUrl)}`;
+};
 
 export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onGoBack }) => {
   const isPrivileged = hasPrivilegedAccess(currentUser);
@@ -70,7 +96,7 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
   // New Acta Modal State
   const [isNewActaModalOpen, setIsNewActaModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newDate, setNewDate] = useState(new Date().toLocaleDateString('es-AR'));
+  const [newDate, setNewDate] = useState(currentDateInputValue);
   const [newVersion, setNewVersion] = useState('Acta Oficial Notariada');
   const [newDescription, setNewDescription] = useState('');
   const [newFileSize, setNewFileSize] = useState('1.5 MB');
@@ -191,16 +217,15 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
 
   const handleCreateNewActa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
 
     const newDoc: DocumentItem = {
       id: `doc-acta-${Date.now()}`,
-      title: newTitle.trim(),
+      title: newTitle.trim() || newAttachment?.name.replace(/\.(docx?|pdf)$/i, '') || 'Acta sin título',
       category: 'acta',
-      version: newVersion.trim() || 'Acta Oficial Notariada',
-      date: newDate.trim() || new Date().toLocaleDateString('es-AR'),
-      fileSize: newFileSize.trim() || '1.8 MB',
-      description: newDescription.trim() || 'Acta de Asamblea y decisiones fiduciarias de los copropietarios.',
+      version: newVersion.trim() || 'Acta',
+      date: newDate,
+      fileSize: newFileSize.trim() || '',
+      description: newDescription.trim(),
       attachmentUrl: newAttachment?.url,
       attachmentName: newAttachment?.name,
       attachmentMimeType: newAttachment?.mimeType,
@@ -224,7 +249,7 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
     setNewDescription('');
     setNewAttachment(null);
     setNewVersion('Acta Oficial Notariada');
-    setNewDate(new Date().toLocaleDateString('es-AR'));
+    setNewDate(currentDateInputValue());
   };
 
   const handleDeleteSingleActa = (id: string, title: string) => {
@@ -447,7 +472,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                 </span>
                 <span className="text-[11px] font-mono font-bold text-[#163323] flex items-center gap-1 bg-[#FAF8F5] px-2 py-0.5 border border-[#E3DFC8]">
                   <Calendar className="w-3.5 h-3.5 text-[#A68853]" />
-                  <span>{acta.date}</span>
+                  <span>{formatActaDate(acta.date)}</span>
                 </span>
               </div>
 
@@ -576,7 +601,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                     Lectura Notarial de Acta Oficial
                   </h3>
                   <span className="text-[11px] text-[#D7CFBA]">
-                    {selectedDoc.version} · Fecha {selectedDoc.date}
+                    {selectedDoc.version} · Fecha {formatActaDate(selectedDoc.date)}
                   </span>
                 </div>
               </div>
@@ -603,7 +628,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                     {selectedDoc.title}
                   </h4>
                   <span className="text-[10px] text-[#7A8E7E] font-mono mt-0.5 block">
-                    Fecha Protocolar: {selectedDoc.date} · Estancia El Desayuno, San Antonio de Areco
+                    Fecha Protocolar: {formatActaDate(selectedDoc.date)} · Estancia El Desayuno, San Antonio de Areco
                   </span>
                 </div>
 
@@ -645,12 +670,26 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                   </div>
                 )}
 
-                {attachmentUrlOf(selectedDoc) && !isImageAttachment(selectedDoc) && !isPdfAttachment(selectedDoc) && (
+                {isWordAttachment(selectedDoc) && attachmentUrlOf(selectedDoc) && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block">
+                      Documento Word en vivo:
+                    </span>
+                    <iframe
+                      title={`Vista de ${selectedDoc.title}`}
+                      src={wordViewerUrl(selectedDoc)}
+                      className="w-full h-[55vh] border border-[#DDD5BF] bg-white"
+                    />
+                    <p className="text-[10px] text-[#637568]">Si el visor tarda en cargar, puede descargar el documento sin perder el acta.</p>
+                  </div>
+                )}
+
+                {attachmentUrlOf(selectedDoc) && !isImageAttachment(selectedDoc) && !isPdfAttachment(selectedDoc) && !isWordAttachment(selectedDoc) && (
                   <div className="p-4 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 text-[#163323]">
                       <FileText className="w-6 h-6 text-[#A68853]" />
                       <div>
-                        <strong className="block text-xs">Documento Word adjunto</strong>
+                        <strong className="block text-xs">Archivo adjunto</strong>
                         <span className="text-[10px] text-[#637568]">{selectedDoc.attachmentName || 'Archivo de la acta'}</span>
                       </div>
                     </div>
@@ -669,7 +708,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                     <strong>DESCRIPCIÓN & RESUMEN DE RESOLUCIONES:</strong>
                   </p>
                   <p className="p-3 bg-[#FAF8F5] border border-[#E3DFC8] text-xs leading-relaxed text-[#163323] whitespace-pre-line font-serif">
-                    {selectedDoc.description}
+                    {selectedDoc.description || 'Sin descripción.'}
                   </p>
                 </div>
 
@@ -706,7 +745,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                 className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2"
               >
                 <Download className="w-3.5 h-3.5 text-[#BFA270]" />
-                <span>Descargar Copia Certificada</span>
+                <span>{attachmentUrlOf(selectedDoc) ? 'Descargar Archivo' : 'Descargar Copia Certificada'}</span>
               </button>
 
               <button
@@ -745,11 +784,10 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
               {/* 1. Título */}
               <div>
                 <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  1. Título del Acta *
+                  1. Título del Acta
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="ej. Acta N° 1 - Asamblea Ordinaria de Socios"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
@@ -760,18 +798,16 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
               {/* 2. Fecha Manual */}
               <div>
                 <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  2. Fecha del Acta (Manual) *
+                  2. Fecha del Acta
                 </label>
                 <input
-                  type="text"
-                  required
-                  placeholder="ej. 14/10/2026 ó 15 de Octubre de 2026"
+                  type="date"
                   value={newDate}
                   onChange={(e) => setNewDate(e.target.value)}
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#DCD4C0] font-semibold text-xs focus:outline-none focus:border-[#163323]"
                 />
                 <span className="text-[10px] text-[#7A8E7E] mt-0.5 block">
-                  Escriba la fecha exacta manualmente como desea que figure en el registro.
+                  Seleccione una fecha. Puede dejarla vacía si todavía no la tiene.
                 </span>
               </div>
 
@@ -828,10 +864,9 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
               {/* 4. Descripción */}
               <div>
                 <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  4. Descripción & Resumen de Resoluciones *
+                  4. Descripción & Resumen de Resoluciones
                 </label>
                 <textarea
-                  required
                   rows={4}
                   placeholder="Escriba la descripción o un resumen de los puntos tratadas y resoluciones aprobadas..."
                   value={newDescription}
