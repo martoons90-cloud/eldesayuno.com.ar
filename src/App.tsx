@@ -100,7 +100,7 @@ export default function App() {
     // Al recargar, Supabase se consulta antes de mostrar los datos. El caché
     // del navegador queda como apoyo técnico de la sesión, nunca como pantalla
     // inicial ni como fuente de verdad.
-    storageService.hydrateFromAppStateAsync().then((synced) => {
+    storageService.syncIfOutdated().then((synced) => {
       if (synced) {
         refreshData();
         void storageService.fetchIncidentsFromDatabase().then(setIncidents);
@@ -122,7 +122,7 @@ export default function App() {
     setCurrentUser(user);
     setActiveTab('dashboard');
     refreshData();
-    storageService.hydrateFromAppStateAsync().finally(() => {
+    storageService.syncIfOutdated().finally(() => {
       refreshData();
       void storageService.fetchIncidentsFromDatabase().then(setIncidents);
     });

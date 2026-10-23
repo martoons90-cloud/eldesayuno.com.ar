@@ -143,9 +143,12 @@ export interface InventoryItem {
   id: string;
   name: string;
   category: InventoryCategory;
-  locationRoom: string; // e.g. "Quincho", "Suite Principal", "Cocina"
+  /** Campo histórico; ya no se solicita ni se exhibe en Inventario. */
+  locationRoom?: string;
   quantity: number;
   unit: string; // "unidades", "juegos", "piezas", "bolsas"
+  /** Precio de una unidad, en ARS. */
+  unitPrice: number;
   condition: InventoryCondition;
   notes?: string;
   imageUrl?: string;

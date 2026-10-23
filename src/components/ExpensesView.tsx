@@ -1247,7 +1247,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       {/* Modal: New / Edit Expense */}
       {isNewExpenseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
-          <div className="bg-white border border-[#E3DFC8] max-w-lg w-full p-6 shadow-xl relative">
+          <div className="bg-white border border-[#E3DFC8] max-w-4xl w-full max-h-[calc(100vh-2rem)] overflow-y-auto p-5 sm:p-6 shadow-xl relative">
             <button
               onClick={() => setIsNewExpenseModalOpen(false)}
               className="absolute top-4 right-4 p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
@@ -1270,8 +1270,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               </div>
             </div>
 
-            <form onSubmit={handleSaveExpense} className="space-y-3 text-xs">
-              <div>
+            <form onSubmit={handleSaveExpense} className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3 text-xs">
+              <div className="md:col-span-2">
                 <label className="block font-bold text-[#163323] mb-1">Concepto del Gasto *</label>
                 <input
                   type="text"
@@ -1346,7 +1346,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               </div>
 
               {/* Selector de quién realizó el gasto y Número de Factura */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#FAF8F5] p-2.5 border border-[#DDD5BF]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#FAF8F5] p-2.5 border border-[#DDD5BF] md:col-span-2">
                 <div>
                   <label className="block font-bold text-[#163323] mb-1">
                     👤 ¿Quién realizó / pagó el gasto?
@@ -1389,7 +1389,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
               </div>
 
-              <div className={`border p-3 ${expenseForm.fundingSource === 'owner_advance' ? 'bg-blue-50 border-blue-200' : 'bg-emerald-50 border-emerald-200'}`}>
+              <div className={`border p-3 md:col-span-2 ${expenseForm.fundingSource === 'owner_advance' ? 'bg-blue-50 border-blue-200' : 'bg-emerald-50 border-emerald-200'}`}>
                 <label className="block font-bold text-[#163323] mb-1">¿De dónde salió el dinero?</label>
                 <select
                   value={expenseForm.fundingSource}
@@ -1467,7 +1467,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label className="block font-bold text-[#163323] mb-1">Adjuntar Factura / Comprobante (Imagen o PDF)</label>
                 <div className="flex items-center gap-2">
                   <label className="flex-1 px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-semibold text-[#163323] flex items-center justify-center gap-2 cursor-pointer hover:bg-[#F4EFE6] transition-colors">
@@ -1502,7 +1502,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 )}
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label className="block font-bold text-[#163323] mb-1">Observaciones</label>
                 <textarea
                   rows={2}
@@ -1513,7 +1513,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E3DFC8]">
+              <div className="md:col-span-2 sticky bottom-0 bg-white flex items-center justify-end gap-2 pt-3 pb-0 border-t border-[#E3DFC8]">
                 <button
                   type="button"
                   onClick={() => setIsNewExpenseModalOpen(false)}

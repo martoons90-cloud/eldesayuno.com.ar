@@ -56,9 +56,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
   const [formData, setFormData] = useState<Omit<InventoryItem, 'id'>>({
     name: '',
     category: 'living_galeria',
-    locationRoom: '',
     quantity: 1,
     unit: 'unidades',
+    unitPrice: 0,
     condition: 'excelente',
     notes: '',
     lastCheckedDate: new Date().toISOString().split('T')[0],
@@ -156,7 +156,6 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
       const q = searchQuery.toLowerCase();
       const match =
         item.name.toLowerCase().includes(q) ||
-        item.locationRoom.toLowerCase().includes(q) ||
         (item.notes && item.notes.toLowerCase().includes(q));
       if (!match) return false;
     }
@@ -166,6 +165,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
   // KPIs
   const totalItemsCount = inventory.reduce((sum, i) => sum + i.quantity, 0);
   const totalDistinct = inventory.length;
+  const totalInventoryValue = inventory.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * item.quantity), 0);
   const excellentCount = inventory.filter((i) => i.condition === 'excelente').length;
   const attentionCount = inventory.filter(
     (i) => i.condition === 'regular' || i.condition === 'requiere_reparacion' || i.condition === 'faltante'
@@ -246,9 +246,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                 setFormData({
                   name: '',
                   category: 'living_galeria',
-                  locationRoom: 'Living Principal',
                   quantity: 1,
                   unit: 'unidades',
+                  unitPrice: 0,
                   condition: 'excelente',
                   notes: '',
                   lastCheckedDate: new Date().toISOString().split('T')[0],
@@ -265,7 +265,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
       </div>
 
       {/* KPI Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="p-4 bg-white border border-[#E3DFC8] border-l-3 border-l-[#1B3B2B] shadow-2xs">
           <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block">
             Líneas de Inventario
@@ -284,6 +284,16 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
             {totalItemsCount}
           </span>
           <span className="text-[10px] text-[#7A8E7E]">Piezas, juegos y unidades</span>
+        </div>
+
+        <div className="p-4 bg-white border border-[#E3DFC8] border-l-3 border-l-[#2563EB] shadow-2xs">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block">
+            Valor Estimado
+          </span>
+          <span className="text-xl font-bold font-mono text-[#1D4ED8] mt-1 block">
+            ${totalInventoryValue.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          <span className="text-[10px] text-[#7A8E7E]">Según precio unitario cargado</span>
         </div>
 
         <div className="p-4 bg-white border border-[#E3DFC8] border-l-3 border-l-[#BFA270] shadow-2xs">
@@ -339,7 +349,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por mueble, vajilla o ambiente..."
+            placeholder="Buscar por elemento o nota..."
             className="w-full pl-9 pr-3 py-2 bg-[#FAF8F5] border border-[#DCD4C0] text-xs focus:outline-none focus:border-[#1B3B2B]"
           />
         </div>
@@ -370,8 +380,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
           <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
             <tr>
               <th className="py-3 px-4">Elemento / Descripción</th>
-              <th className="py-3 px-3">Ubicación / Ambiente</th>
               <th className="py-3 px-3 text-right">Cantidad</th>
+              <th className="py-3 px-3 text-right">Precio Unit.</th>
+              <th className="py-3 px-3 text-right">Valor Total</th>
               <th className="py-3 px-3">Estado de Conservación</th>
               <th className="py-3 px-3">Último Relevamiento</th>
               <th className="py-3 px-3">Observaciones Técnicas</th>
@@ -381,7 +392,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
           <tbody className="divide-y divide-[#EFEAE0]">
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 7 : 6} className="py-10 text-center text-[#7A8E7E]">
+                <td colSpan={isAdmin ? 8 : 7} className="py-10 text-center text-[#7A8E7E]">
                   No se encontraron elementos de stock con los filtros seleccionados.
                 </td>
               </tr>
@@ -391,13 +402,14 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                   <td className="py-3.5 px-4 font-semibold text-[#163323] max-w-sm">
                     <span>{item.name}</span>
                   </td>
-                  <td className="py-3.5 px-3">
-                    <span className="font-medium text-[#2E4233] bg-[#F2EDE1] px-2 py-0.5 rounded-2xs text-[11px]">
-                      {item.locationRoom}
-                    </span>
-                  </td>
                   <td className="py-3.5 px-3 text-right font-mono font-bold text-[#163323] whitespace-nowrap">
                     {item.quantity} <span className="text-[10px] text-[#7A8E7E] font-normal">{item.unit}</span>
+                  </td>
+                  <td className="py-3.5 px-3 text-right font-mono text-[#163323] whitespace-nowrap">
+                    ${(Number(item.unitPrice) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                  <td className="py-3.5 px-3 text-right font-mono font-bold text-[#1B3B2B] whitespace-nowrap">
+                    ${((Number(item.unitPrice) || 0) * item.quantity).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-3.5 px-3">{getConditionBadge(item.condition)}</td>
                   <td className="py-3.5 px-3 font-mono text-[11px] text-[#7A8E7E] whitespace-nowrap">
@@ -415,9 +427,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                             setFormData({
                               name: item.name,
                               category: item.category,
-                              locationRoom: item.locationRoom,
                               quantity: item.quantity,
                               unit: item.unit,
+                              unitPrice: Number(item.unitPrice) || 0,
                               condition: item.condition,
                               notes: item.notes || '',
                               lastCheckedDate: item.lastCheckedDate,
@@ -467,8 +479,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div>
                   <label className="block font-semibold uppercase text-[#35483A] mb-1">Categoría</label>
                   <select
                     value={formData.category}
@@ -483,22 +494,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                     <option value="blanqueria_ropa">Blanquería & Ropa Blanca</option>
                     <option value="equipamiento_tecnico">Equipos & Caldera/Grupo</option>
                   </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">Ubicación / Ambiente</label>
-                  <input
-                    type="text"
-                    value={formData.locationRoom}
-                    onChange={(e) => setFormData({ ...formData, locationRoom: e.target.value })}
-                    placeholder="ej. Suite 1, Quincho, Alacena"
-                    required
-                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  />
-                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block font-semibold uppercase text-[#35483A] mb-1">Cantidad</label>
                   <input
@@ -523,6 +521,19 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                     <option value="piezas">piezas</option>
                     <option value="bolsas">bolsas</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">Precio Unitario (ARS)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.unitPrice || ''}
+                    onChange={(e) => setFormData({ ...formData, unitPrice: Math.max(0, Number(e.target.value) || 0) })}
+                    placeholder="0,00"
+                    className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0] font-mono"
+                  />
                 </div>
 
                 <div>
@@ -643,10 +654,8 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                 <span className="font-bold text-[#163323]">{itemToDelete.name}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[#637568]">Ubicación:</span>
-                <span className="font-medium text-[#2E4233] bg-[#F2EDE1] px-2 py-0.5 rounded-2xs text-[11px]">
-                  {itemToDelete.locationRoom}
-                </span>
+                <span className="text-[#637568]">Valor estimado:</span>
+                <span className="font-mono font-bold text-[#163323]">${((Number(itemToDelete.unitPrice) || 0) * itemToDelete.quantity).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-[#637568]">Cantidad:</span>

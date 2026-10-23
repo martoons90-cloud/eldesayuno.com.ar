@@ -32,6 +32,9 @@ const FEES_KEY = 'el_desayuno_fees_v3';
 const EXPENSES_KEY = 'el_desayuno_expenses_v1';
 const CASH_FLOW_KEY = 'el_desayuno_cashflow_v1';
 const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
+// Sólo guarda un número de revisión durante la pestaña actual; nunca contiene
+// registros ni es una copia de la base de datos.
+const SYNC_REVISION_KEY = 'el_desayuno_sync_revision_v1';
 
 /** Estado vacío: la interfaz nunca inventa información si la base no la devuelve. */
 export const DEFAULT_USERS: User[] = [];
@@ -113,15 +116,10 @@ class StorageService {
         try {
           this.broadcastChannel = new BroadcastChannel('el_desayuno_sync_channel');
           this.broadcastChannel.onmessage = (event) => {
-            if (event.data?.type === 'SYNC_SETTINGS' && event.data.settings) {
-              const merged = { ...DEFAULT_SETTINGS, ...event.data.settings };
-              localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
-              if (merged.logoUrl) {
-                localStorage.setItem('el_desayuno_custom_logo', merged.logoUrl);
-              }
-              this.notify(false, false);
-            } else if (event.data?.type === 'SYNC_ALL') {
-              this.notify(false, false);
+            if (event.data?.type === 'SYNC_UPDATED') {
+              // Otra pestaña ya confirmó una escritura: primero se consulta el
+              // registro mínimo de cambios y sólo se baja el módulo afectado.
+              void this.syncIfOutdated();
             }
           };
         } catch (err) {
@@ -151,27 +149,90 @@ class StorageService {
     // comprobación de respaldo espaciada. Las altas y cambios se reflejan en el
     // momento porque se guardan directamente en la base central.
     window.addEventListener('focus', () => {
-      void this.hydrateFromAppStateAsync();
+      void this.syncIfOutdated();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        void this.hydrateFromAppStateAsync();
+        void this.syncIfOutdated();
       }
     });
 
-    // Una verificación cada 20 minutos evita descargas repetidas y mantiene el
-    // consumo del proyecto dentro del plan gratuito.
+    // Una verificación liviana cada 20 minutos. Son sólo dos columnas de la
+    // bitácora de cambios, nunca el contenido completo de las tablas.
     setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        void this.hydrateFromAppStateAsync();
+        void this.syncIfOutdated();
       }
     }, 20 * 60 * 1000);
   }
 
-  public async hydrateFromAppStateAsync(): Promise<boolean> {
+  private getLastSyncRevision(): number | null {
+    if (typeof window === 'undefined') return null;
+    const rawValue = sessionStorage.getItem(SYNC_REVISION_KEY);
+    if (rawValue === null) return null;
+    const value = Number(rawValue);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  private setLastSyncRevision(revision: number) {
+    if (typeof window === 'undefined' || !Number.isFinite(revision) || revision < 0) return;
+    sessionStorage.setItem(SYNC_REVISION_KEY, String(revision));
+  }
+
+  private hasLocalSnapshot(): boolean {
+    return Boolean(localStorage.getItem(USERS_KEY) || localStorage.getItem(SETTINGS_KEY));
+  }
+
+  private async rememberLatestSyncRevision(): Promise<void> {
+    const result = await supabaseService.getSyncChanges();
+    if (result.success) {
+      this.setLastSyncRevision(result.changes.at(-1)?.revision ?? 0);
+    }
+  }
+
+  /**
+   * Consulta primero una bitácora mínima. Si hubo cambios, descarga sólo las
+   * tablas involucradas. En una sesión nueva hace una única carga inicial.
+   */
+  public async syncIfOutdated(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    const lastRevision = this.getLastSyncRevision();
+    const changes = await supabaseService.getSyncChanges(lastRevision ?? undefined);
+
+    // Mientras se termina de instalar la migración en Supabase se conserva la
+    // vista ya confirmada; una pestaña sin datos hace la carga inicial normal.
+    if (!changes.success) {
+      return this.hasLocalSnapshot() || this.hydrateFromAppStateAsync();
+    }
+
+    if (lastRevision === null) {
+      const synced = await this.hydrateFromAppStateAsync();
+      if (synced) await this.rememberLatestSyncRevision();
+      return synced;
+    }
+
+    if (changes.changes.length === 0) return true;
+
+    const allowedScopes = new Set([
+      'users', 'bookings', 'blocks', 'settings', 'rules', 'contacts', 'documents',
+      'inventory', 'notifications', 'fee_collections', 'expenses', 'cash_flow',
+      'incidents', 'expense_categories', 'cashflow_categories', 'fee_categories',
+      'inventory_categories', 'operational_categories',
+    ]);
+    const scopes = Array.from(new Set(changes.changes.map((change) => change.scope).filter((scope) => allowedScopes.has(scope))));
+    // Muchos cambios acumulados significan que la pestaña estuvo mucho tiempo
+    // cerrada: una carga completa única es más segura que aplicar fragmentos.
+    const synced = changes.changes.length >= 50 || scopes.length === 0
+      ? await this.hydrateFromAppStateAsync()
+      : await this.hydrateFromAppStateAsync(scopes);
+    if (synced) this.setLastSyncRevision(changes.changes.at(-1)?.revision ?? lastRevision);
+    return synced;
+  }
+
+  public async hydrateFromAppStateAsync(scopes?: string[]): Promise<boolean> {
     if (typeof window === 'undefined') return false;
     try {
-      const result = await supabaseService.pullDataFromSupabase();
+      const result = await supabaseService.pullDataFromSupabase(scopes);
       if (result.success && result.data) {
         const data = { success: true, data: result.data };
         let hasChanges = false;
@@ -335,10 +396,7 @@ class StorageService {
     });
     if (broadcast && this.broadcastChannel) {
       try {
-        this.broadcastChannel.postMessage({
-          type: 'SYNC_SETTINGS',
-          settings: this.getSettings(),
-        });
+        this.broadcastChannel.postMessage({ type: 'SYNC_UPDATED' });
       } catch (err) {
         console.warn('BroadcastChannel post error:', err);
       }

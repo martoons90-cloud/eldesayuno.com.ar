@@ -230,6 +230,7 @@ function mapRowToInventory(row: Record<string, any>): Record<string, any> {
     locationRoom: row.location_room ?? row.locationRoom ?? '',
     quantity: Number(row.quantity ?? 1),
     unit: row.unit || 'unidades',
+    unitPrice: Number(row.unit_price ?? row.unitPrice ?? 0),
     condition: row.condition || 'excelente',
     notes: row.notes ?? '',
     imageUrl: row.image_url ?? row.imageUrl ?? '',

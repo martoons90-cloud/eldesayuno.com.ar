@@ -544,11 +544,14 @@ class SupabaseService {
   // Pull complete app state directly from Supabase relational tables. Todas las
   // vistas comparten la misma consulta en curso para evitar decenas de lecturas
   // simultáneas al abrir la aplicación.
-  public pullDataFromSupabase(): Promise<{
+  public pullDataFromSupabase(scopes?: string[]): Promise<{
     success: boolean;
     data?: Record<string, any>;
     message: string;
   }> {
+    // Sólo se comparte la descarga completa. Las actualizaciones por módulo
+    // son chicas e independientes para no bloquearse ni bajar toda la base.
+    if (scopes?.length) return this.pullDataFromSupabaseOnce(scopes);
     if (!this.pullInFlight) {
       this.pullInFlight = this.pullDataFromSupabaseOnce().finally(() => {
         this.pullInFlight = null;
@@ -557,7 +560,23 @@ class SupabaseService {
     return this.pullInFlight;
   }
 
-  private async pullDataFromSupabaseOnce(): Promise<{
+  public async getSyncChanges(afterRevision?: number): Promise<{ success: boolean; changes: Array<{ revision: number; scope: string }> }> {
+    if (!this.client) return { success: false, changes: [] };
+    let query = this.client
+      .from('app_sync_events')
+      .select('revision, scope')
+      .order('revision', { ascending: true })
+      .limit(50);
+    if (typeof afterRevision === 'number') query = query.gt('revision', afterRevision);
+    const { data, error } = await query;
+    if (error) return { success: false, changes: [] };
+    return {
+      success: true,
+      changes: (data || []).map((row: any) => ({ revision: Number(row.revision) || 0, scope: String(row.scope || '') })),
+    };
+  }
+
+  private async pullDataFromSupabaseOnce(scopes?: string[]): Promise<{
     success: boolean;
     data?: Record<string, any>;
     message: string;
@@ -567,6 +586,9 @@ class SupabaseService {
     }
 
     try {
+      const requested = new Set(scopes || []);
+      const wants = (scope: string) => requested.size === 0 || requested.has(scope);
+      const none = { data: null, error: null } as any;
       const [
         usersRes,
         expensesRes,
@@ -587,39 +609,39 @@ class SupabaseService {
         documentsRes,
         notificationsRes,
       ] = await Promise.all([
-        this.client.from('users').select('*'),
-        this.client.from('expenses').select('*'),
-        this.client.from('cash_flow').select('*'),
-        this.client.from('fee_collections').select('*'),
-        this.client.from('bookings').select('*'),
-        this.client.from('inventory').select('*'),
-        this.client.from('incidents').select('*'),
-        this.client.from('settings').select('*').limit(1),
-        this.client.from('expense_categories').select('*'),
-        this.client.from('cashflow_categories').select('*'),
-        this.client.from('fee_categories').select('*'),
-        this.client.from('inventory_categories').select('*'),
-        this.client.from('operational_categories').select('*'),
-        this.client.from('blocks').select('*'),
-        this.client.from('rules').select('*'),
-        this.client.from('contacts').select('*'),
-        this.client.from('documents').select('*'),
-        this.client
+        wants('users') ? this.client.from('users').select('*') : Promise.resolve(none),
+        wants('expenses') ? this.client.from('expenses').select('*') : Promise.resolve(none),
+        wants('cash_flow') ? this.client.from('cash_flow').select('*') : Promise.resolve(none),
+        wants('fee_collections') ? this.client.from('fee_collections').select('*') : Promise.resolve(none),
+        wants('bookings') ? this.client.from('bookings').select('*') : Promise.resolve(none),
+        wants('inventory') ? this.client.from('inventory').select('*') : Promise.resolve(none),
+        wants('incidents') ? this.client.from('incidents').select('*') : Promise.resolve(none),
+        (wants('settings') || wants('expense_categories') || wants('cashflow_categories') || wants('fee_categories') || wants('inventory_categories') || wants('operational_categories')) ? this.client.from('settings').select('*').limit(1) : Promise.resolve(none),
+        (wants('settings') || wants('expense_categories') || wants('operational_categories')) ? this.client.from('expense_categories').select('*') : Promise.resolve(none),
+        (wants('settings') || wants('cashflow_categories') || wants('operational_categories')) ? this.client.from('cashflow_categories').select('*') : Promise.resolve(none),
+        (wants('settings') || wants('fee_categories') || wants('operational_categories')) ? this.client.from('fee_categories').select('*') : Promise.resolve(none),
+        (wants('settings') || wants('inventory_categories') || wants('operational_categories')) ? this.client.from('inventory_categories').select('*') : Promise.resolve(none),
+        (wants('settings') || wants('operational_categories') || wants('expense_categories') || wants('cashflow_categories') || wants('fee_categories') || wants('inventory_categories')) ? this.client.from('operational_categories').select('*') : Promise.resolve(none),
+        wants('blocks') ? this.client.from('blocks').select('*') : Promise.resolve(none),
+        wants('rules') ? this.client.from('rules').select('*') : Promise.resolve(none),
+        wants('contacts') ? this.client.from('contacts').select('*') : Promise.resolve(none),
+        wants('documents') ? this.client.from('documents').select('*') : Promise.resolve(none),
+        wants('notifications') ? this.client
           .from('notifications')
           .select('id,title,body,type,read,read_by_user_ids,dismissed_by_user_ids,created_at,target_user_id,booking_id,booking_user_id,booking_user_name,booking_part_name,check_in_date,check_out_date,total_days')
           .order('created_at', { ascending: false })
-          .limit(100),
+          .limit(7) : Promise.resolve(none),
       ]);
 
       const essentialFailures = [
-        ['usuarios', usersRes.error],
-        ['gastos', expensesRes.error],
-        ['caja', cashFlowRes.error],
-        ['cobranzas', feesRes.error],
-        ['reservas', bookingsRes.error],
-        ['inventario', inventoryRes.error],
-        ['incidentes', incidentsRes.error],
-        ['ajustes', settingsRes.error],
+        ['usuarios', wants('users') && usersRes.error],
+        ['gastos', wants('expenses') && expensesRes.error],
+        ['caja', wants('cash_flow') && cashFlowRes.error],
+        ['cobranzas', wants('fee_collections') && feesRes.error],
+        ['reservas', wants('bookings') && bookingsRes.error],
+        ['inventario', wants('inventory') && inventoryRes.error],
+        ['incidentes', wants('incidents') && incidentsRes.error],
+        ['ajustes', wants('settings') && settingsRes.error],
       ].filter(([, error]) => Boolean(error));
       if (essentialFailures.length > 0) {
         const detail = essentialFailures
@@ -720,7 +742,7 @@ class SupabaseService {
       }
       if (!inventoryRes.error && Array.isArray(inventoryRes.data)) {
         data.inventory = inventoryRes.data.map((item: any) => ({
-          id: item.id, name: item.name || '', category: item.category, locationRoom: item.location_room || '',
+          id: item.id, name: item.name || '', category: item.category, locationRoom: item.location_room || '', unitPrice: Number(item.unit_price) || 0,
           quantity: Number(item.quantity) || 0, unit: item.unit || '', condition: item.condition,
           notes: item.notes || '', imageUrl: item.image_url || undefined, lastCheckedDate: item.last_checked_date || '',
         }));
@@ -794,16 +816,16 @@ class SupabaseService {
       // está disponible, no debe ocultar las categorías de Gastos que sí se
       // recibieron correctamente.
       if (data.settings) {
-        if (!expCatRes.error || !opCatsRes.error) {
+        if (wants('settings') || wants('expense_categories') || wants('operational_categories')) {
           data.settings.expenseCategories = expCats.length > 0 ? expCats : DEFAULT_EXPENSE_CATEGORIES;
         }
-        if (!cfCatRes.error || !opCatsRes.error) {
+        if (wants('settings') || wants('cashflow_categories') || wants('operational_categories')) {
           data.settings.cashFlowCategories = cfCats.length > 0 ? cfCats : DEFAULT_CASHFLOW_CATEGORIES;
         }
-        if (!feeCatRes.error || !opCatsRes.error) {
+        if (wants('settings') || wants('fee_categories') || wants('operational_categories')) {
           data.settings.feeCategories = feeCats.length > 0 ? feeCats : DEFAULT_FEE_CATEGORIES;
         }
-        if (!invCatRes.error || !opCatsRes.error) {
+        if (wants('settings') || wants('inventory_categories') || wants('operational_categories')) {
           data.settings.inventoryCategories = invCats.length > 0 ? invCats : DEFAULT_INVENTORY_CATEGORIES;
         }
       }
@@ -970,7 +992,7 @@ class SupabaseService {
     return this.upsertRow('inventory', {
       id: item.id, name: item.name || '', category: item.category || '', quantity: Number(item.quantity) || 0,
       unit: item.unit || 'unidades', condition: item.condition || 'bueno', location_room: item.locationRoom || '',
-      last_checked_date: item.lastCheckedDate || null,
+      unit_price: Math.max(0, Number(item.unitPrice) || 0), last_checked_date: item.lastCheckedDate || null,
     });
   }
 
