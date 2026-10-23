@@ -35,6 +35,27 @@ interface ActasViewProps {
   onGoBack?: () => void;
 }
 
+interface PendingAttachment {
+  url: string;
+  name: string;
+  mimeType: string;
+}
+
+const attachmentUrlOf = (document: DocumentItem) =>
+  document.attachmentUrl || document.photoUrl || document.downloadUrl || '';
+
+const attachmentMimeTypeOf = (document: DocumentItem) => {
+  if (document.attachmentMimeType) return document.attachmentMimeType;
+  const url = attachmentUrlOf(document).toLowerCase();
+  if (url.includes('.pdf')) return 'application/pdf';
+  if (url.match(/\.(png|jpe?g|gif|webp|heic)$/)) return 'image/*';
+  if (url.match(/\.(doc|docx)$/)) return 'application/msword';
+  return '';
+};
+
+const isImageAttachment = (document: DocumentItem) => attachmentMimeTypeOf(document).startsWith('image/');
+const isPdfAttachment = (document: DocumentItem) => attachmentMimeTypeOf(document) === 'application/pdf';
+
 export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onGoBack }) => {
   const isPrivileged = hasPrivilegedAccess(currentUser);
   const isAdmin = isUserAdmin(currentUser);
@@ -53,7 +74,7 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
   const [newVersion, setNewVersion] = useState('Acta Oficial Notariada');
   const [newDescription, setNewDescription] = useState('');
   const [newFileSize, setNewFileSize] = useState('1.5 MB');
-  const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [newAttachment, setNewAttachment] = useState<PendingAttachment | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   // Custom Dialog Modal State
@@ -86,8 +107,8 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
   const filteredActas = documents.filter((acta) => {
     const matchesSearch =
       acta.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      acta.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      acta.version.toLowerCase().includes(searchTerm.toLowerCase());
+      (acta.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (acta.version || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesYear =
       selectedYear === 'all' ||
@@ -101,6 +122,26 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
   const handleFileUploadPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const lowerName = file.name.toLowerCase();
+    const isAccepted =
+      file.type.startsWith('image/') ||
+      file.type === 'application/pdf' ||
+      file.type === 'application/msword' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      lowerName.endsWith('.pdf') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx');
+    if (!isAccepted) {
+      setDialogState({
+        isOpen: true,
+        title: 'Formato no admitido',
+        message: 'Puede adjuntar una foto, un PDF o un documento Word (.doc o .docx).',
+        type: 'warning',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      e.target.value = '';
+      return;
+    }
 
     if (file.size > 15 * 1024 * 1024) {
       setDialogState({
@@ -119,24 +160,36 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       if (base64) {
-        let finalUrl = base64;
         try {
-          const r2Res = await r2Service.uploadPhoto(base64, file.name || 'acta-oficial', 'actas');
+          const r2Res = await r2Service.uploadFile(base64, file.name || 'acta-oficial', 'actas');
           if (r2Res.success && r2Res.url) {
-            finalUrl = r2Res.url;
+            setNewAttachment({
+              url: r2Res.url,
+              name: file.name || 'acta-oficial',
+              mimeType: file.type || (lowerName.endsWith('.pdf') ? 'application/pdf' : ''),
+            });
+            setNewFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
+          } else {
+            throw new Error(r2Res.error || 'El servidor no confirmó el archivo.');
           }
-        } catch {
-          // Fallback to base64
+        } catch (error) {
+          setDialogState({
+            isOpen: true,
+            title: 'No se pudo adjuntar el archivo',
+            message: error instanceof Error ? error.message : 'El archivo no se guardó en el servidor. Intente nuevamente.',
+            type: 'warning',
+            confirmText: 'Aceptar',
+            onConfirm: () => {},
+          });
         }
-        setNewPhotoUrl(finalUrl);
-        setNewFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
       }
       setIsUploadingPhoto(false);
+      e.target.value = '';
     };
     reader.readAsDataURL(file);
   };
 
-  const handleCreateNewActa = (e: React.FormEvent) => {
+  const handleCreateNewActa = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
@@ -148,14 +201,28 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
       date: newDate.trim() || new Date().toLocaleDateString('es-AR'),
       fileSize: newFileSize.trim() || '1.8 MB',
       description: newDescription.trim() || 'Acta de Asamblea y decisiones fiduciarias de los copropietarios.',
-      photoUrl: newPhotoUrl || undefined,
+      attachmentUrl: newAttachment?.url,
+      attachmentName: newAttachment?.name,
+      attachmentMimeType: newAttachment?.mimeType,
+      photoUrl: newAttachment?.mimeType.startsWith('image/') ? newAttachment.url : undefined,
     };
 
-    storageService.saveDocument(newDoc);
+    const saved = await storageService.saveDocument(newDoc);
+    if (!saved) {
+      setDialogState({
+        isOpen: true,
+        title: 'No se pudo guardar el acta',
+        message: 'La base de datos no confirmó el registro. El acta no se guardó localmente.',
+        type: 'warning',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
     setIsNewActaModalOpen(false);
     setNewTitle('');
     setNewDescription('');
-    setNewPhotoUrl('');
+    setNewAttachment(null);
     setNewVersion('Acta Oficial Notariada');
     setNewDate(new Date().toLocaleDateString('es-AR'));
   };
@@ -192,6 +259,17 @@ export const ActasView: React.FC<ActasViewProps> = ({ currentUser, settings, onG
   };
 
   const handleDownloadActa = (acta: DocumentItem) => {
+    const attachmentUrl = attachmentUrlOf(acta);
+    if (attachmentUrl) {
+      const link = document.createElement('a');
+      link.href = attachmentUrl;
+      link.download = acta.attachmentName || acta.title;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     const legalContent = `========================================================================
 FIDEICOMISO "EL DESAYUNO SOCIEDAD" - LIBRO DE ACTAS NOTARIALES
 ========================================================================
@@ -373,14 +451,14 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                 </span>
               </div>
 
-              {/* Optional Photo Preview Thumbnail */}
-              {acta.photoUrl && (
+              {/* Preview changes according to the attachment type. */}
+              {isImageAttachment(acta) && attachmentUrlOf(acta) && (
                 <div
                   onClick={() => setSelectedDoc(acta)}
                   className="w-full h-36 bg-[#F4EFE6] border border-[#DCD4C0] overflow-hidden rounded-2xs cursor-pointer group-hover:border-[#BFA270] relative"
                 >
                   <img
-                    src={acta.photoUrl}
+                    src={attachmentUrlOf(acta)}
                     alt={acta.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
@@ -390,6 +468,20 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                     </span>
                   </div>
                 </div>
+              )}
+
+              {(isPdfAttachment(acta) || (attachmentUrlOf(acta) && !isImageAttachment(acta))) && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDoc(acta)}
+                  className="w-full h-20 bg-[#F4EFE6] border border-[#DCD4C0] hover:border-[#BFA270] text-[#163323] flex items-center justify-center gap-3 cursor-pointer"
+                >
+                  <FileText className="w-7 h-7 text-[#A68853]" />
+                  <span className="text-left">
+                    <strong className="block text-xs">{isPdfAttachment(acta) ? 'PDF adjunto' : 'Documento Word adjunto'}</strong>
+                    <span className="text-[10px] text-[#637568]">{acta.attachmentName || 'Abrir o descargar archivo'}</span>
+                  </span>
+                </button>
               )}
 
               {/* Title */}
@@ -417,7 +509,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                   type="button"
                   onClick={() => setSelectedDoc(acta)}
                   className="px-2.5 py-1.5 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#DDD5BF] text-[#163323] font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                  title="Ver detalles y foto de la acta"
+                  title="Ver detalles y archivo adjunto de la acta"
                 >
                   <Eye className="w-3.5 h-3.5 text-[#BFA270]" />
                   <span>Ver Acta</span>
@@ -454,7 +546,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
           <BookOpen className="w-10 h-10 mx-auto text-[#DDD5BF]" />
           <p className="font-semibold text-base text-[#163323]">No hay actas registradas</p>
           <p className="max-w-md mx-auto text-[#526657]">
-            Haga clic en el botón <strong>"+ Cargar Nueva Acta"</strong> para subir una foto de su acta, agregarle título, descripción y fecha manual.
+            Haga clic en el botón <strong>"+ Cargar Nueva Acta"</strong> para adjuntar una foto, PDF o Word y completar sus datos.
           </p>
           {(isAdmin || isFid || isLeader) && (
             <button
@@ -471,7 +563,7 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
       {/* Reader Modal (Parchment Legal View) */}
       {selectedDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-[#FFFFFF] w-full max-w-2xl border border-[#D5CDBC] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-[#FFFFFF] w-full max-w-4xl border border-[#D5CDBC] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-[#17341B] text-[#FAF8F5] flex items-center justify-between border-b border-[#BFA270]/40 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -515,44 +607,60 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                   </span>
                 </div>
 
-                {/* Display Photo of the Acta if uploaded */}
-                {selectedDoc.photoUrl && (
+                {/* The correct viewer is used for each kind of attachment. */}
+                {isImageAttachment(selectedDoc) && attachmentUrlOf(selectedDoc) && (
                   <div className="space-y-2">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block">
-                      Foto / Documento Digitalizado Adjunto:
+                      Foto Adjunta:
                     </span>
                     <div className="p-2 bg-[#FAF8F5] border border-[#DDD5BF] rounded-2xs flex flex-col items-center justify-center">
                       <img
-                        src={selectedDoc.photoUrl}
+                        src={attachmentUrlOf(selectedDoc)}
                         alt={selectedDoc.title}
                         className="max-h-96 w-auto object-contain border border-[#E5DEC9] shadow-sm rounded-2xs"
                       />
                       <button
                         type="button"
                         onClick={() => {
-                          const url = selectedDoc.photoUrl!;
-                          if (url.startsWith('data:')) {
-                            const parts = url.split(';base64,');
-                            if (parts.length >= 2) {
-                              const contentType = parts[0].split(':')[1] || 'image/jpeg';
-                              const raw = window.atob(parts[1]);
-                              const uInt8Array = new Uint8Array(raw.length);
-                              for (let i = 0; i < raw.length; ++i) {
-                                uInt8Array[i] = raw.charCodeAt(i);
-                              }
-                              const blob = new Blob([uInt8Array], { type: contentType });
-                              const blobUrl = URL.createObjectURL(blob);
-                              window.open(blobUrl, '_blank');
-                              return;
-                            }
-                          }
-                          window.open(url, '_blank');
+                          window.open(attachmentUrlOf(selectedDoc), '_blank', 'noopener,noreferrer');
                         }}
                         className="mt-2 text-[11px] font-semibold text-[#1B3B2B] hover:underline inline-flex items-center gap-1 cursor-pointer"
                       >
                         <ExternalLink className="w-3.5 h-3.5" /> Abrir Imagen en Tamaño Completo
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {isPdfAttachment(selectedDoc) && attachmentUrlOf(selectedDoc) && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block">
+                      PDF Adjunto:
+                    </span>
+                    <iframe
+                      title={`Vista previa de ${selectedDoc.title}`}
+                      src={attachmentUrlOf(selectedDoc)}
+                      className="w-full h-[55vh] border border-[#DDD5BF] bg-white"
+                    />
+                  </div>
+                )}
+
+                {attachmentUrlOf(selectedDoc) && !isImageAttachment(selectedDoc) && !isPdfAttachment(selectedDoc) && (
+                  <div className="p-4 bg-[#FAF8F5] border border-[#DDD5BF] flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2 text-[#163323]">
+                      <FileText className="w-6 h-6 text-[#A68853]" />
+                      <div>
+                        <strong className="block text-xs">Documento Word adjunto</strong>
+                        <span className="text-[10px] text-[#637568]">{selectedDoc.attachmentName || 'Archivo de la acta'}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadActa(selectedDoc)}
+                      className="px-3 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-[11px] font-semibold uppercase tracking-wider inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-[#BFA270]" /> Descargar Word
+                    </button>
                   </div>
                 )}
 
@@ -667,41 +775,49 @@ Certificado digitalmente conforme al Régimen del Fideicomiso El Desayuno.
                 </span>
               </div>
 
-              {/* 3. Foto / Archivo del Acta */}
+              {/* 3. Archivo del Acta */}
               <div>
                 <label className="block font-semibold uppercase text-[#35483A] mb-1">
-                  3. Adjuntar Foto / Imagen de la Acta *
+                  3. Adjuntar Archivo del Acta
                 </label>
                 <div className="p-3 bg-[#FAF8F5] border border-[#DCD4C0] space-y-2">
                   <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white font-semibold uppercase tracking-wider cursor-pointer shadow-xs text-xs">
                     <Upload className="w-4 h-4 text-[#BFA270]" />
-                    <span>{isUploadingPhoto ? 'Procesando Imagen...' : 'Seleccionar Foto / Archivo'}</span>
+                    <span>{isUploadingPhoto ? 'Guardando Archivo...' : 'Seleccionar Archivo'}</span>
                     <input
                       type="file"
-                      accept="image/*,.pdf"
+                      accept="image/*,application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
                       onChange={handleFileUploadPhoto}
                       disabled={isUploadingPhoto}
                       className="hidden"
                     />
                   </label>
+                  <p className="text-[10px] text-[#637568]">Admite fotos, PDF y Word (.doc o .docx), hasta 15 MB. El archivo se guarda en el servidor.</p>
 
-                  {newPhotoUrl && (
+                  {newAttachment && (
                     <div className="pt-2 flex items-center gap-3 border-t border-[#E3DFC8]">
-                      <img
-                        src={newPhotoUrl}
-                        alt="Vista previa"
-                        className="w-16 h-16 object-cover border border-[#DCD4C0] rounded-2xs"
-                      />
+                      {newAttachment.mimeType.startsWith('image/') ? (
+                        <img
+                          src={newAttachment.url}
+                          alt="Vista previa"
+                          className="w-16 h-16 object-cover border border-[#DCD4C0] rounded-2xs"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 border border-[#DCD4C0] bg-white flex items-center justify-center">
+                          <FileText className="w-7 h-7 text-[#A68853]" />
+                        </div>
+                      )}
                       <div className="flex-1">
                         <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Foto adjuntada con éxito
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Archivo adjuntado con éxito
                         </span>
+                        <span className="block mt-0.5 text-[10px] text-[#637568] truncate">{newAttachment.name}</span>
                         <button
                           type="button"
-                          onClick={() => setNewPhotoUrl('')}
+                          onClick={() => setNewAttachment(null)}
                           className="mt-1 text-[10px] text-red-700 underline hover:text-red-900"
                         >
-                          Quitar foto
+                          Quitar archivo
                         </button>
                       </div>
                     </div>

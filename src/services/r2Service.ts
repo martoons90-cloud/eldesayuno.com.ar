@@ -84,8 +84,9 @@ class R2Service {
     }
   }
 
-  // Upload an image / photo directly to Cloudflare R2 Bucket 'el-desayuno'
-  public async uploadPhoto(
+  // Upload a file directly to Cloudflare R2. The worker keeps the credentials
+  // server-side; the browser only sends the selected file.
+  public async uploadFile(
     base64Data: string,
     filename: string,
     folder: string = 'fotos'
@@ -95,10 +96,9 @@ class R2Service {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          image: base64Data,
+          file: base64Data,
           filename,
           folder,
-          config: this.config,
         }),
       });
 
@@ -110,6 +110,12 @@ class R2Service {
         error: err instanceof Error ? err.message : 'Error subiendo imagen a Cloudflare R2',
       };
     }
+  }
+
+  // Compatibility for the rest of the application, which already uses this
+  // method for photos.
+  public async uploadPhoto(base64Data: string, filename: string, folder: string = 'fotos') {
+    return this.uploadFile(base64Data, filename, folder);
   }
 
   // List all photos uploaded to Cloudflare R2

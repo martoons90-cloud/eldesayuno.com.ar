@@ -17,5 +17,11 @@
       "database_name": "el-desayuno-d1",
       "database_id": "f0474948-373a-4522-833b-36eb13858100"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "el-desayuno"
+    }
   ]
 }

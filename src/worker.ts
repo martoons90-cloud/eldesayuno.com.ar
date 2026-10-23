@@ -28,8 +28,22 @@ export interface D1ExecResult {
   duration: number;
 }
 
+export interface R2ObjectBody {
+  body: ReadableStream;
+  httpMetadata?: { contentType?: string; contentDisposition?: string };
+  writeHttpMetadata(headers: Headers): void;
+}
+
+export interface R2Bucket {
+  put(key: string, value: ArrayBuffer | ArrayBufferView | ReadableStream, options?: {
+    httpMetadata?: { contentType?: string; contentDisposition?: string };
+  }): Promise<unknown>;
+  get(key: string): Promise<R2ObjectBody | null>;
+}
+
 export interface Env {
   DB: D1Database;
+  R2: R2Bucket;
   ASSETS: {
     fetch: (request: Request | string) => Promise<Response>;
   };
@@ -37,6 +51,24 @@ export interface Env {
   CLOUDFLARE_DATABASE_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
   ADMIN_API_SECRET?: string;
+}
+
+function decodeBase64File(dataUrl: string): { bytes: Uint8Array; contentType: string } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!match) return null;
+  try {
+    const raw = atob(match[2].replace(/\s/g, ''));
+    const bytes = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+    return { bytes, contentType: match[1] };
+  } catch {
+    return null;
+  }
+}
+
+function safeObjectName(filename: string): string {
+  const sanitized = (filename || 'archivo').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+/, '');
+  return sanitized || 'archivo';
 }
 
 export interface ExecutionContext {
@@ -969,7 +1001,64 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     }
   }
 
-  // 12. R2 Status Endpoint (/api/r2/status)
+  // 12. R2 file storage. The files never go to localStorage or D1: only their
+  // small record is saved in the central database and the binary stays in R2.
+  if (pathname === '/api/r2/upload' && method === 'POST') {
+    try {
+      const body = (await request.json()) as { file?: string; image?: string; filename?: string; folder?: string };
+      const decoded = decodeBase64File(body.file || body.image || '');
+      if (!decoded) {
+        return jsonResponse({ success: false, error: 'El archivo recibido no tiene un formato válido.' }, 400, corsHeaders);
+      }
+      if (decoded.bytes.byteLength > 15 * 1024 * 1024) {
+        return jsonResponse({ success: false, error: 'El archivo supera el límite de 15 MB.' }, 413, corsHeaders);
+      }
+
+      const folder = body.folder === 'actas' ? 'actas' : 'fotos';
+      const filename = safeObjectName(body.filename || 'archivo');
+      const key = `${folder}/${crypto.randomUUID()}-${filename}`;
+      const disposition = (decoded.contentType === 'application/pdf' || decoded.contentType.startsWith('image/'))
+        ? `inline; filename="${filename}"`
+        : `attachment; filename="${filename}"`;
+
+      await env.R2.put(key, decoded.bytes, {
+        httpMetadata: {
+          contentType: decoded.contentType,
+          contentDisposition: disposition,
+        },
+      });
+
+      return jsonResponse({
+        success: true,
+        key,
+        url: `/api/r2/file?key=${encodeURIComponent(key)}`,
+      }, 201, corsHeaders);
+    } catch (err: any) {
+      return jsonResponse({ success: false, error: err?.message || 'No se pudo guardar el archivo en R2.' }, 500, corsHeaders);
+    }
+  }
+
+  if (pathname === '/api/r2/file' && method === 'GET') {
+    const key = url.searchParams.get('key') || '';
+    if (!key || !/^(actas|fotos)\/[a-zA-Z0-9._/-]+$/.test(key) || key.includes('..')) {
+      return new Response('Archivo no válido.', { status: 400 });
+    }
+    try {
+      const object = await env.R2.get(key);
+      if (!object) return new Response('Archivo no encontrado.', { status: 404 });
+
+      const headers = new Headers({
+        'Cache-Control': 'private, max-age=3600',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      object.writeHttpMetadata(headers);
+      return new Response(object.body, { headers });
+    } catch {
+      return new Response('No se pudo recuperar el archivo.', { status: 500 });
+    }
+  }
+
+  // 13. R2 Status Endpoint (/api/r2/status)
   if (pathname === '/api/r2/status' && method === 'GET') {
     const bucketName = 'el-desayuno';
     return jsonResponse({
@@ -980,7 +1069,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     }, 200, corsHeaders);
   }
 
-  // 13. Realtime Sync Events Stream (/api/sync/events)
+  // 14. Realtime Sync Events Stream (/api/sync/events)
   if (pathname === '/api/sync/events' && method === 'GET') {
     const stream = new ReadableStream({
       start(controller) {

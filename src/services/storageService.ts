@@ -1104,18 +1104,18 @@ class StorageService {
     }
   }
 
-  public saveDocument(doc: DocumentItem) {
+  public async saveDocument(doc: DocumentItem): Promise<boolean> {
+    const saved = await supabaseService.saveDocument(doc);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getDocuments();
     const exists = list.some((d) => d.id === doc.id);
     const updated = exists ? list.map((d) => (d.id === doc.id ? doc : d)) : [...list, doc];
     localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(updated));
     this.notify(false);
-
-    fetch('/api/documents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(doc),
-    }).catch((err) => console.error('Error guardando documento en servidor:', err));
+    return true;
   }
 
   public async deleteDocument(docId: string): Promise<boolean> {

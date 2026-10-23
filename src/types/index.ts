@@ -121,6 +121,10 @@ export interface DocumentItem {
   fileSize: string;
   description: string;
   downloadUrl?: string;
+  /** Archivo centralizado en R2: foto, PDF o documento Word. */
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentMimeType?: string;
   photoUrl?: string;
 }
 

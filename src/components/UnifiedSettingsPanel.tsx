@@ -509,21 +509,28 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     downloadUrl: '',
   });
 
-  const handleSaveDocument = (e: React.FormEvent) => {
+  const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
+    let documentToSave: DocumentItem;
     if (editingDoc) {
-      const updated: DocumentItem = {
+      documentToSave = {
         ...editingDoc,
         ...docFormData,
       };
-      storageService.saveDocument(updated);
-      setEditingDoc(null);
     } else {
-      const newDoc: DocumentItem = {
+      documentToSave = {
         id: 'doc-' + Date.now(),
         ...docFormData,
       };
-      storageService.saveDocument(newDoc);
+    }
+    const saved = await storageService.saveDocument(documentToSave);
+    if (!saved) {
+      alert('La base de datos no confirmó el documento. No se guardó una copia local.');
+      return;
+    }
+    if (editingDoc) {
+      setEditingDoc(null);
+    } else {
       setIsNewDocModalOpen(false);
     }
     setDocumentsList(storageService.getDocuments());

@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import type { Booking, DateBlock, IncidentReport, NotificationPush } from '../types';
+import type { Booking, DateBlock, DocumentItem, IncidentReport, NotificationPush } from '../types';
 
 export interface SupabaseConfig {
   url: string;
@@ -745,7 +745,35 @@ class SupabaseService {
           category: contact.category, isEmergency: Boolean(contact.is_emergency), availableHours: contact.available_hours || '', notes: contact.notes || '',
         }));
       }
-      if (!documentsRes.error && Array.isArray(documentsRes.data)) data.documents = documentsRes.data;
+      if (!documentsRes.error && Array.isArray(documentsRes.data)) {
+        data.documents = documentsRes.data.map((document: any) => {
+          let metadata: Record<string, any> = {};
+          try {
+            const parsed = JSON.parse(document.file_type || '{}');
+            if (parsed && typeof parsed === 'object') metadata = parsed;
+          } catch {
+            metadata = { mimeType: document.file_type || '' };
+          }
+
+          const attachmentUrl = document.file_url || undefined;
+          const attachmentMimeType = metadata.mimeType || metadata.type || '';
+          return {
+            id: document.id,
+            title: document.title || 'Documento sin título',
+            category: document.category || 'acta',
+            version: metadata.version || 'Documento oficial',
+            date: metadata.date || (document.uploaded_at ? new Date(document.uploaded_at).toLocaleDateString('es-AR') : ''),
+            fileSize: metadata.fileSize || '',
+            description: metadata.description || '',
+            downloadUrl: attachmentUrl,
+            attachmentUrl,
+            attachmentName: metadata.fileName || '',
+            attachmentMimeType,
+            // Compatibilidad con las fotos cargadas antes de esta mejora.
+            photoUrl: attachmentMimeType.startsWith('image/') ? attachmentUrl : undefined,
+          };
+        });
+      }
       if (!notificationsRes.error && Array.isArray(notificationsRes.data)) {
         data.notifications = notificationsRes.data.map((notification: any) => ({
           id: notification.id,
@@ -1092,6 +1120,28 @@ class SupabaseService {
 
   public async deleteContact(contactId: string): Promise<boolean> {
     return this.deleteRow('contacts', contactId);
+  }
+
+  /** Guarda la ficha del documento después de que el archivo quedó en R2. */
+  public async saveDocument(document: DocumentItem): Promise<boolean> {
+    const attachmentUrl = document.attachmentUrl || document.photoUrl || document.downloadUrl || '';
+    return this.upsertRow('documents', {
+      id: document.id,
+      title: document.title || '',
+      category: document.category || 'acta',
+      file_url: attachmentUrl,
+      // La tabla histórica tiene un único campo para tipo. Se conserva allí el
+      // tipo y los datos de presentación sin duplicar el archivo en la base.
+      file_type: JSON.stringify({
+        mimeType: document.attachmentMimeType || '',
+        fileName: document.attachmentName || '',
+        version: document.version || '',
+        date: document.date || '',
+        fileSize: document.fileSize || '',
+        description: document.description || '',
+      }),
+      uploaded_at: new Date().toISOString(),
+    });
   }
 
   public async deleteDocument(documentId: string): Promise<boolean> {
