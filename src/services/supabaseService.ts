@@ -14,10 +14,11 @@ const DEFAULT_FEE_CATEGORIES: Array<{ id: string; name: string }> = [];
 const DEFAULT_INVENTORY_CATEGORIES: Array<{ id: string; name: string }> = [];
 
 const SUPABASE_CONFIG_KEY = 'el_desayuno_supabase_config_v1';
+const LEGACY_SUPABASE_URL = 'https://zzfmsxrqhshmoiaysjtr.supabase.co';
 
 export const DEFAULT_SUPABASE_CONFIG: SupabaseConfig = {
-  url: 'https://zzfmsxrqhshmoiaysjtr.supabase.co',
-  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6Zm1zeHJxaHNobW9pYXlzanRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Nzk4MzAsImV4cCI6MjEwNzU1NTgzMH0.D3M9dPwdqMFos6HRmWOlTBSeLNSDnk0V3X9HQZnyoMY',
+  url: 'https://doixvzuomaqplmypjmga.supabase.co',
+  anonKey: 'sb_publishable_kkozpUJhQelYWD1mGAtUMw_LtJJorUv',
   enabled: true,
 };
 
@@ -36,7 +37,13 @@ class SupabaseService {
     const raw = localStorage.getItem(SUPABASE_CONFIG_KEY);
     if (!raw) return DEFAULT_SUPABASE_CONFIG;
     try {
-      return { ...DEFAULT_SUPABASE_CONFIG, ...JSON.parse(raw) };
+      const savedConfig = JSON.parse(raw) as Partial<SupabaseConfig>;
+      // Actualiza automáticamente las sesiones que todavía apuntaban a la base saturada.
+      if (savedConfig.url === LEGACY_SUPABASE_URL) {
+        localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(DEFAULT_SUPABASE_CONFIG));
+        return DEFAULT_SUPABASE_CONFIG;
+      }
+      return { ...DEFAULT_SUPABASE_CONFIG, ...savedConfig };
     } catch {
       return DEFAULT_SUPABASE_CONFIG;
     }
