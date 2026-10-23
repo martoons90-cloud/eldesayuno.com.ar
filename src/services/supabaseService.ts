@@ -179,6 +179,49 @@ class SupabaseService {
     return { success: true, categories: Array.from(categoriesById.values()) };
   }
 
+  /** Consulta liviana usada sólo por la pantalla de Categorías Operativas. */
+  public async fetchAllOperationalCategories(): Promise<{
+    success: boolean;
+    categories: Record<'expense' | 'cashflow' | 'fee' | 'inventory', Array<{ id: string; name: string }>>;
+  }> {
+    const empty = { expense: [], cashflow: [], fee: [], inventory: [] } as Record<'expense' | 'cashflow' | 'fee' | 'inventory', Array<{ id: string; name: string }>>;
+    if (!this.client) return { success: false, categories: empty };
+
+    const [expenseResult, cashFlowResult, feeResult, inventoryResult, operationalResult] = await Promise.all([
+      this.client.from('expense_categories').select('id, name'),
+      this.client.from('cashflow_categories').select('id, name'),
+      this.client.from('fee_categories').select('id, name'),
+      this.client.from('inventory_categories').select('id, name'),
+      this.client.from('operational_categories').select('id, name, type'),
+    ]);
+
+    const results = [expenseResult, cashFlowResult, feeResult, inventoryResult, operationalResult];
+    if (results.every((result) => result.error)) {
+      console.error('Error leyendo categorías operativas de Supabase:', results.map((result) => result.error));
+      return { success: false, categories: empty };
+    }
+
+    const addCategories = (type: 'expense' | 'cashflow' | 'fee' | 'inventory', rows: Array<{ id: string; name: string }> | null, overwrite = true) => {
+      for (const row of rows || []) {
+        const item = { id: String(row.id), name: String(row.name || row.id) };
+        const currentIndex = empty[type].findIndex((category) => category.id === item.id);
+        if (currentIndex < 0) empty[type].push(item);
+        else if (overwrite) empty[type][currentIndex] = item;
+      }
+    };
+
+    addCategories('expense', expenseResult.data);
+    addCategories('cashflow', cashFlowResult.data);
+    addCategories('fee', feeResult.data);
+    addCategories('inventory', inventoryResult.data);
+    for (const row of operationalResult.data || []) {
+      const type = row.type as 'expense' | 'cashflow' | 'fee' | 'inventory';
+      if (type in empty) addCategories(type, [{ id: row.id, name: row.name }], false);
+    }
+
+    return { success: true, categories: empty };
+  }
+
   public async saveSettingsToSupabase(settings: Record<string, any>): Promise<Record<string, any>> {
     if (!this.client) throw new Error('Supabase no está configurado.');
     const { data, error } = await this.client

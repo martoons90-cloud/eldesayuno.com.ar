@@ -42,9 +42,12 @@ import {
   DollarSign,
   CreditCard,
   Receipt,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function App() {
+  const [isInitialSyncing, setIsInitialSyncing] = useState(true);
+  const [initialSyncFailed, setInitialSyncFailed] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -94,11 +97,17 @@ export default function App() {
   };
 
   useEffect(() => {
-    refreshData();
-    // Una sola carga completa al abrir la aplicación.
-    storageService.hydrateFromAppStateAsync().finally(() => {
-      refreshData();
-      void storageService.fetchIncidentsFromDatabase().then(setIncidents);
+    // Al recargar, Supabase se consulta antes de mostrar los datos. El caché
+    // del navegador queda como apoyo técnico de la sesión, nunca como pantalla
+    // inicial ni como fuente de verdad.
+    storageService.hydrateFromAppStateAsync().then((synced) => {
+      if (synced) {
+        refreshData();
+        void storageService.fetchIncidentsFromDatabase().then(setIncidents);
+      } else {
+        setInitialSyncFailed(true);
+      }
+      setIsInitialSyncing(false);
     });
     const unsubscribe = storageService.subscribe(() => {
       refreshData();
@@ -151,6 +160,30 @@ export default function App() {
         read: n.readByUserIds ? n.readByUserIds.includes(currentUser.id) : n.read,
       }));
   }, [notifications, currentUser]);
+
+  if (isInitialSyncing) {
+    return (
+      <div className="min-h-screen bg-[#FBF9F5] flex items-center justify-center text-sm text-[#526657]">
+        <RefreshCw className="w-5 h-5 animate-spin mr-2 text-[#1B3B2B]" />
+        Actualizando datos desde la base de datos central...
+      </div>
+    );
+  }
+
+  if (initialSyncFailed) {
+    return (
+      <div className="min-h-screen bg-[#FBF9F5] flex flex-col items-center justify-center gap-4 px-6 text-center text-sm text-[#526657]">
+        <p>No se pudieron actualizar los datos desde la base de datos central.</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wider"
+        >
+          Reintentar conexión
+        </button>
+      </div>
+    );
+  }
 
   // If user is not logged in, display strictly the private login gate
   if (!currentUser) {

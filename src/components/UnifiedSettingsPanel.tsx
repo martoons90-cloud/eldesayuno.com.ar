@@ -194,10 +194,6 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
 
     const unsub = storageService.subscribe(() => {
       setSettingsFormData(storageService.getSettings());
-      setExpenseCategoriesList(storageService.getExpenseCategories());
-      setCashFlowCategoriesList(storageService.getCashFlowCategories());
-      setFeeCategoriesList(storageService.getFeeCategories());
-      setInventoryCategoriesList(storageService.getInventoryCategories());
       setRulesList(storageService.getRules());
       setContactsList(storageService.getContacts());
       setDocumentsList(storageService.getDocuments());
@@ -263,10 +259,30 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   // -------------------------------------------------------------
   // CATEGORIES MANAGEMENT STATE
   // -------------------------------------------------------------
-  const [expenseCategoriesList, setExpenseCategoriesList] = useState<CustomCategory[]>(storageService.getExpenseCategories());
-  const [cashFlowCategoriesList, setCashFlowCategoriesList] = useState<CustomCategory[]>(storageService.getCashFlowCategories());
-  const [feeCategoriesList, setFeeCategoriesList] = useState<CustomCategory[]>(storageService.getFeeCategories());
-  const [inventoryCategoriesList, setInventoryCategoriesList] = useState<CustomCategory[]>(storageService.getInventoryCategories());
+  const [expenseCategoriesList, setExpenseCategoriesList] = useState<CustomCategory[]>([]);
+  const [cashFlowCategoriesList, setCashFlowCategoriesList] = useState<CustomCategory[]>([]);
+  const [feeCategoriesList, setFeeCategoriesList] = useState<CustomCategory[]>([]);
+  const [inventoryCategoriesList, setInventoryCategoriesList] = useState<CustomCategory[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+
+  const loadCategoriesFromDatabase = async () => {
+    setIsLoadingCategories(true);
+    try {
+      const result = await storageService.fetchAllOperationalCategoriesFromDatabase();
+      if (result.success) {
+        setExpenseCategoriesList(result.categories.expense);
+        setCashFlowCategoriesList(result.categories.cashflow);
+        setFeeCategoriesList(result.categories.fee);
+        setInventoryCategoriesList(result.categories.inventory);
+      }
+    } finally {
+      setIsLoadingCategories(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'categories') void loadCategoriesFromDatabase();
+  }, [activeTab]);
 
   const [categoryModal, setCategoryModal] = useState<{
     isOpen: boolean;
@@ -295,43 +311,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       return;
     }
 
-    if (type === 'expense') {
-      let list = [...expenseCategoriesList];
-      if (editing) {
-        list = list.map(c => c.id === editing.id ? targetObj : c);
-      } else {
-        list.push(targetObj);
-      }
-      storageService.saveExpenseCategories(list);
-      setExpenseCategoriesList(list);
-    } else if (type === 'cashflow') {
-      let list = [...cashFlowCategoriesList];
-      if (editing) {
-        list = list.map(c => c.id === editing.id ? targetObj : c);
-      } else {
-        list.push(targetObj);
-      }
-      storageService.saveCashFlowCategories(list);
-      setCashFlowCategoriesList(list);
-    } else if (type === 'fee') {
-      let list = [...feeCategoriesList];
-      if (editing) {
-        list = list.map(c => c.id === editing.id ? targetObj : c);
-      } else {
-        list.push(targetObj);
-      }
-      storageService.saveFeeCategories(list);
-      setFeeCategoriesList(list);
-    } else if (type === 'inventory') {
-      let list = [...inventoryCategoriesList];
-      if (editing) {
-        list = list.map(c => c.id === editing.id ? targetObj : c);
-      } else {
-        list.push(targetObj);
-      }
-      storageService.saveInventoryCategories(list);
-      setInventoryCategoriesList(list);
-    }
+    await loadCategoriesFromDatabase();
 
     setCategoryModal({ isOpen: false, type: 'expense', itemToEdit: null });
     setCategoryNameInput('');
@@ -362,28 +342,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       confirmText: 'Eliminar',
       cancelText: 'Cancelar',
       onConfirm: () => {
-        void supabaseService.deleteCategoryFromTable(type, id).then((deleted) => {
+        void supabaseService.deleteCategoryFromTable(type, id).then(async (deleted) => {
           if (!deleted) {
             alert('La base de datos no confirmó la eliminación de la categoría.');
             return;
           }
-          if (type === 'expense') {
-          const list = expenseCategoriesList.filter(c => c.id !== id);
-          storageService.saveExpenseCategories(list);
-          setExpenseCategoriesList(list);
-        } else if (type === 'cashflow') {
-          const list = cashFlowCategoriesList.filter(c => c.id !== id);
-          storageService.saveCashFlowCategories(list);
-          setCashFlowCategoriesList(list);
-        } else if (type === 'fee') {
-          const list = feeCategoriesList.filter(c => c.id !== id);
-          storageService.saveFeeCategories(list);
-          setFeeCategoriesList(list);
-        } else if (type === 'inventory') {
-          const list = inventoryCategoriesList.filter(c => c.id !== id);
-          storageService.saveInventoryCategories(list);
-          setInventoryCategoriesList(list);
-          }
+          await loadCategoriesFromDatabase();
           showSuccess('Categoría eliminada.');
         });
       },
@@ -2436,6 +2400,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 </div>
               </div>
 
+              {isLoadingCategories ? (
+                <div className="min-h-48 border border-[#E3DFC8] bg-[#FAF8F5] flex items-center justify-center text-xs text-[#637568]">
+                  <RefreshCw className="w-4 h-4 animate-spin mr-2 text-[#1B3B2B]" />
+                  Consultando categorías configuradas en la base de datos...
+                </div>
+              ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* 1. Expenses Categories */}
                 <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
@@ -2613,6 +2583,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Modal for Category Add/Edit */}
               {categoryModal.isOpen && (

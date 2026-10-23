@@ -168,8 +168,8 @@ class StorageService {
     }, 20 * 60 * 1000);
   }
 
-  public async hydrateFromAppStateAsync() {
-    if (typeof window === 'undefined') return;
+  public async hydrateFromAppStateAsync(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
     try {
       const result = await supabaseService.pullDataFromSupabase();
       if (result.success && result.data) {
@@ -310,9 +310,11 @@ class StorageService {
         if (hasChanges) {
           this.notify(false);
         }
+        return true;
       }
+      return false;
     } catch {
-      // Offline fallback
+      return false;
     }
   }
 
@@ -2097,6 +2099,10 @@ class StorageService {
   // evitar que una etiqueta antigua del navegador aparezca antes de la actual.
   public async fetchExpenseCategoriesFromDatabase(): Promise<{ success: boolean; categories: CustomCategory[] }> {
     return supabaseService.fetchExpenseCategories();
+  }
+
+  public async fetchAllOperationalCategoriesFromDatabase() {
+    return supabaseService.fetchAllOperationalCategories();
   }
   public saveExpenseCategories(cats: CustomCategory[]) {
     const s = this.getSettings();
