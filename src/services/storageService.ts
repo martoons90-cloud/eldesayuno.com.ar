@@ -2057,7 +2057,9 @@ class StorageService {
   public async fetchCashFlowFromDatabase(): Promise<CashFlowTransaction[]> {
     if (typeof window === 'undefined') return this.getCashFlows();
     try {
-      const result = await supabaseService.pullDataFromSupabase();
+      // La pantalla de Caja e Ingresos sólo necesita esta tabla. Evitar una
+      // carga completa reduce lecturas y egreso en Supabase.
+      const result = await supabaseService.pullDataFromSupabase(['cash_flow']);
       if (result.success && Array.isArray(result.data?.cashFlow)) {
         const cashFlow = result.data.cashFlow as CashFlowTransaction[];
         localStorage.setItem(CASH_FLOW_KEY, JSON.stringify(cashFlow));

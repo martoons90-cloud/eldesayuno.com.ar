@@ -17,6 +17,7 @@ import { InventoryStockView } from './components/InventoryStockView';
 import { IncidentReportsView } from './components/IncidentReportsView';
 import { CobranzasView } from './components/CobranzasView';
 import { ExpensesView } from './components/ExpensesView';
+import { IncomeView } from './components/IncomeView';
 import { CashFlowView } from './components/CashFlowView';
 import { ActasView } from './components/ActasView';
 import { AdminPanel, AdminSectionType } from './components/AdminPanel';
@@ -556,7 +557,16 @@ export default function App() {
           />
         )}
 
-        {/* 5. COBRANZAS & EXPENSAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS READ/PAY) */}
+        {/* 5. INGRESOS (ADMINISTRADOR & INTENDENTE: un único libro enlazado a Caja) */}
+        {activeTab === 'ingresos' && hasFinancialAccess(currentUser) && adminViewMode !== 'owner' && (
+          <IncomeView
+            currentUser={currentUser}
+            settings={settings}
+            isAdmin={hasFinancialAccess(currentUser)}
+          />
+        )}
+
+        {/* 6. COBRANZAS & EXPENSAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS READ/PAY) */}
         {activeTab === 'cobranzas' && (
           <CobranzasView
             currentUser={currentUser}
@@ -566,7 +576,7 @@ export default function App() {
           />
         )}
 
-        {/* 6. CAJA & CUENTAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS AUDIT) */}
+        {/* 7. CAJA & CUENTAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS AUDIT) */}
         {activeTab === 'cashflow' && (
           <CashFlowView
             currentUser={currentUser}
