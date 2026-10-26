@@ -2161,6 +2161,10 @@ class StorageService {
     return supabaseService.fetchExpenseCategories();
   }
 
+  public async fetchIncomeCategoriesFromDatabase(): Promise<{ success: boolean; categories: CustomCategory[] }> {
+    return supabaseService.fetchIncomeCategories();
+  }
+
   public async fetchAllOperationalCategoriesFromDatabase() {
     return supabaseService.fetchAllOperationalCategories();
   }

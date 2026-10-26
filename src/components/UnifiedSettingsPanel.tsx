@@ -261,6 +261,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   // -------------------------------------------------------------
   const [expenseCategoriesList, setExpenseCategoriesList] = useState<CustomCategory[]>([]);
   const [cashFlowCategoriesList, setCashFlowCategoriesList] = useState<CustomCategory[]>([]);
+  const [incomeCategoriesList, setIncomeCategoriesList] = useState<CustomCategory[]>([]);
   const [feeCategoriesList, setFeeCategoriesList] = useState<CustomCategory[]>([]);
   const [inventoryCategoriesList, setInventoryCategoriesList] = useState<CustomCategory[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
@@ -272,6 +273,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       if (result.success) {
         setExpenseCategoriesList(result.categories.expense);
         setCashFlowCategoriesList(result.categories.cashflow);
+        setIncomeCategoriesList(result.categories.income);
         setFeeCategoriesList(result.categories.fee);
         setInventoryCategoriesList(result.categories.inventory);
       }
@@ -286,7 +288,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
 
   const [categoryModal, setCategoryModal] = useState<{
     isOpen: boolean;
-    type: 'expense' | 'cashflow' | 'fee' | 'inventory';
+    type: 'expense' | 'cashflow' | 'fee' | 'inventory' | 'income';
     itemToEdit?: CustomCategory | null;
   }>({
     isOpen: false,
@@ -302,6 +304,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     const editing = categoryModal.itemToEdit;
 
     let targetId = editing ? editing.id : categoryNameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (!editing && type === 'income') targetId = `income_${targetId}`;
     if (!targetId) targetId = `cat_${Date.now()}`;
     const targetObj = { id: targetId, name: categoryNameInput.trim() };
 
@@ -333,7 +336,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     onConfirm: () => {},
   });
 
-  const handleDeleteCategory = (type: 'expense' | 'cashflow' | 'fee' | 'inventory', id: string, name: string) => {
+  const handleDeleteCategory = (type: 'expense' | 'cashflow' | 'fee' | 'inventory' | 'income', id: string, name: string) => {
     setDialogState({
       isOpen: true,
       title: 'Eliminar Categoría',
@@ -2395,7 +2398,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     <span>Configuración de Categorías Operativas</span>
                   </h3>
                   <p className="text-xs text-[#7A8E7E] mt-0.5">
-                    Personalice y administre las categorías utilizadas en Gastos, Cajas, Cobranzas e Inventario.
+                    Personalice y administre las categorías utilizadas en Gastos, Ingresos, Cajas, Cobranzas e Inventario.
                   </p>
                 </div>
               </div>
@@ -2455,6 +2458,52 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Categorías de Ingresos</span>
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setCategoryModal({ isOpen: true, type: 'income', itemToEdit: null });
+                        setCategoryNameInput('');
+                      }}
+                      className="px-2.5 py-1 bg-[#1B3B2B] text-white text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Añadir
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {incomeCategoriesList.length === 0 ? (
+                      <p className="py-3 text-[11px] text-[#7A8E7E]">Aún no hay categorías propias. Añada las que necesite para el Libro de Ingresos.</p>
+                    ) : incomeCategoriesList.map((cat) => (
+                      <div key={cat.id} className="p-2.5 bg-white border border-[#E3DFC8] flex items-center justify-between text-xs">
+                        <span className="font-semibold text-[#163323]">{cat.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setCategoryModal({ isOpen: true, type: 'income', itemToEdit: cat });
+                              setCategoryNameInput(cat.name);
+                            }}
+                            className="p-1 hover:bg-[#F2EDE1] text-[#163323]"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory('income', cat.id, cat.name)}
+                            className="p-1 hover:bg-red-50 text-red-700"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Cash Flow Categories */}
+                <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
                       <span>Categorías de Cajas & Cuentas</span>
                     </h4>
                     <button
@@ -2495,7 +2544,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   </div>
                 </div>
 
-                {/* 3. Fee Collection Categories */}
+                {/* 4. Fee Collection Categories */}
                 <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
@@ -2539,7 +2588,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                   </div>
                 </div>
 
-                {/* 4. Inventory Categories */}
+                {/* 5. Inventory Categories */}
                 <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">

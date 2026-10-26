@@ -353,7 +353,10 @@ export type CashFlowCategory =
   | 'reintegro_gasto'
   | 'fondo_reserva'
   | 'otro_ingreso'
-  | 'otro_egreso';
+  | 'otro_egreso'
+  // Las categorías creadas por Administración se guardan como texto en la
+  // misma columna de Caja, conservando los rótulos configurables.
+  | (string & {});
 
 export interface CashFlowTransaction {
   id: string;

@@ -22,7 +22,7 @@ interface IncomeViewProps {
   isAdmin: boolean;
 }
 
-type IncomeCategory = Extract<CashFlowCategory, 'aporte_socio' | 'pago_expensas' | 'fondo_reserva' | 'otro_ingreso'>;
+type IncomeCategory = CashFlowCategory;
 
 const INCOME_CATEGORIES: Array<{ id: IncomeCategory; label: string }> = [
   { id: 'pago_expensas', label: 'Cobro de expensas' },
@@ -47,8 +47,8 @@ const formatPeriod = (period: string) => {
   return new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1));
 };
 
-const categoryName = (category: string) =>
-  INCOME_CATEGORIES.find((item) => item.id === category)?.label || category.replaceAll('_', ' ');
+const categoryName = (category: string, categories: Array<{ id: string; name: string }>) =>
+  categories.find((item) => item.id === category)?.name || category.replace(/^income_/, '').replaceAll('_', ' ');
 
 /**
  * Libro específico de ingresos. Usa los movimientos físicos de Caja ya
@@ -57,6 +57,9 @@ const categoryName = (category: string) =>
  */
 export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _settings, isAdmin }) => {
   const [incomes, setIncomes] = useState<CashFlowTransaction[]>([]);
+  const [incomeCategories, setIncomeCategories] = useState<Array<{ id: string; name: string }>>(
+    INCOME_CATEGORIES.map((category) => ({ id: category.id, name: category.label }))
+  );
   const [selectedPeriod, setSelectedPeriod] = useState(currentPeriod);
   const [categoryFilter, setCategoryFilter] = useState<'all' | IncomeCategory>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,9 +90,23 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
     }
   };
 
+  const loadIncomeCategories = async () => {
+    const result = await storageService.fetchIncomeCategoriesFromDatabase();
+    if (!result.success || result.categories.length === 0) return;
+    setIncomeCategories((current) => {
+      const merged = new Map(current.map((category) => [category.id, category]));
+      result.categories.forEach((category) => merged.set(category.id, category));
+      return Array.from(merged.values());
+    });
+  };
+
   useEffect(() => {
     void loadIncomes();
-    return storageService.subscribe(() => void loadIncomes());
+    void loadIncomeCategories();
+    return storageService.subscribe(() => {
+      void loadIncomes();
+      void loadIncomeCategories();
+    });
   }, []);
 
   const users = storageService.getUsers().filter((user) => user.active !== false);
@@ -106,7 +123,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
     .sort((left, right) => `${right.date}${right.createdAt}`.localeCompare(`${left.date}${left.createdAt}`)), [incomes, selectedPeriod, categoryFilter, searchTerm]);
 
   const total = filteredIncomes.reduce((sum, income) => sum + Number(income.amount || 0), 0);
-  const totalByCategory = INCOME_CATEGORIES.map((category) => ({
+  const totalByCategory = incomeCategories.map((category) => ({
     ...category,
     total: filteredIncomes.filter((income) => income.category === category.id).reduce((sum, income) => sum + Number(income.amount || 0), 0),
   }));
@@ -122,7 +139,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
     setEditingIncome(income);
     setForm({
       concept: income.concept,
-      category: (INCOME_CATEGORIES.some((category) => category.id === income.category) ? income.category : 'otro_ingreso') as IncomeCategory,
+      category: income.category || 'otro_ingreso',
       amount: Number(income.amount),
       currency: income.currency || 'ARS',
       date: income.date || currentDate(),
@@ -213,7 +230,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
         <div className="md:col-span-5 bg-white border border-[#E3DFC8] p-3.5 shadow-xs">
           <div className="flex justify-between text-xs text-[#637568] font-bold uppercase tracking-wider mb-2"><span>Ingresos por categoría</span><Tag className="w-3.5 h-3.5 text-[#BFA270]" /></div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            {totalByCategory.map((category) => <div key={category.id} className="p-2 bg-emerald-50 border border-emerald-100 border-l-4 border-l-emerald-500 min-w-0"><span className="block text-[10px] font-bold text-emerald-900 truncate" title={category.label}>{category.label}</span><span className="block font-mono text-xs font-bold text-emerald-800 mt-1">{formatCurrency(category.total)}</span></div>)}
+            {totalByCategory.map((category) => <div key={category.id} className="p-2 bg-emerald-50 border border-emerald-100 border-l-4 border-l-emerald-500 min-w-0"><span className="block text-[10px] font-bold text-emerald-900 truncate" title={category.name}>{category.name}</span><span className="block font-mono text-xs font-bold text-emerald-800 mt-1">{formatCurrency(category.total)}</span></div>)}
           </div>
         </div>
       </div>
@@ -226,7 +243,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
         </div>
         <div className="flex gap-2 w-full md:w-auto">
           <div className="relative flex-1 md:w-64"><Search className="w-3.5 h-3.5 text-[#7A8E7E] absolute left-2.5 top-1/2 -translate-y-1/2" /><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar concepto o persona..." className="w-full pl-8 pr-3 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs text-[#163323] focus:outline-none focus:border-[#1B3B2B]" /></div>
-          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as 'all' | IncomeCategory)} className="px-2.5 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-medium text-[#163323] focus:outline-none"><option value="all">Todas las categorías</option>{INCOME_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select>
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as 'all' | IncomeCategory)} className="px-2.5 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs font-medium text-[#163323] focus:outline-none"><option value="all">Todas las categorías</option>{incomeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
         </div>
       </div>
 
@@ -234,13 +251,13 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
         <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3"><span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><Landmark className="w-3.5 h-3.5 text-[#BFA270]" />Detalle auditado de ingresos ({filteredIncomes.length})</span><span className="text-[11px] font-mono">Total: {formatCurrency(total)}</span></div>
         {filteredIncomes.length === 0 ? <div className="py-14 text-center text-sm text-[#7A8E7E]"><Wallet className="w-8 h-8 mx-auto mb-3 text-[#C9BEA5]" />No se encontraron ingresos con estos filtros.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[840px] text-xs"><thead className="bg-[#F6F2E8] text-[#526657] uppercase tracking-wide text-[10px]"><tr><th className="text-left p-3">Fecha / Mes</th><th className="text-left p-3">Concepto</th><th className="text-left p-3">Categoría</th><th className="text-left p-3">Origen</th><th className="text-right p-3">Monto</th><th className="text-left p-3">Estado</th><th className="text-right p-3">Acciones</th></tr></thead><tbody>{filteredIncomes.map((income) => {
           const automatic = income.id.startsWith('cf-fee-payment-');
-          return <tr key={income.id} className="border-t border-[#EDE7D9] hover:bg-[#FCFBF8]"><td className="p-3 font-mono text-[#526657]"><div>{income.date || '-'}</div><span className="text-[10px] text-[#8B9A8D]">{income.date?.slice(0, 7) || '-'}</span></td><td className="p-3"><div className="font-bold text-[#163323]">{income.concept}</div>{income.notes && <div className="text-[10px] italic text-[#7A8E7E] max-w-xs truncate">{income.notes}</div>}</td><td className="p-3"><span className="inline-flex px-2 py-0.5 border border-emerald-200 bg-emerald-50 text-emerald-800 font-bold text-[10px] uppercase">{categoryName(income.category)}</span></td><td className="p-3"><div className="font-medium text-[#163323]">{income.userName || 'Fondos generales'}</div><span className="text-[10px] text-[#7A8E7E]">{automatic ? 'Cobranza confirmada' : 'Ingreso manual'}</span></td><td className="p-3 text-right font-mono font-bold text-emerald-800">{formatCurrency(income.amount, income.currency)}</td><td className="p-3"><span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5"><CheckCircle2 className="w-3 h-3" />Confirmado</span></td><td className="p-3"><div className="flex justify-end gap-2">{isAdmin && !automatic && <><button onClick={() => openEditIncome(income)} title="Editar ingreso" className="text-[#637568] hover:text-[#1B3B2B] cursor-pointer"><Edit3 className="w-4 h-4" /></button><button onClick={() => requestDelete(income)} title="Eliminar ingreso" className="text-[#9A6A5B] hover:text-red-700 cursor-pointer"><Trash2 className="w-4 h-4" /></button></>}{automatic && <span className="text-[10px] text-[#8B9A8D]">Gestionado desde Cobranzas</span>}</div></td></tr>;
+          return <tr key={income.id} className="border-t border-[#EDE7D9] hover:bg-[#FCFBF8]"><td className="p-3 font-mono text-[#526657]"><div>{income.date || '-'}</div><span className="text-[10px] text-[#8B9A8D]">{income.date?.slice(0, 7) || '-'}</span></td><td className="p-3"><div className="font-bold text-[#163323]">{income.concept}</div>{income.notes && <div className="text-[10px] italic text-[#7A8E7E] max-w-xs truncate">{income.notes}</div>}</td><td className="p-3"><span className="inline-flex px-2 py-0.5 border border-emerald-200 bg-emerald-50 text-emerald-800 font-bold text-[10px] uppercase">{categoryName(income.category, incomeCategories)}</span></td><td className="p-3"><div className="font-medium text-[#163323]">{income.userName || 'Fondos generales'}</div><span className="text-[10px] text-[#7A8E7E]">{automatic ? 'Cobranza confirmada' : 'Ingreso manual'}</span></td><td className="p-3 text-right font-mono font-bold text-emerald-800">{formatCurrency(income.amount, income.currency)}</td><td className="p-3"><span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5"><CheckCircle2 className="w-3 h-3" />Confirmado</span></td><td className="p-3"><div className="flex justify-end gap-2">{isAdmin && !automatic && <><button onClick={() => openEditIncome(income)} title="Editar ingreso" className="text-[#637568] hover:text-[#1B3B2B] cursor-pointer"><Edit3 className="w-4 h-4" /></button><button onClick={() => requestDelete(income)} title="Eliminar ingreso" className="text-[#9A6A5B] hover:text-red-700 cursor-pointer"><Trash2 className="w-4 h-4" /></button></>}{automatic && <span className="text-[10px] text-[#8B9A8D]">Gestionado desde Cobranzas</span>}</div></td></tr>;
         })}</tbody></table></div>}
       </section>
 
       {automaticCount > 0 && <p className="text-[11px] text-[#637568] flex gap-1.5 items-start"><CreditCard className="w-3.5 h-3.5 mt-0.5 shrink-0" />Los cobros creados desde Cobranzas se muestran aquí como confirmados, pero se editan o anulan desde Cobranzas para preservar el historial de las cuotas.</p>}
 
-      {isFormOpen && <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[1px] flex items-center justify-center p-4"><form onSubmit={saveIncome} className="bg-[#FAF8F5] w-full max-w-2xl border border-[#DDD5BF] shadow-2xl overflow-hidden"><div className="bg-[#163323] text-white px-5 py-4 flex items-center justify-between"><div><h2 className="font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>{editingIncome ? 'Modificar ingreso' : 'Registrar nuevo ingreso'}</h2><p className="text-[10px] text-emerald-100 mt-0.5">Se refleja directamente en Caja & Cuentas.</p></div><button type="button" onClick={() => setIsFormOpen(false)} className="text-white/80 hover:text-white text-xl cursor-pointer">×</button></div><div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"><label className="md:col-span-2 font-bold text-[#163323]">Concepto *<input autoFocus value={form.concept} onChange={(event) => setForm({ ...form, concept: event.target.value })} placeholder="Ej: Aporte extraordinario octubre" className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none focus:border-[#1B3B2B]" /></label><label className="font-bold text-[#163323]">Categoría<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as IncomeCategory })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none">{INCOME_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label><label className="font-bold text-[#163323]">Monto *<input type="number" min="0.01" step="0.01" value={form.amount || ''} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-mono font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Fecha<input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Moneda<select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as 'ARS' | 'USD' })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="ARS">ARS ($ Pesos)</option><option value="USD">USD (US$)</option></select></label><label className="md:col-span-2 font-bold text-[#163323]">Copropietario que aportó <span className="font-normal text-[#7A8E7E]">(opcional)</span><select value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="">Fondos generales / sin asignar</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}{user.partName ? ` · ${user.partName}` : ''}</option>)}</select></label><label className="md:col-span-2 font-bold text-[#163323]">Observaciones <span className="font-normal text-[#7A8E7E]">(opcional)</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} rows={3} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal resize-none focus:outline-none" placeholder="Referencia, medio de cobro u observaciones..." /></label></div><div className="px-5 py-4 bg-[#F2EDE1] border-t border-[#DDD5BF] flex justify-end gap-3"><button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 border border-[#CFC5B0] bg-white text-xs font-bold uppercase cursor-pointer">Cancelar</button><button type="submit" className="px-5 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wider cursor-pointer">{editingIncome ? 'Guardar cambios' : 'Registrar ingreso'}</button></div></form></div>}
+      {isFormOpen && <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[1px] flex items-center justify-center p-4"><form onSubmit={saveIncome} className="bg-[#FAF8F5] w-full max-w-2xl border border-[#DDD5BF] shadow-2xl overflow-hidden"><div className="bg-[#163323] text-white px-5 py-4 flex items-center justify-between"><div><h2 className="font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>{editingIncome ? 'Modificar ingreso' : 'Registrar nuevo ingreso'}</h2><p className="text-[10px] text-emerald-100 mt-0.5">Se refleja directamente en Caja & Cuentas.</p></div><button type="button" onClick={() => setIsFormOpen(false)} className="text-white/80 hover:text-white text-xl cursor-pointer">×</button></div><div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"><label className="md:col-span-2 font-bold text-[#163323]">Concepto *<input autoFocus value={form.concept} onChange={(event) => setForm({ ...form, concept: event.target.value })} placeholder="Ej: Aporte extraordinario octubre" className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none focus:border-[#1B3B2B]" /></label><label className="font-bold text-[#163323]">Categoría<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as IncomeCategory })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none">{incomeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="font-bold text-[#163323]">Monto *<input type="number" min="0.01" step="0.01" value={form.amount || ''} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-mono font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Fecha<input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Moneda<select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as 'ARS' | 'USD' })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="ARS">ARS ($ Pesos)</option><option value="USD">USD (US$)</option></select></label><label className="md:col-span-2 font-bold text-[#163323]">Copropietario que aportó <span className="font-normal text-[#7A8E7E]">(opcional)</span><select value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="">Fondos generales / sin asignar</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}{user.partName ? ` · ${user.partName}` : ''}</option>)}</select></label><label className="md:col-span-2 font-bold text-[#163323]">Observaciones <span className="font-normal text-[#7A8E7E]">(opcional)</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} rows={3} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal resize-none focus:outline-none" placeholder="Referencia, medio de cobro u observaciones..." /></label></div><div className="px-5 py-4 bg-[#F2EDE1] border-t border-[#DDD5BF] flex justify-end gap-3"><button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 border border-[#CFC5B0] bg-white text-xs font-bold uppercase cursor-pointer">Cancelar</button><button type="submit" className="px-5 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wider cursor-pointer">{editingIncome ? 'Guardar cambios' : 'Registrar ingreso'}</button></div></form></div>}
 
       <CustomDialogModal {...dialog} onClose={() => setDialog((current) => ({ ...current, isOpen: false }))} />
     </div>

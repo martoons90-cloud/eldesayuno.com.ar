@@ -179,12 +179,30 @@ class SupabaseService {
     return { success: true, categories: Array.from(categoriesById.values()) };
   }
 
+  /** Rótulos del Libro de Ingresos, alojados en categorías operativas. */
+  public async fetchIncomeCategories(): Promise<{ success: boolean; categories: Array<{ id: string; name: string }> }> {
+    if (!this.client) return { success: false, categories: [] };
+    const { data, error } = await this.client
+      .from('operational_categories')
+      .select('id, name')
+      .eq('type', 'income')
+      .order('name');
+    if (error) {
+      console.error('Error leyendo categorías de ingresos de Supabase:', error);
+      return { success: false, categories: [] };
+    }
+    return {
+      success: true,
+      categories: (data || []).map((category) => ({ id: String(category.id), name: String(category.name || category.id) })),
+    };
+  }
+
   /** Consulta liviana usada sólo por la pantalla de Categorías Operativas. */
   public async fetchAllOperationalCategories(): Promise<{
     success: boolean;
-    categories: Record<'expense' | 'cashflow' | 'fee' | 'inventory', Array<{ id: string; name: string }>>;
+    categories: Record<'expense' | 'cashflow' | 'fee' | 'inventory' | 'income', Array<{ id: string; name: string }>>;
   }> {
-    const empty = { expense: [], cashflow: [], fee: [], inventory: [] } as Record<'expense' | 'cashflow' | 'fee' | 'inventory', Array<{ id: string; name: string }>>;
+    const empty = { expense: [], cashflow: [], fee: [], inventory: [], income: [] } as Record<'expense' | 'cashflow' | 'fee' | 'inventory' | 'income', Array<{ id: string; name: string }>>;
     if (!this.client) return { success: false, categories: empty };
 
     const [expenseResult, cashFlowResult, feeResult, inventoryResult, operationalResult] = await Promise.all([
@@ -201,7 +219,7 @@ class SupabaseService {
       return { success: false, categories: empty };
     }
 
-    const addCategories = (type: 'expense' | 'cashflow' | 'fee' | 'inventory', rows: Array<{ id: string; name: string }> | null, overwrite = true) => {
+    const addCategories = (type: 'expense' | 'cashflow' | 'fee' | 'inventory' | 'income', rows: Array<{ id: string; name: string }> | null, overwrite = true) => {
       for (const row of rows || []) {
         const item = { id: String(row.id), name: String(row.name || row.id) };
         const currentIndex = empty[type].findIndex((category) => category.id === item.id);
@@ -215,7 +233,7 @@ class SupabaseService {
     addCategories('fee', feeResult.data);
     addCategories('inventory', inventoryResult.data);
     for (const row of operationalResult.data || []) {
-      const type = row.type as 'expense' | 'cashflow' | 'fee' | 'inventory';
+      const type = row.type as 'expense' | 'cashflow' | 'fee' | 'inventory' | 'income';
       if (type in empty) addCategories(type, [{ id: row.id, name: row.name }], false);
     }
 
@@ -915,14 +933,26 @@ class SupabaseService {
   }
 
   public async saveCategoryToTable(
-    categoryType: 'expense' | 'cashflow' | 'fee' | 'inventory',
+    categoryType: 'expense' | 'cashflow' | 'fee' | 'inventory' | 'income',
     category: { id: string; name: string }
   ): Promise<boolean> {
     if (!this.client) return false;
     try {
-      const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
-      await this.client.from(tableName).upsert({ id: String(category.id), name: String(category.name) }, { onConflict: 'id' });
-      await this.client.from('operational_categories').upsert({ id: String(category.id), name: String(category.name), type: categoryType }, { onConflict: 'id' });
+      if (categoryType !== 'income') {
+        const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
+        const { error } = await this.client.from(tableName).upsert({ id: String(category.id), name: String(category.name) }, { onConflict: 'id' });
+        if (error) {
+          console.error('Error guardando categoría en Supabase:', error);
+          return false;
+        }
+      }
+      const { error: operationalError } = await this.client
+        .from('operational_categories')
+        .upsert({ id: String(category.id), name: String(category.name), type: categoryType }, { onConflict: 'id' });
+      if (operationalError) {
+        console.error('Error guardando categoría operativa en Supabase:', operationalError);
+        return false;
+      }
       return true;
     } catch (err) {
       console.error('Error guardando categoría en Supabase:', err);
@@ -931,15 +961,17 @@ class SupabaseService {
   }
 
   public async deleteCategoryFromTable(
-    categoryType: 'expense' | 'cashflow' | 'fee' | 'inventory',
+    categoryType: 'expense' | 'cashflow' | 'fee' | 'inventory' | 'income',
     categoryId: string
   ): Promise<boolean> {
     if (!this.client) return false;
-    const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
-    const { error } = await this.client.from(tableName).delete().eq('id', categoryId);
-    if (error) {
-      console.error('Error eliminando categoría de Supabase:', error);
-      return false;
+    if (categoryType !== 'income') {
+      const tableName = `${categoryType === 'cashflow' ? 'cashflow' : categoryType}_categories`;
+      const { error } = await this.client.from(tableName).delete().eq('id', categoryId);
+      if (error) {
+        console.error('Error eliminando categoría de Supabase:', error);
+        return false;
+      }
     }
     const { error: operationalError } = await this.client.from('operational_categories').delete().eq('id', categoryId);
     if (operationalError) console.warn('No se pudo eliminar la categoría duplicada:', operationalError);
