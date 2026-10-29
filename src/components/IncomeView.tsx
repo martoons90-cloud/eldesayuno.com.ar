@@ -64,6 +64,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
   const [categoryFilter, setCategoryFilter] = useState<'all' | IncomeCategory>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSavingIncome, setIsSavingIncome] = useState(false);
   const [editingIncome, setEditingIncome] = useState<CashFlowTransaction | null>(null);
   const [form, setForm] = useState({
     concept: '',
@@ -151,10 +152,13 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
 
   const saveIncome = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSavingIncome) return;
     if (!form.concept.trim() || Number(form.amount) <= 0) {
       setDialog({ isOpen: true, title: 'Datos incompletos', message: 'Indicá un concepto y un importe mayor a cero.', type: 'alert', onConfirm: () => {} });
       return;
     }
+    setIsSavingIncome(true);
+    try {
     const linkedUser = users.find((user) => user.id === form.userId);
     const income: CashFlowTransaction = {
       id: editingIncome?.id || `inc-${Date.now()}`,
@@ -178,6 +182,10 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
     }
     setIsFormOpen(false);
     await loadIncomes();
+    setDialog({ isOpen: true, title: 'Ingreso confirmado', message: 'El ingreso fue guardado y la base de datos confirmó la acción.', type: 'success', onConfirm: () => {} });
+    } finally {
+      setIsSavingIncome(false);
+    }
   };
 
   const requestDelete = (income: CashFlowTransaction) => {
@@ -187,14 +195,15 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
       message: `¿Eliminar “${income.concept}”? Si este ingreso fue aplicado a una factura o distribuido, también se retirarán esos asientos asociados.`,
       type: 'warning',
       confirmText: 'Eliminar',
-      onConfirm: () => {
-        void storageService.deleteCashFlowWithDependencies(income.id).then(async (deleted) => {
-          if (!deleted) {
-            setDialog({ isOpen: true, title: 'No se pudo eliminar', message: 'La base de datos no confirmó la eliminación. El ingreso sigue vigente.', type: 'alert', onConfirm: () => {} });
-            return;
-          }
-          await loadIncomes();
-        });
+      onConfirm: async () => {
+        const deleted = await storageService.deleteCashFlowWithDependencies(income.id);
+        if (!deleted) {
+          setDialog({ isOpen: true, title: 'No se pudo eliminar', message: 'La base de datos no confirmó la eliminación. El ingreso sigue vigente.', type: 'alert', onConfirm: () => {} });
+          return false;
+        }
+        await loadIncomes();
+        setDialog({ isOpen: true, title: 'Ingreso eliminado', message: 'El ingreso fue eliminado y la base de datos confirmó la acción.', type: 'success', onConfirm: () => {} });
+        return false;
       },
     });
   };
@@ -257,7 +266,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
 
       {automaticCount > 0 && <p className="text-[11px] text-[#637568] flex gap-1.5 items-start"><CreditCard className="w-3.5 h-3.5 mt-0.5 shrink-0" />Los cobros creados desde Cobranzas se muestran aquí como confirmados, pero se editan o anulan desde Cobranzas para preservar el historial de las cuotas.</p>}
 
-      {isFormOpen && <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[1px] flex items-center justify-center p-4"><form onSubmit={saveIncome} className="bg-[#FAF8F5] w-full max-w-2xl border border-[#DDD5BF] shadow-2xl overflow-hidden"><div className="bg-[#163323] text-white px-5 py-4 flex items-center justify-between"><div><h2 className="font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>{editingIncome ? 'Modificar ingreso' : 'Registrar nuevo ingreso'}</h2><p className="text-[10px] text-emerald-100 mt-0.5">Se refleja directamente en Caja & Cuentas.</p></div><button type="button" onClick={() => setIsFormOpen(false)} className="text-white/80 hover:text-white text-xl cursor-pointer">×</button></div><div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"><label className="md:col-span-2 font-bold text-[#163323]">Concepto *<input autoFocus value={form.concept} onChange={(event) => setForm({ ...form, concept: event.target.value })} placeholder="Ej: Aporte extraordinario octubre" className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none focus:border-[#1B3B2B]" /></label><label className="font-bold text-[#163323]">Categoría<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as IncomeCategory })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none">{incomeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="font-bold text-[#163323]">Monto *<input type="number" min="0.01" step="0.01" value={form.amount || ''} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-mono font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Fecha<input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Moneda<select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as 'ARS' | 'USD' })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="ARS">ARS ($ Pesos)</option><option value="USD">USD (US$)</option></select></label><label className="md:col-span-2 font-bold text-[#163323]">Copropietario que aportó <span className="font-normal text-[#7A8E7E]">(opcional)</span><select value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="">Fondos generales / sin asignar</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}{user.partName ? ` · ${user.partName}` : ''}</option>)}</select></label><label className="md:col-span-2 font-bold text-[#163323]">Observaciones <span className="font-normal text-[#7A8E7E]">(opcional)</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} rows={3} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal resize-none focus:outline-none" placeholder="Referencia, medio de cobro u observaciones..." /></label></div><div className="px-5 py-4 bg-[#F2EDE1] border-t border-[#DDD5BF] flex justify-end gap-3"><button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 border border-[#CFC5B0] bg-white text-xs font-bold uppercase cursor-pointer">Cancelar</button><button type="submit" className="px-5 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wider cursor-pointer">{editingIncome ? 'Guardar cambios' : 'Registrar ingreso'}</button></div></form></div>}
+      {isFormOpen && <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[1px] flex items-center justify-center p-4"><form onSubmit={saveIncome} className="bg-[#FAF8F5] w-full max-w-2xl border border-[#DDD5BF] shadow-2xl overflow-hidden"><div className="bg-[#163323] text-white px-5 py-4 flex items-center justify-between"><div><h2 className="font-bold tracking-wide" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>{editingIncome ? 'Modificar ingreso' : 'Registrar nuevo ingreso'}</h2><p className="text-[10px] text-emerald-100 mt-0.5">Se refleja directamente en Caja & Cuentas.</p></div><button type="button" disabled={isSavingIncome} onClick={() => setIsFormOpen(false)} className="text-white/80 hover:text-white text-xl cursor-pointer disabled:opacity-40">×</button></div><div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"><label className="md:col-span-2 font-bold text-[#163323]">Concepto *<input autoFocus value={form.concept} onChange={(event) => setForm({ ...form, concept: event.target.value })} placeholder="Ej: Aporte extraordinario octubre" className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none focus:border-[#1B3B2B]" /></label><label className="font-bold text-[#163323]">Categoría<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as IncomeCategory })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none">{incomeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="font-bold text-[#163323]">Monto *<input type="number" min="0.01" step="0.01" value={form.amount || ''} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-mono font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Fecha<input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none" /></label><label className="font-bold text-[#163323]">Moneda<select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value as 'ARS' | 'USD' })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="ARS">ARS ($ Pesos)</option><option value="USD">USD (US$)</option></select></label><label className="md:col-span-2 font-bold text-[#163323]">Copropietario que aportó <span className="font-normal text-[#7A8E7E]">(opcional)</span><select value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value })} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal focus:outline-none"><option value="">Fondos generales / sin asignar</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}{user.partName ? ` · ${user.partName}` : ''}</option>)}</select></label><label className="md:col-span-2 font-bold text-[#163323]">Observaciones <span className="font-normal text-[#7A8E7E]">(opcional)</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} rows={3} className="mt-1 w-full px-3 py-2 bg-white border border-[#DDD5BF] font-normal resize-none focus:outline-none" placeholder="Referencia, medio de cobro u observaciones..." /></label></div><div className="px-5 py-4 bg-[#F2EDE1] border-t border-[#DDD5BF] flex justify-end gap-3"><button type="button" disabled={isSavingIncome} onClick={() => setIsFormOpen(false)} className="px-4 py-2 border border-[#CFC5B0] bg-white text-xs font-bold uppercase cursor-pointer disabled:opacity-50">Cancelar</button><button type="submit" disabled={isSavingIncome} className="px-5 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wider cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">{isSavingIncome ? 'Guardando...' : editingIncome ? 'Guardar cambios' : 'Registrar ingreso'}</button></div></form></div>}
 
       <CustomDialogModal {...dialog} onClose={() => setDialog((current) => ({ ...current, isOpen: false }))} />
     </div>

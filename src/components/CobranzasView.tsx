@@ -1345,7 +1345,15 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                                 const deleted = await storageService.deleteFeeCollection(collection.id);
                                 if (deleted) {
                                   await loadCollections();
-                                  return;
+                                  setDialog({
+                                    isOpen: true,
+                                    title: 'Cobranza eliminada',
+                                    message: 'La orden de cobranza fue eliminada y la base de datos confirmó la acción.',
+                                    type: 'success',
+                                    confirmText: 'Aceptar',
+                                    onConfirm: () => {},
+                                  });
+                                  return false;
                                 }
                                 setDialog({
                                   isOpen: true,
@@ -1355,6 +1363,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                                   confirmText: 'Aceptar',
                                   onConfirm: () => {},
                                 });
+                                return false;
                               },
                             });
                           }}

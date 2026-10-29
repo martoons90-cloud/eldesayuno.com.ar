@@ -53,6 +53,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
   });
 
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isSavingItem, setIsSavingItem] = useState(false);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const handleInventoryPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -115,6 +118,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingItem) return;
+    setIsSavingItem(true);
+    try {
     if (editingItem) {
       const updated: InventoryItem = {
         ...editingItem,
@@ -126,6 +132,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
         return;
       }
       setEditingItem(null);
+      setActionNotice('El artículo de stock fue actualizado y la base de datos confirmó la acción.');
     } else {
       const newItem: InventoryItem = {
         id: 'inv-' + Date.now(),
@@ -137,8 +144,12 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
         return;
       }
       setIsModalOpen(false);
+      setActionNotice('El artículo fue agregado al stock y la base de datos confirmó la acción.');
     }
     setInventory(storageService.getInventory());
+    } finally {
+      setIsSavingItem(false);
+    }
   };
 
   const handleOpenDeleteModal = (item: InventoryItem) => {
@@ -146,14 +157,20 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
   };
 
   const handleConfirmDelete = async () => {
-    if (!itemToDelete) return;
-    const deleted = await storageService.deleteInventoryItem(itemToDelete.id);
-    if (!deleted) {
-      alert('La base de datos no confirmó la eliminación. El artículo sigue vigente.');
-      return;
+    if (!itemToDelete || isDeletingItem) return;
+    setIsDeletingItem(true);
+    try {
+      const deleted = await storageService.deleteInventoryItem(itemToDelete.id);
+      if (!deleted) {
+        alert('La base de datos no confirmó la eliminación. El artículo sigue vigente.');
+        return;
+      }
+      setInventory(storageService.getInventory());
+      setItemToDelete(null);
+      setActionNotice('El artículo fue eliminado y la base de datos confirmó la acción.');
+    } finally {
+      setIsDeletingItem(false);
     }
-    setInventory(storageService.getInventory());
-    setItemToDelete(null);
   };
 
   const handlePrintChecklist = () => {
@@ -275,6 +292,13 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
           )}
         </div>
       </div>
+
+      {actionNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between gap-3">
+          <span>{actionNotice}</span>
+          <button type="button" onClick={() => setActionNotice(null)} className="font-bold text-emerald-800 hover:text-emerald-950 cursor-pointer">Aceptar</button>
+        </div>
+      )}
 
       {/* KPI Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -627,19 +651,22 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => {
+                      onClick={() => {
+                        if (isSavingItem) return;
                       setIsModalOpen(false);
                       setEditingItem(null);
                     }}
-                    className="px-4 py-2 text-[#637568] hover:text-[#19231A] text-xs cursor-pointer"
+                    disabled={isSavingItem}
+                    className="px-4 py-2 text-[#637568] hover:text-[#19231A] text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-[#1B3B2B] text-white font-semibold uppercase tracking-wider text-xs hover:bg-[#132A1F] cursor-pointer"
+                    disabled={isSavingItem || isUploadingPhoto}
+                    className="px-5 py-2 bg-[#1B3B2B] text-white font-semibold uppercase tracking-wider text-xs hover:bg-[#132A1F] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Guardar Ítem
+                    {isSavingItem ? 'Guardando...' : 'Guardar Ítem'}
                   </button>
                 </div>
               </div>
@@ -696,17 +723,19 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
               <button
                 type="button"
                 onClick={() => setItemToDelete(null)}
-                className="px-4 py-2 text-xs text-[#637568] hover:text-[#19231A] cursor-pointer"
+                disabled={isDeletingItem}
+                className="px-4 py-2 text-xs text-[#637568] hover:text-[#19231A] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                disabled={isDeletingItem}
+                className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Confirmar Eliminación
+                {isDeletingItem ? 'Eliminando...' : 'Confirmar Eliminación'}
               </button>
             </div>
           </div>

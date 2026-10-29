@@ -138,6 +138,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   });
 
   const [isUploadingBill, setIsUploadingBill] = useState(false);
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
 
   // Transfer Modal State
   const [transferTarget, setTransferTarget] = useState<'selected_expense' | 'all_period'>('all_period');
@@ -338,6 +339,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   // Save Expense
   const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingExpense) return;
     if (!expenseForm.concept.trim()) {
       setDialog({
         isOpen: true,
@@ -380,6 +382,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return;
     }
 
+    setIsSavingExpense(true);
+    try {
     const itemToSave: ExpenseItem = {
       id: editingExpense ? editingExpense.id : 'exp-' + Date.now(),
       concept: expenseForm.concept.trim(),
@@ -442,6 +446,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }
     setIsNewExpenseModalOpen(false);
     setEditingExpense(null);
+    setDialog({
+      isOpen: true,
+      title: 'Gasto guardado',
+      message: 'El gasto fue confirmado por la base de datos.',
+      type: 'success',
+      confirmText: 'Aceptar',
+      onConfirm: () => {},
+    });
+    } finally {
+      setIsSavingExpense(false);
+    }
   };
 
   // Delete Expense
@@ -452,19 +467,28 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       message: '¿Está seguro de eliminar este registro de gasto?',
       type: 'warning',
       confirmText: 'Eliminar',
-      onConfirm: () => {
-        void storageService.deleteExpense(id).then((deleted) => {
-          if (!deleted) {
-            setDialog({
-              isOpen: true,
-              title: 'No se pudo eliminar',
-              message: 'La base de datos no confirmó la eliminación. El gasto sigue vigente.',
-              type: 'alert',
-              confirmText: 'Aceptar',
-              onConfirm: () => {},
-            });
-          }
+      onConfirm: async () => {
+        const deleted = await storageService.deleteExpense(id);
+        if (!deleted) {
+          setDialog({
+            isOpen: true,
+            title: 'No se pudo eliminar',
+            message: 'La base de datos no confirmó la eliminación. El gasto sigue vigente.',
+            type: 'alert',
+            confirmText: 'Aceptar',
+            onConfirm: () => {},
+          });
+          return false;
+        }
+        setDialog({
+          isOpen: true,
+          title: 'Gasto eliminado',
+          message: 'El gasto fue eliminado y la base de datos confirmó la acción.',
+          type: 'success',
+          confirmText: 'Aceptar',
+          onConfirm: () => {},
         });
+        return false;
       },
     });
   };
@@ -1517,15 +1541,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsNewExpenseModalOpen(false)}
-                  className="px-4 py-2 border border-[#DDD5BF] text-xs font-bold text-[#637568] hover:bg-[#F4EFE6] transition-colors cursor-pointer"
+                  disabled={isSavingExpense}
+                  className="px-4 py-2 border border-[#DDD5BF] text-xs font-bold text-[#637568] hover:bg-[#F4EFE6] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer"
+                  disabled={isSavingExpense || isUploadingBill}
+                  className="px-4 py-2 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Guardar Gasto
+                  {isSavingExpense ? 'Guardando...' : 'Guardar Gasto'}
                 </button>
               </div>
             </form>
