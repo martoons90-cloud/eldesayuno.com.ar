@@ -135,7 +135,9 @@ export type InventoryCategory =
   | 'quincho_asador'
   | 'piscina_parque'
   | 'blanqueria_ropa'
-  | 'equipamiento_tecnico';
+  | 'equipamiento_tecnico'
+  /** Rubros libres del Stock General, sin necesidad de cambiar la base de datos. */
+  | (string & {});
 
 export type InventoryCondition = 'excelente' | 'bueno' | 'regular' | 'requiere_reparacion' | 'faltante';
 

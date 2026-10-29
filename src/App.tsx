@@ -410,15 +410,15 @@ export default function App() {
                   <div className="flex items-center justify-between pb-3 border-b border-[#EFEAE0]">
                     <span className="text-xs font-bold uppercase tracking-wider text-[#163323] flex items-center gap-2">
                       <Boxes className="w-4 h-4 text-blue-800" />
-                      Stock & Inventario
+                      Stock General
                     </span>
                     <ArrowUpRight className="w-4 h-4 text-[#8C7A53] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                   </div>
                   <p className="text-xs text-[#526657] mt-3 leading-relaxed">
-                    Consulte y audite el listado de bienes en la estancia: vajilla, muebles, televisores, bombas, ropa blanca y reposeras.
+                    Consulte y audite todas las existencias: bienes, insumos, herramientas, repuestos y artículos de cualquier rubro.
                   </p>
                   <span className="text-[11px] font-semibold text-[#1B3B2B] mt-4 block group-hover:underline">
-                    Ver inventario ({inventory.length} ítems) →
+                    Ver stock ({inventory.length} ítems) →
                   </span>
                 </div>
 

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { InventoryItem, InventoryCategory, InventoryCondition, User, TrustSettings, isUserIntendente } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { InventoryItem, InventoryCondition, User, TrustSettings, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import {
@@ -10,20 +10,8 @@ import {
   Edit2,
   Trash2,
   Printer,
-  CheckCircle2,
-  AlertTriangle,
-  Sparkles,
-  Home,
-  UtensilsCrossed,
-  Bed,
-  Flame,
-  Waves,
-  Wrench,
-  Shirt,
-  Info,
   Layers,
   Camera,
-  Upload,
 } from 'lucide-react';
 
 interface InventoryStockViewProps {
@@ -55,7 +43,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [formData, setFormData] = useState<Omit<InventoryItem, 'id'>>({
     name: '',
-    category: 'living_galeria',
+    category: 'general',
     quantity: 1,
     unit: 'unidades',
     unitPrice: 0,
@@ -92,15 +80,38 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
     reader.readAsDataURL(file);
   };
 
-  const categories: Array<{ id: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { id: 'all', label: 'Todo el Inventario', icon: Boxes },
-    { id: 'living_galeria', label: 'Living & Galerías', icon: Home },
-    { id: 'cocina_vajilla', label: 'Cocina & Vajilla', icon: UtensilsCrossed },
-    { id: 'suites_dormitorios', label: 'Suites & Dormitorios', icon: Bed },
-    { id: 'quincho_asador', label: 'Quincho & Asador', icon: Flame },
-    { id: 'piscina_parque', label: 'Piscina & Solárium', icon: Waves },
-    { id: 'equipamiento_tecnico', label: 'Equipos & Grupo Electrógeno', icon: Wrench },
-  ];
+  const legacyCategoryNames: Record<string, string> = {
+    living_galeria: 'Living y galerías',
+    cocina_vajilla: 'Cocina y vajilla',
+    suites_dormitorios: 'Suites y dormitorios',
+    quincho_asador: 'Quincho y asador',
+    piscina_parque: 'Piscina y parque',
+    blanqueria_ropa: 'Blanquería y ropa blanca',
+    equipamiento_tecnico: 'Equipamiento técnico',
+    general: 'General',
+  };
+
+  const getCategoryName = (categoryId: string) =>
+    legacyCategoryNames[categoryId]
+    || settings.inventoryCategories?.find((category) => category.id === categoryId)?.name
+    || categoryId;
+
+  // Los rubros no están cerrados: se forman con los configurados y con todo lo que
+  // ya exista en stock. Así se puede registrar cualquier tipo de artículo.
+  const categories = useMemo(() => {
+    const categoryIds = new Set<string>([
+      'general',
+      ...Object.keys(legacyCategoryNames),
+      ...(settings.inventoryCategories || []).map((category) => category.id),
+      ...inventory.map((item) => item.category),
+    ]);
+    return [
+      { id: 'all', label: 'Todo el stock', icon: Boxes },
+      ...Array.from(categoryIds)
+        .filter((id) => id !== 'all')
+        .map((id) => ({ id, label: getCategoryName(id), icon: Layers })),
+    ];
+  }, [inventory, settings.inventoryCategories]);
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +167,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
       const q = searchQuery.toLowerCase();
       const match =
         item.name.toLowerCase().includes(q) ||
+        getCategoryName(item.category).toLowerCase().includes(q) ||
         (item.notes && item.notes.toLowerCase().includes(q));
       if (!match) return false;
     }
@@ -222,10 +234,10 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
             className="text-2xl font-bold text-[#163323] mt-1"
             style={{ fontFamily: "'Cinzel', 'Playfair Display', Georgia, serif" }}
           >
-            Inventario & Stock de la Estancia
+            Stock General
           </h2>
           <p className="text-xs text-[#526657] mt-1">
-            Registro oficial de mobiliario, vajilla, electrodomésticos, ropa blanca y equipamiento del campo.
+            Existencias de todos los rubros: casa, limpieza, herramientas, insumos, repuestos y cualquier otro artículo.
           </p>
         </div>
 
@@ -233,7 +245,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
           <button
             onClick={handlePrintChecklist}
             className="px-3.5 py-2 bg-white hover:bg-[#FAF8F5] border border-[#DDD5BF] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-            title="Imprimir planilla de inventario para check-in/out"
+            title="Imprimir planilla de stock"
           >
             <Printer className="w-3.5 h-3.5 text-emerald-800" />
             <span>Imprimir Check-list</span>
@@ -245,7 +257,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                 setEditingItem(null);
                 setFormData({
                   name: '',
-                  category: 'living_galeria',
+                  category: 'general',
                   quantity: 1,
                   unit: 'unidades',
                   unitPrice: 0,
@@ -268,12 +280,12 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="p-4 bg-white border border-[#E3DFC8] border-l-3 border-l-[#1B3B2B] shadow-2xs">
           <span className="text-[10px] uppercase font-bold tracking-wider text-[#637568] block">
-            Líneas de Inventario
+            Artículos Registrados
           </span>
           <span className="text-2xl font-bold font-mono text-[#163323] mt-1 block">
             {totalDistinct} ítems
           </span>
-          <span className="text-[10px] text-[#7A8E7E]">En 6 áreas de la estancia</span>
+          <span className="text-[10px] text-[#7A8E7E]">En todos los rubros</span>
         </div>
 
         <div className="p-4 bg-white border border-[#E3DFC8] border-l-3 border-l-emerald-700 shadow-2xs">
@@ -380,6 +392,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
           <thead className="bg-[#F8F5EE] border-b border-[#E3DFC8] text-[#55695B] uppercase font-bold text-[10px] tracking-wider">
             <tr>
               <th className="py-3 px-4">Elemento / Descripción</th>
+              <th className="py-3 px-3">Rubro</th>
               <th className="py-3 px-3 text-right">Cantidad</th>
               <th className="py-3 px-3 text-right">Precio Unit.</th>
               <th className="py-3 px-3 text-right">Valor Total</th>
@@ -392,7 +405,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
           <tbody className="divide-y divide-[#EFEAE0]">
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 8 : 7} className="py-10 text-center text-[#7A8E7E]">
+                <td colSpan={isAdmin ? 9 : 8} className="py-10 text-center text-[#7A8E7E]">
                   No se encontraron elementos de stock con los filtros seleccionados.
                 </td>
               </tr>
@@ -401,6 +414,9 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                 <tr key={item.id} className="hover:bg-[#FAF8F5] transition-colors">
                   <td className="py-3.5 px-4 font-semibold text-[#163323] max-w-sm">
                     <span>{item.name}</span>
+                  </td>
+                  <td className="py-3.5 px-3 text-[#55695B] text-[11px] whitespace-nowrap">
+                    {getCategoryName(item.category)}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono font-bold text-[#163323] whitespace-nowrap">
                     {item.quantity} <span className="text-[10px] text-[#7A8E7E] font-normal">{item.unit}</span>
@@ -463,7 +479,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
           <div className="bg-[#FFFFFF] w-full max-w-lg border border-[#DED7C2] shadow-2xl p-6">
             <h3 className="text-base font-bold text-[#163323] pb-3 border-b border-[#EFEAE0] flex items-center gap-2">
               <Boxes className="w-4 h-4 text-[#1B3B2B]" />
-              <span>{editingItem ? 'Modificar Elemento de Inventario' : 'Alta de Nuevo Elemento de Stock'}</span>
+              <span>{editingItem ? 'Modificar artículo de stock' : 'Alta de artículo de stock'}</span>
             </h3>
 
             <form onSubmit={handleSaveItem} className="space-y-3 mt-4 text-xs">
@@ -480,20 +496,22 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
               </div>
 
               <div>
-                  <label className="block font-semibold uppercase text-[#35483A] mb-1">Categoría</label>
-                  <select
+                  <label className="block font-semibold uppercase text-[#35483A] mb-1">Rubro</label>
+                  <input
+                    type="text"
+                    list="stock-rubros"
                     value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as InventoryCategory })}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    placeholder="Ej. Limpieza, herramientas, repuestos..."
+                    required
                     className="w-full p-2 bg-[#FAF8F5] border border-[#DCD4C0]"
-                  >
-                    <option value="living_galeria">Living & Galerías</option>
-                    <option value="cocina_vajilla">Cocina & Vajilla</option>
-                    <option value="suites_dormitorios">Suites & Dormitorios</option>
-                    <option value="quincho_asador">Quincho & Asador</option>
-                    <option value="piscina_parque">Piscina & Solárium</option>
-                    <option value="blanqueria_ropa">Blanquería & Ropa Blanca</option>
-                    <option value="equipamiento_tecnico">Equipos & Caldera/Grupo</option>
-                  </select>
+                  />
+                  <datalist id="stock-rubros">
+                    {categories.filter((category) => category.id !== 'all').map((category) => (
+                      <option key={category.id} value={category.id} label={category.label}>{category.label}</option>
+                    ))}
+                  </datalist>
+                  <p className="mt-1 text-[10px] text-[#7A8E7E]">Podés escribir un rubro nuevo; no queda limitado a los rubros de la estancia.</p>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

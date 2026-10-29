@@ -114,7 +114,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     Intendente General (Acceso al 100% del Sistema)
                   </strong>
                   <span className="text-teal-800 text-[11px]">
-                    Único rol con control integral: Consola General, Inventario, Novedades y Daños, Caseros, Mantenimiento, Padrón y Ajustes del Fideicomiso.
+                    Único rol con control integral: Consola General, Stock, Novedades y Daños, Caseros, Mantenimiento, Padrón y Ajustes del Fideicomiso.
                   </span>
                 </div>
               </div>

@@ -976,7 +976,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     {
       id: 'categories',
       label: 'Categorías Operativas',
-      description: 'Configurar categorías de gastos, cajas, cobranzas e inventario',
+      description: 'Configurar categorías de gastos, ingresos, cajas, cobranzas y stock',
       icon: PieChart,
     },
     {
@@ -2398,7 +2398,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                     <span>Configuración de Categorías Operativas</span>
                   </h3>
                   <p className="text-xs text-[#7A8E7E] mt-0.5">
-                    Personalice y administre las categorías utilizadas en Gastos, Ingresos, Cajas, Cobranzas e Inventario.
+                    Personalice y administre las categorías utilizadas en Gastos, Ingresos, Cajas, Cobranzas y Stock.
                   </p>
                 </div>
               </div>
@@ -2592,7 +2592,7 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
                 <div className="p-4 bg-[#FAF8F5] border border-[#E3DFC8] space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-xs text-[#163323] uppercase tracking-wider flex items-center gap-1.5">
-                      <span>Categorías de Inventario</span>
+                      <span>Rubros de Stock</span>
                     </h4>
                     <button
                       onClick={() => {
