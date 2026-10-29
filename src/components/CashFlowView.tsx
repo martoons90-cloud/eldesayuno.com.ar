@@ -1211,27 +1211,8 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {canUpload && (
-            <button
-              onClick={() => setIsExpenseModalOpen(true)}
-              className="px-4 py-2.5 bg-[#FAF8F5] hover:bg-[#F2EDE1] border border-[#DDD5BF] text-[#163323] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-              title="Subir factura o gasto adelantado para aprobación"
-            >
-              <Receipt className="w-4 h-4 text-[#8C7A53]" />
-              <span>+ Subir Factura / Gasto</span>
-            </button>
-          )}
-
-          {fullAdmin && (
-            <button
-                onClick={() => setIsTransactionModalOpen(true)}
-                className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-2 shadow-2xs"
-              >
-                <Plus className="w-4 h-4 text-[#BFA270]" />
-                <span>+ Registrar Ingreso / Movimiento</span>
-              </button>
-          )}
+        <div className="max-w-sm p-3 bg-[#F6F2E8] border border-[#DDD5BF] text-[11px] text-[#526657] leading-relaxed">
+          Caja se actualiza desde los módulos de <strong className="text-[#163323]">Ingresos</strong>, <strong className="text-[#163323]">Gastos</strong> y <strong className="text-[#163323]">Cobranzas</strong>. Aquí sólo se controla, distribuye o aplica el dinero ya registrado.
         </div>
       </div>
 
@@ -1711,21 +1692,6 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                                     Decidir destino
                                   </button>
                                 )}
-                                <button
-                                  onClick={async () => {
-                                    if (confirm('¿Eliminar este movimiento de caja?')) {
-                                      const deleted = await storageService.deleteCashFlowWithDependencies(tx.id);
-                                      if (!deleted) {
-                                        alert('La base de datos no confirmó la eliminación completa del movimiento.');
-                                      }
-                                      await syncData();
-                                    }
-                                  }}
-                                  className="p-1 text-red-600 hover:bg-red-50 rounded-2xs transition-colors cursor-pointer"
-                                  title="Eliminar movimiento"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
                               </td>
                             )}
                           </tr>
