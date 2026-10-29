@@ -280,7 +280,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Secondary Navigation Sub-Bar (Below Top Ribbon) */}
       <div className="bg-[#FAF8F5] border-t border-[#E3DFC8] px-2 sm:px-4 lg:px-5">
-        <div className="max-w-[1440px] mx-auto flex items-center justify-center overflow-x-auto py-1.5 scrollbar-none gap-1">
+        <div className="max-w-[1440px] mx-auto flex items-center justify-start xl:justify-center overflow-x-auto py-1.5 scrollbar-none gap-1">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
             return (
