@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { DxfViewer as DxfViewerInstance } from 'dxf-viewer';
 import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface ForestryMapViewProps { onGoToIncome: () => void; }
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
 const MAP_SOURCE = '/forestry-map-full.svg';
+const ORIGINAL_DXF_SOURCE = '/forestry-original.dxf';
 type SelectionBox = { startX: number; startY: number; endX: number; endY: number };
 type ForestryStatus = 'pendiente' | 'en_proceso' | 'deforestado';
 type LotForm = { padron: string; product: string; cubicMeters: string; income: string; status: ForestryStatus };
@@ -21,6 +23,8 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const viewportRef = useRef<HTMLDivElement>(null);
   const mapContentRef = useRef<HTMLDivElement>(null);
   const vectorMapRef = useRef<HTMLDivElement>(null);
+  const dxfMapRef = useRef<HTMLDivElement>(null);
+  const dxfViewerRef = useRef<DxfViewerInstance | null>(null);
   const lastPaintIndexesRef = useRef<number[]>([]);
   const [zoom, setZoom] = useState(1);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -29,6 +33,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const [message, setMessage] = useState('Plano CAD cargado. Usá el zoom para acercarte y tocá dentro de una parcela para probar el marcado.');
   const [lotForm, setLotForm] = useState<LotForm | null>(null);
   const [mapMarkup, setMapMarkup] = useState('');
+  const [dxfLoading, setDxfLoading] = useState(true);
 
   const prepareMap = () => {
     const paintCanvas = paintCanvasRef.current;
@@ -80,6 +85,66 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     svg.style.display = 'block';
     drawing.setAttribute('stroke-width', (0.65 / zoom).toFixed(4));
   }, [mapMarkup, zoom]);
+
+  useEffect(() => {
+    const host = dxfMapRef.current;
+    if (!host) return;
+    let cancelled = false;
+    let viewer: DxfViewerInstance | null = null;
+
+    import('dxf-viewer').then(({ DxfViewer }) => {
+      if (cancelled) return;
+      const loadedViewer = new DxfViewer(host, {
+        autoResize: true,
+        colorCorrection: true,
+        blackWhiteInversion: true,
+        antialias: true,
+      });
+      viewer = loadedViewer;
+      dxfViewerRef.current = loadedViewer;
+      loadedViewer.SetClearColor('#ffffff');
+
+      if (!loadedViewer.HasRenderer()) {
+        setDxfLoading(false);
+        setMessage('Este navegador no pudo iniciar el visor CAD. Probá actualizar la página.');
+        return;
+      }
+
+      loadedViewer.Load({
+        url: ORIGINAL_DXF_SOURCE,
+        progressCbk: (phase) => {
+          if (phase === 'parse' || phase === 'prepare') setMessage('Cargando el DXF original con todas sus líneas…');
+        },
+      }).then(() => {
+        if (cancelled) return;
+        const bounds = loadedViewer.GetBounds();
+        if (bounds) loadedViewer.FitView(bounds.minX, bounds.maxX, bounds.minY, bounds.maxY, 0.04);
+        setDxfLoading(false);
+        setMessage('DXF original cargado. Usá la rueda para hacer zoom y arrastrá para recorrer el plano.');
+      }).catch(() => {
+        if (cancelled) return;
+        setDxfLoading(false);
+        setMessage('No se pudo abrir el DXF original. La vista de respaldo sigue disponible al recargar.');
+      });
+    }).catch(() => {
+      if (cancelled) return;
+      setDxfLoading(false);
+      setMessage('No se pudo iniciar el visor del DXF original.');
+    });
+
+    return () => {
+      cancelled = true;
+      if (dxfViewerRef.current === viewer) dxfViewerRef.current = null;
+      viewer?.Destroy();
+    };
+  }, []);
+
+  const adjustDxfZoom = (factor: number) => {
+    const viewer = dxfViewerRef.current;
+    if (!viewer) return;
+    const camera = viewer.GetCamera();
+    viewer.SetView(camera.position, (camera.right - camera.left) / factor);
+  };
 
   const pointFromEvent = (clientX: number, clientY: number) => {
     const content = mapContentRef.current;
@@ -206,33 +271,18 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           <div className="px-4 py-3 bg-[#163323] text-white flex flex-wrap items-center justify-between gap-3">
             <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano CAD completo</span>
             <div className="flex items-center gap-1.5">
-              <button type="button" onClick={() => setSelectionMode((current) => !current)} className={`px-2 py-1 text-[10px] font-bold uppercase cursor-pointer ${selectionMode ? 'bg-[#BFA270] text-[#163323]' : 'bg-white/10 text-white hover:bg-white/20'}`}>
-                <MousePointer2 className="w-3 h-3 inline mr-1" />{selectionMode ? 'Arrastrá una zona' : 'Seleccionar y acercar'}
-              </button>
-              <button type="button" onClick={() => setZoom((current) => Math.max(1, Number((current - 0.25).toFixed(2))))} disabled={zoom <= 1} className="p-1 text-white hover:bg-white/15 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer" title="Alejar">
+              <span className="px-2 py-1 text-[10px] font-bold uppercase bg-white/10 text-white"><MousePointer2 className="w-3 h-3 inline mr-1" />Rueda: zoom · arrastrar: mover</span>
+              <button type="button" onClick={() => adjustDxfZoom(1 / 1.5)} className="p-1 text-white hover:bg-white/15 cursor-pointer" title="Alejar">
                 <ZoomOut className="w-4 h-4" />
               </button>
-              <span className="text-[10px] text-emerald-100 min-w-9 text-center">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom((current) => Math.min(12, Number((current + 0.25).toFixed(2))))} disabled={zoom >= 12} className="p-1 text-white hover:bg-white/15 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer" title="Acercar">
+              <button type="button" onClick={() => adjustDxfZoom(1.5)} className="p-1 text-white hover:bg-white/15 cursor-pointer" title="Acercar">
                 <ZoomIn className="w-4 h-4" />
               </button>
             </div>
           </div>
-          <div ref={viewportRef} className="p-3 sm:p-5 bg-[#F7F7F5] overflow-auto max-h-[72vh]">
-            <div
-              ref={mapContentRef}
-              style={{ width: `${Math.round(MAP_WIDTH * zoom)}px`, minWidth: `${Math.round(MAP_WIDTH * zoom)}px`, aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}` }}
-              className="relative bg-white border border-[#202020] shadow-sm"
-            >
-              {mapMarkup ? (
-                <div ref={vectorMapRef} className="absolute inset-0 w-full h-full select-none" dangerouslySetInnerHTML={{ __html: mapMarkup }} />
-              ) : (
-                <img src={MAP_SOURCE} alt="Plano forestal vectorial" draggable={false} className="absolute inset-0 w-full h-full select-none" />
-              )}
-              <canvas ref={paintCanvasRef} width={MAP_WIDTH} height={MAP_HEIGHT} className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true" />
-              <div onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} className={`absolute inset-0 touch-none ${selectionMode ? 'cursor-crosshair' : 'cursor-pointer'}`} aria-label="Plano forestal clickeable" />
-              {selection && <div className="absolute border-2 border-emerald-700 bg-emerald-300/20 pointer-events-none" style={selectionStyle} />}
-            </div>
+          <div className="relative bg-[#F7F7F5] h-[72vh] min-h-[520px] overflow-hidden">
+            <div ref={dxfMapRef} className="absolute inset-0" aria-label="Plano DXF forestal original" />
+            {dxfLoading && <div className="absolute inset-0 grid place-items-center bg-white/90 text-xs font-bold text-[#163323]">Cargando DXF original…</div>}
           </div>
         </div>
 
