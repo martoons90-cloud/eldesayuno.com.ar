@@ -7,22 +7,22 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
-// Lámina CAD con trazado detallado y nítido de cada lote y manzana.
-const MAP_SOURCE = '/forestry-map.svg?revision=plano-dxf-detalle-v4';
+// Lámina CAD completa que abarca la totalidad del territorio y los loteos subdivididos.
+const MAP_SOURCE = '/forestry-map-full.svg?revision=plano-completo-v5';
 // El mapa general muestra la lámina completa de referencia y ubica la zona visible.
 const MAP_OVERVIEW_SOURCE = MAP_SOURCE;
 
 /**
- * Prueba visual de selección por "balde de pintura" sobre el detalle del
- * plano Forestal entregado por el usuario. No persiste ningún dato todavía:
- * primero validamos que las divisiones se comporten bien al tocarse.
+ * Vista del plano forestal completo con navegación interactiva, zoom dinámico
+ * y prueba de marcado por "balde de pintura".
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const hasInitialScrolledRef = useRef(false);
+  const focalPointRef = useRef<{ x: number; y: number } | null>(null);
   const [markedAreas, setMarkedAreas] = useState(0);
-  const [zoom, setZoom] = useState(3);
+  const [zoom, setZoom] = useState(5);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 25, height: 25 });
   const [message, setMessage] = useState('Tocá dentro de una parcela para probar el marcado.');
 
@@ -54,8 +54,17 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
       if (!hasInitialScrolledRef.current && viewportRef.current) {
         hasInitialScrolledRef.current = true;
-        viewportRef.current.scrollLeft = Math.round((canvas.width - viewportRef.current.clientWidth) * 0.28);
-        viewportRef.current.scrollTop = Math.round((canvas.height - viewportRef.current.clientHeight) * 0.31);
+        // Encuadrar inicialmente en el sector de loteos subdivididos (x ~ 257, y ~ 488)
+        const targetX = Math.round(canvas.width * (257 / MAP_WIDTH) - viewportRef.current.clientWidth / 2);
+        const targetY = Math.round(canvas.height * (488 / MAP_HEIGHT) - viewportRef.current.clientHeight / 2);
+        viewportRef.current.scrollLeft = Math.max(0, targetX);
+        viewportRef.current.scrollTop = Math.max(0, targetY);
+      } else if (focalPointRef.current && viewportRef.current) {
+        const targetX = Math.round(focalPointRef.current.x * canvas.width - viewportRef.current.clientWidth / 2);
+        const targetY = Math.round(focalPointRef.current.y * canvas.height - viewportRef.current.clientHeight / 2);
+        viewportRef.current.scrollLeft = Math.max(0, targetX);
+        viewportRef.current.scrollTop = Math.max(0, targetY);
+        focalPointRef.current = null;
       }
 
       requestAnimationFrame(syncMinimap);
@@ -64,6 +73,20 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   };
 
   useEffect(() => { drawBaseMap(); }, [zoom]);
+
+  const handleZoomChange = (nextZoom: number) => {
+    const clamped = Math.max(1, Math.min(8, Number(nextZoom.toFixed(1))));
+    if (clamped === zoom) return;
+    const viewport = viewportRef.current;
+    const canvas = canvasRef.current;
+    if (viewport && canvas && canvas.width > 0) {
+      focalPointRef.current = {
+        x: (viewport.scrollLeft + viewport.clientWidth / 2) / canvas.width,
+        y: (viewport.scrollTop + viewport.clientHeight / 2) / canvas.height,
+      };
+    }
+    setZoom(clamped);
+  };
 
   const handlePaint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -126,8 +149,8 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = (event.clientX - bounds.left) / bounds.width;
     const y = (event.clientY - bounds.top) / bounds.height;
-    viewport.scrollLeft = Math.max(0, x * canvas.width - viewport.clientWidth / 2);
-    viewport.scrollTop = Math.max(0, y * canvas.height - viewport.clientHeight / 2);
+    viewport.scrollLeft = Math.max(0, Math.round(x * canvas.width - viewport.clientWidth / 2));
+    viewport.scrollTop = Math.max(0, Math.round(y * canvas.height - viewport.clientHeight / 2));
     syncMinimap();
   };
 
@@ -142,7 +165,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano CAD en fondo blanco y líneas negras con detalle de lotes y manzanas. Recorrélo con desplazamiento y ubicá tu posición en el mapa general.
+            Plano CAD completo en fondo blanco y líneas negras. Recorrélo con desplazamiento y ubicá tu posición en el mapa general.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -158,14 +181,14 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal detallado</span>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal completo</span>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-emerald-100">Rueda o barras para recorrer</span>
-              <button type="button" onClick={() => setZoom((value) => Math.max(1, Number((value - 0.5).toFixed(1))))} className="p-1 hover:bg-white/15 cursor-pointer" title="Alejar">
+              <button type="button" onClick={() => handleZoomChange(zoom - 0.5)} disabled={zoom <= 1} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Alejar">
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
               <span className="text-[10px] min-w-8 text-center">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom((value) => Math.min(6, Number((value + 0.5).toFixed(1))))} className="p-1 hover:bg-white/15 cursor-pointer" title="Acercar">
+              <button type="button" onClick={() => handleZoomChange(zoom + 0.5)} disabled={zoom >= 8} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Acercar">
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -197,7 +220,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </div>
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            El mapa principal conserva un zoom detallado y se recorre con las barras o la rueda. El marcado sigue siendo una prueba sin guardar.
+            El mapa principal muestra la lámina completa con zoom para recorrer los lotes. El marco dorado del mapa general ubica tu posición en todo el territorio.
           </div>
         </aside>
       </section>
