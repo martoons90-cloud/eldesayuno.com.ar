@@ -1,42 +1,44 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, CircleDot, Eraser, MapPinned, MousePointer2, TreePine, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface ForestryMapViewProps {
   onGoToIncome: () => void;
 }
 
-interface MarkedParcel {
+interface MarkedLot {
   id: string;
-  d: string;
-  bbox: {
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-  };
+  x: number;
+  y: number;
+  color: string;
 }
 
 const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
-const BUFFER_WIDTH = 4000;
-const BUFFER_HEIGHT = 3000;
-const SVG_SOURCE = '/forestry-plan.svg?revision=original-clean-v1';
+const SVG_SOURCE = '/forestry-plan.svg?v=2.33.00-clean';
+
+const COLOR_OPTIONS = [
+  { id: 'green', label: 'Verde (Disponible/Activo)', fill: '#22C55E', stroke: '#15803D' },
+  { id: 'amber', label: 'Dorado (En proceso)', fill: '#EAB308', stroke: '#A16207' },
+  { id: 'blue', label: 'Azul (Reservado)', fill: '#3B82F6', stroke: '#1D4ED8' },
+  { id: 'red', label: 'Rojo (Ocupado)', fill: '#EF4444', stroke: '#B91C1C' },
+];
 
 /**
  * Vista del plano forestal en formato 100% vectorial CAD nativo (SVG):
- * - Plano original CAD con líneas finas nítidas intactas (sin modificaciones en los vectores).
- * - Selección individual precisa por lote (cuadradito) con contención de barrera que
- *   evita fugas en líneas discontinuas sin alterar el dibujo original.
+ * - Plano original CAD limpio: sin líneas raras de límites externos ni curvas topográficas cruzadas.
+ * - Marcado de lotes con círculo de color de alta definición en el centro de cada cuadradito.
+ * - Clic sobre un círculo existente para desmarcarlo.
+ * - Zoom 5000% ultra fluido sin píxeles ni ralentizaciones.
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const hasInitialScrolledRef = useRef(false);
-  const [markedParcels, setMarkedParcels] = useState<MarkedParcel[]>([]);
+  const [markedLots, setMarkedLots] = useState<MarkedLot[]>([]);
+  const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [zoom, setZoom] = useState(50); // 5000% zoom inicial
   const prevZoomRef = useRef(zoom);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
-  const [message, setMessage] = useState('Hacé clic dentro de cualquier lote (cuadradito) para seleccionarlo individualmente.');
+  const [message, setMessage] = useState('Hacé clic en el centro de cualquier lote para colocar un círculo de color.');
 
   const syncMinimap = () => {
     const viewport = viewportRef.current;
@@ -53,35 +55,14 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     });
   };
 
-  const loadOffscreenBuffer = () => {
-    const img = new Image();
-    img.src = SVG_SOURCE;
-    img.onload = () => {
-      const offscreen = document.createElement('canvas');
-      offscreen.width = BUFFER_WIDTH;
-      offscreen.height = BUFFER_HEIGHT;
-      const ctx = offscreen.getContext('2d', { willReadFrequently: true });
-      if (ctx) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
-        ctx.drawImage(img, 0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
-        offscreenCanvasRef.current = offscreen;
-      }
-    };
-  };
-
-  useEffect(() => {
-    loadOffscreenBuffer();
-  }, []);
-
   // Centrado inicial automático en la zona de parcelas
   useEffect(() => {
     if (!hasInitialScrolledRef.current && viewportRef.current) {
       hasInitialScrolledRef.current = true;
       const displayW = Math.round(MAP_WIDTH * zoom);
       const displayH = Math.round(MAP_HEIGHT * zoom);
-      const targetX = Math.round(0.58 * displayW - viewportRef.current.clientWidth / 2);
-      const targetY = Math.round(0.50 * displayH - viewportRef.current.clientHeight / 2);
+      const targetX = Math.round(0.48 * displayW - viewportRef.current.clientWidth / 2);
+      const targetY = Math.round(0.49 * displayH - viewportRef.current.clientHeight / 2);
       viewportRef.current.scrollLeft = Math.max(0, targetX);
       viewportRef.current.scrollTop = Math.max(0, targetY);
       requestAnimationFrame(syncMinimap);
@@ -103,259 +84,41 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
   }, [zoom]);
 
-  const handlePaint = (event: React.PointerEvent<HTMLDivElement>) => {
-    const offscreen = offscreenCanvasRef.current;
-    if (!offscreen) return;
-    const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
-    if (!offCtx) return;
-
+  const handleMapClick = (event: React.PointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const clickX = event.clientX - bounds.left;
     const clickY = event.clientY - bounds.top;
 
-    const clickSvgX = (clickX / bounds.width) * MAP_WIDTH;
-    const clickSvgY = (clickY / bounds.height) * MAP_HEIGHT;
+    const svgX = (clickX / bounds.width) * MAP_WIDTH;
+    const svgY = (clickY / bounds.height) * MAP_HEIGHT;
 
-    // Permitir desmarcar haciendo clic sobre un lote ya pintado
-    const existingIndex = markedParcels.findIndex(
-      (p) =>
-        clickSvgX >= p.bbox.minX &&
-        clickSvgX <= p.bbox.maxX &&
-        clickSvgY >= p.bbox.minY &&
-        clickSvgY <= p.bbox.maxY
+    // Detectar si se hizo clic cerca de un círculo existente para desmarcarlo
+    // Radio de detección adaptable al zoom (~14 píxeles en pantalla)
+    const hitRadiusSvg = Math.max(0.65, 14 / zoom);
+    const existingIndex = markedLots.findIndex(
+      (lot) => Math.hypot(lot.x - svgX, lot.y - svgY) <= hitRadiusSvg
     );
 
     if (existingIndex !== -1) {
-      setMarkedParcels((prev) => prev.filter((_, i) => i !== existingIndex));
-      loadOffscreenBuffer();
+      setMarkedLots((prev) => prev.filter((_, i) => i !== existingIndex));
       setMessage('Lote desmarcado.');
       return;
     }
 
-    // Convertir coordenadas del click al espacio del buffer raster
-    const scaleX = BUFFER_WIDTH / bounds.width;
-    const scaleY = BUFFER_HEIGHT / bounds.height;
-    const rawStartX = Math.floor(clickX * scaleX);
-    const rawStartY = Math.floor(clickY * scaleY);
-
-    if (rawStartX < 0 || rawStartX >= BUFFER_WIDTH || rawStartY < 0 || rawStartY >= BUFFER_HEIGHT) return;
-
-    const BOX = 250;
-    const x0 = Math.max(0, rawStartX - BOX);
-    const y0 = Math.max(0, rawStartY - BOX);
-    const x1 = Math.min(BUFFER_WIDTH, rawStartX + BOX);
-    const y1 = Math.min(BUFFER_HEIGHT, rawStartY + BOX);
-    const localW = x1 - x0;
-    const localH = y1 - y0;
-
-    const image = offCtx.getImageData(x0, y0, localW, localH);
-    const data = image.data;
-
-    // Construir mapa de barreras con cierre de guiones discontinuos (radio de 2.2 px)
-    // Esto se realiza únicamente en memoria temporal para contener el relleno por lote,
-    // garantizando que el dibujo visual mostrado en pantalla no se altere jamás.
-    const isWall = new Uint8Array(localW * localH);
-    for (let y = 0; y < localH; y++) {
-      const rowOffset = y * localW;
-      for (let x = 0; x < localW; x++) {
-        const idx = (rowOffset + x) * 4;
-        if (data[idx] < 200 || data[idx + 1] < 200 || data[idx + 2] < 200) {
-          // Píxel de línea: expandir barrera en radio pequeño para cerrar huecos discontinuos
-          for (let dy = -2; dy <= 2; dy++) {
-            const ny = y + dy;
-            if (ny < 0 || ny >= localH) continue;
-            const nRowOffset = ny * localW;
-            for (let dx = -2; dx <= 2; dx++) {
-              if (dx * dx + dy * dy <= 5) {
-                const nx = x + dx;
-                if (nx >= 0 && nx < localW) {
-                  isWall[nRowOffset + nx] = 1;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Auto-ajuste para ubicar el centro interior del lote si se hizo clic cerca del borde
-    const localClickX = rawStartX - x0;
-    const localClickY = rawStartY - y0;
-    let startX = -1;
-    let startY = -1;
-
-    if (isWall[localClickY * localW + localClickX] === 0) {
-      startX = localClickX;
-      startY = localClickY;
-    } else {
-      for (let r = 1; r <= 8; r++) {
-        for (let dy = -r; dy <= r; dy++) {
-          for (let dx = -r; dx <= r; dx++) {
-            const nx = localClickX + dx;
-            const ny = localClickY + dy;
-            if (nx >= 0 && nx < localW && ny >= 0 && ny < localH && isWall[ny * localW + nx] === 0) {
-              startX = nx;
-              startY = ny;
-              break;
-            }
-          }
-          if (startX !== -1) break;
-        }
-        if (startX !== -1) break;
-      }
-    }
-
-    if (startX === -1) {
-      setMessage('Tocaste una línea del plano. Hacé clic dentro del área de un lote.');
-      return;
-    }
-
-    // Relleno acotado exclusivamente al interior del lote
-    const visited = new Uint8Array(localW * localH);
-    const pendingX: number[] = [startX];
-    const pendingY: number[] = [startY];
-    visited[startY * localW + startX] = 1;
-    let paintedPixels = 1;
-    const maxPixels = 3_000;
-
-    while (pendingX.length > 0 && paintedPixels < maxPixels) {
-      const cx = pendingX.pop()!;
-      const cy = pendingY.pop()!;
-
-      const neighbors = [
-        [cx + 1, cy],
-        [cx - 1, cy],
-        [cx, cy + 1],
-        [cx, cy - 1],
-      ];
-
-      for (let i = 0; i < 4; i++) {
-        const nx = neighbors[i][0];
-        const ny = neighbors[i][1];
-        if (nx < 0 || ny < 0 || nx >= localW || ny >= localH) continue;
-        const vIdx = ny * localW + nx;
-        if (visited[vIdx] === 0 && isWall[vIdx] === 0) {
-          visited[vIdx] = 1;
-          paintedPixels++;
-          pendingX.push(nx);
-          pendingY.push(ny);
-          if (paintedPixels >= maxPixels) break;
-        }
-      }
-    }
-
-    if (paintedPixels >= maxPixels) {
-      setMessage('Esta zona sobrepasa el tamaño de un lote individual.');
-      return;
-    }
-
-    // Expandir el área pintada hasta rozar las líneas originales para un calce perfecto
-    const finalMask = new Uint8Array(localW * localH);
-    for (let y = 0; y < localH; y++) {
-      const rowOffset = y * localW;
-      for (let x = 0; x < localW; x++) {
-        if (visited[rowOffset + x] === 1) {
-          for (let dy = -2; dy <= 2; dy++) {
-            const ny = y + dy;
-            if (ny < 0 || ny >= localH) continue;
-            const nRowOffset = ny * localW;
-            for (let dx = -2; dx <= 2; dx++) {
-              const nx = x + dx;
-              if (nx >= 0 && nx < localW) {
-                const idx = (nRowOffset + nx) * 4;
-                if (data[idx] >= 200 && data[idx + 1] >= 200 && data[idx + 2] >= 200) {
-                  finalMask[nRowOffset + nx] = 1;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Convertir a trazado vectorial SVG exacto
-    const svgScaleX = MAP_WIDTH / BUFFER_WIDTH;
-    const svgScaleY = MAP_HEIGHT / BUFFER_HEIGHT;
-    let pathD = '';
-    let minSvgX = Infinity;
-    let maxSvgX = -Infinity;
-    let minSvgY = Infinity;
-    let maxSvgY = -Infinity;
-
-    for (let y = 0; y < localH; y++) {
-      let inSpan = false;
-      let spanStart = 0;
-      const rowOffset = y * localW;
-      for (let x = 0; x < localW; x++) {
-        if (finalMask[rowOffset + x] === 1) {
-          if (!inSpan) {
-            inSpan = true;
-            spanStart = x;
-          }
-        } else {
-          if (inSpan) {
-            inSpan = false;
-            const sx = (x0 + spanStart) * svgScaleX;
-            const sy = (y0 + y) * svgScaleY;
-            const sw = (x - spanStart) * svgScaleX;
-            const sh = svgScaleY;
-            pathD += `M${sx.toFixed(2)} ${sy.toFixed(2)}h${sw.toFixed(2)}v${sh.toFixed(2)}h-${sw.toFixed(2)}z `;
-            minSvgX = Math.min(minSvgX, sx);
-            maxSvgX = Math.max(maxSvgX, sx + sw);
-            minSvgY = Math.min(minSvgY, sy);
-            maxSvgY = Math.max(maxSvgY, sy + sh);
-          }
-        }
-      }
-      if (inSpan) {
-        const sx = (x0 + spanStart) * svgScaleX;
-        const sy = (y0 + y) * svgScaleY;
-        const sw = (localW - spanStart) * svgScaleX;
-        const sh = svgScaleY;
-        pathD += `M${sx.toFixed(2)} ${sy.toFixed(2)}h${sw.toFixed(2)}v${sh.toFixed(2)}h-${sw.toFixed(2)}z `;
-        minSvgX = Math.min(minSvgX, sx);
-        maxSvgX = Math.max(maxSvgX, sx + sw);
-        minSvgY = Math.min(minSvgY, sy);
-        maxSvgY = Math.max(maxSvgY, sy + sh);
-      }
-    }
-
-    pathD = pathD.trim();
-    if (!pathD) return;
-
-    // Actualizar buffer temporal
-    for (let y = 0; y < localH; y++) {
-      const rowOffset = y * localW;
-      for (let x = 0; x < localW; x++) {
-        if (finalMask[rowOffset + x] === 1) {
-          const idx = (y * localW + x) * 4;
-          data[idx] = 34;
-          data[idx + 1] = 197;
-          data[idx + 2] = 94;
-        }
-      }
-    }
-    offCtx.putImageData(image, x0, y0);
-
-    const newParcel: MarkedParcel = {
-      id: `${Date.now()}-${Math.random()}`,
-      d: pathD,
-      bbox: {
-        minX: minSvgX,
-        maxX: maxSvgX,
-        minY: minSvgY,
-        maxY: maxSvgY,
-      },
+    const newLot: MarkedLot = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      x: Number(svgX.toFixed(2)),
+      y: Number(svgY.toFixed(2)),
+      color: selectedColor.fill,
     };
 
-    setMarkedParcels((prev) => [...prev, newParcel]);
-    setMessage(`¡Lote seleccionado individualmente! Total marcados: ${markedParcels.length + 1}.`);
+    setMarkedLots((prev) => [...prev, newLot]);
+    setMessage(`Lote marcado. Total: ${markedLots.length + 1}.`);
   };
 
   const resetTest = () => {
-    setMarkedParcels([]);
-    loadOffscreenBuffer();
-    setMessage('Plano restablecido. Podés volver a seleccionar lotes.');
+    setMarkedLots([]);
+    setMessage('Plano restablecido. Podés volver a marcar lotes con círculos.');
   };
 
   const focusFromMinimap = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -382,7 +145,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano 100% vectorial con selección individual de lotes. Hacé clic dentro de cualquier parcela para marcarla o desmarcarla en verde nítido.
+            Plano 100% vectorial CAD con líneas nítidas. Hacé clic en el centro de cualquier lote para colocar un círculo de color o volvé a tocarlo para desmarcarlo.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -452,33 +215,41 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                 position: 'relative',
                 maxWidth: 'none',
               }}
-              onPointerDown={handlePaint}
+              onPointerDown={handleMapClick}
               className="bg-white border border-[#202020] shadow-sm mx-auto select-none cursor-crosshair"
             >
-              {/* Plano CAD Vectorial base 100% original con líneas finas nítidas */}
+              {/* Plano CAD Vectorial limpio con líneas finas nítidas */}
               <img
                 src={SVG_SOURCE}
-                alt="Plano forestal vectorial CAD"
+                alt="Plano forestal vectorial CAD limpio"
                 className="w-full h-full block select-none pointer-events-none"
                 draggable={false}
               />
 
-              {/* Capa de parcelas seleccionadas individualmente en verde nítido */}
+              {/* Capa de círculos de color en cada lote */}
               <svg
                 viewBox="0 0 800 600"
                 className="absolute inset-0 w-full h-full pointer-events-none"
                 preserveAspectRatio="none"
               >
-                {markedParcels.map((parcel) => (
-                  <path
-                    key={parcel.id}
-                    d={parcel.d}
-                    fill="#22C55E"
-                    fillOpacity={0.80}
-                    stroke="#15803D"
-                    strokeWidth={0.5}
-                    vectorEffect="non-scaling-stroke"
-                  />
+                {markedLots.map((lot) => (
+                  <g key={lot.id}>
+                    <circle
+                      cx={lot.x}
+                      cy={lot.y}
+                      r={0.65}
+                      fill={lot.color}
+                      stroke="#0F172A"
+                      strokeWidth={0.12}
+                    />
+                    <circle
+                      cx={lot.x}
+                      cy={lot.y}
+                      r={0.22}
+                      fill="#FFFFFF"
+                      opacity={0.9}
+                    />
+                  </g>
                 ))}
               </svg>
             </div>
@@ -486,28 +257,69 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         </div>
 
         <aside className="bg-white border border-[#E3DFC8] shadow-xs p-4 space-y-4 text-xs">
-          <div className="flex items-center gap-2 text-[#163323] font-bold uppercase tracking-wider"><PaintBucket className="w-4 h-4 text-emerald-700" /> Balde de pintura</div>
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-950 leading-relaxed">{message}</div>
+          <div className="flex items-center gap-2 text-[#163323] font-bold uppercase tracking-wider">
+            <CircleDot className="w-4 h-4 text-emerald-700" /> Marcador de lotes
+          </div>
+
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-950 leading-relaxed">
+            {message}
+          </div>
+
+          {/* Selector de color */}
+          <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
+            <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Color del marcador</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {COLOR_OPTIONS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedColor(c)}
+                  className={`flex items-center gap-2 p-1.5 rounded border text-left cursor-pointer transition-all ${
+                    selectedColor.id === c.id
+                      ? 'border-[#163323] bg-white shadow-xs font-bold'
+                      : 'border-transparent hover:bg-white/60'
+                  }`}
+                >
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border shrink-0"
+                    style={{ backgroundColor: c.fill, borderColor: c.stroke }}
+                  />
+                  <span className="text-[11px] text-[#163323] truncate">{c.label.split(' ')[0]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
             <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general</p>
             <div onPointerDown={focusFromMinimap} className="relative aspect-[4/3] bg-white border border-[#202020] cursor-pointer overflow-hidden" title="Tocá una zona para ir allí">
               <img src={SVG_SOURCE} alt="Vista general de todo el plano forestal" className="absolute inset-0 w-full h-full object-contain pointer-events-none" />
               <svg viewBox="0 0 800 600" className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
-                {markedParcels.map((parcel) => (
-                  <path key={parcel.id} d={parcel.d} fill="#22C55E" fillOpacity={0.9} />
+                {markedLots.map((lot) => (
+                  <circle
+                    key={lot.id}
+                    cx={lot.x}
+                    cy={lot.y}
+                    r={3.5}
+                    fill={lot.color}
+                    stroke="#0F172A"
+                    strokeWidth={0.8}
+                  />
                 ))}
               </svg>
               <div className="absolute border-2 border-[#E8B64B] bg-[#E8B64B]/15 pointer-events-none" style={{ left: `${viewportBox.left}%`, top: `${viewportBox.top}%`, width: `${viewportBox.width}%`, height: `${viewportBox.height}%` }} />
             </div>
             <p className="text-[10px] text-[#637568] leading-relaxed">El marco dorado indica la zona visible. Tocá en este mapa para moverte directamente.</p>
           </div>
+
           <div className="p-3 bg-[#FAF8F5] border border-[#E5DEC9] space-y-2">
-            <div className="flex justify-between"><span className="text-[#637568]">Lotes seleccionados</span><strong className="font-mono text-[#163323]">{markedParcels.length}</strong></div>
+            <div className="flex justify-between"><span className="text-[#637568]">Lotes marcados</span><strong className="font-mono text-[#163323]">{markedLots.length}</strong></div>
             <div className="flex justify-between"><span className="text-[#637568]">Estado</span><strong className="text-amber-800">Sin guardar</strong></div>
           </div>
+
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            Selección individual por lote. Hacé clic dentro de cualquier cuadradito para pintarlo en verde, o volvé a hacer clic para desmarcarlo.
+            Hacé clic en cualquier lote para colocar un círculo. Tocá sobre un círculo existente para desmarcarlo.
           </div>
         </aside>
       </section>
