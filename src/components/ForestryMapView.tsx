@@ -20,13 +20,13 @@ const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
 const BUFFER_WIDTH = 4000;
 const BUFFER_HEIGHT = 3000;
-const SVG_SOURCE = '/forestry-plan.svg?revision=connected-lots-v4';
+const SVG_SOURCE = '/forestry-plan.svg?revision=original-clean-v1';
 
 /**
  * Vista del plano forestal en formato 100% vectorial CAD nativo (SVG):
- * - Líneas finas nítidas que no se pixelan sin importar cuánto zoom se aplique.
- * - Balde de pintura perfecto para selección individual de lotes (cuadraditos).
- * - Delimitación precisa de manzanas y parcelas sin filtraciones.
+ * - Plano original CAD con líneas finas nítidas intactas (sin modificaciones en los vectores).
+ * - Selección individual precisa por lote (cuadradito) con contención de barrera que
+ *   evita fugas en líneas discontinuas sin alterar el dibujo original.
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -140,7 +140,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
     if (rawStartX < 0 || rawStartX >= BUFFER_WIDTH || rawStartY < 0 || rawStartY >= BUFFER_HEIGHT) return;
 
-    const BOX = 350;
+    const BOX = 250;
     const x0 = Math.max(0, rawStartX - BOX);
     const y0 = Math.max(0, rawStartY - BOX);
     const x1 = Math.min(BUFFER_WIDTH, rawStartX + BOX);
@@ -151,27 +151,49 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const image = offCtx.getImageData(x0, y0, localW, localH);
     const data = image.data;
 
-    const isWhite = (x: number, y: number) => {
-      const idx = (y * localW + x) * 4;
-      return data[idx] >= 210 && data[idx + 1] >= 210 && data[idx + 2] >= 210;
-    };
+    // Construir mapa de barreras con cierre de guiones discontinuos (radio de 2.2 px)
+    // Esto se realiza únicamente en memoria temporal para contener el relleno por lote,
+    // garantizando que el dibujo visual mostrado en pantalla no se altere jamás.
+    const isWall = new Uint8Array(localW * localH);
+    for (let y = 0; y < localH; y++) {
+      const rowOffset = y * localW;
+      for (let x = 0; x < localW; x++) {
+        const idx = (rowOffset + x) * 4;
+        if (data[idx] < 200 || data[idx + 1] < 200 || data[idx + 2] < 200) {
+          // Píxel de línea: expandir barrera en radio pequeño para cerrar huecos discontinuos
+          for (let dy = -2; dy <= 2; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= localH) continue;
+            const nRowOffset = ny * localW;
+            for (let dx = -2; dx <= 2; dx++) {
+              if (dx * dx + dy * dy <= 5) {
+                const nx = x + dx;
+                if (nx >= 0 && nx < localW) {
+                  isWall[nRowOffset + nx] = 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
 
-    // Auto-ajuste para facilitar el clic dentro del lote
+    // Auto-ajuste para ubicar el centro interior del lote si se hizo clic cerca del borde
     const localClickX = rawStartX - x0;
     const localClickY = rawStartY - y0;
     let startX = -1;
     let startY = -1;
 
-    if (isWhite(localClickX, localClickY)) {
+    if (isWall[localClickY * localW + localClickX] === 0) {
       startX = localClickX;
       startY = localClickY;
     } else {
-      for (let r = 1; r <= 6; r++) {
+      for (let r = 1; r <= 8; r++) {
         for (let dy = -r; dy <= r; dy++) {
           for (let dx = -r; dx <= r; dx++) {
             const nx = localClickX + dx;
             const ny = localClickY + dy;
-            if (nx >= 0 && nx < localW && ny >= 0 && ny < localH && isWhite(nx, ny)) {
+            if (nx >= 0 && nx < localW && ny >= 0 && ny < localH && isWall[ny * localW + nx] === 0) {
               startX = nx;
               startY = ny;
               break;
@@ -184,18 +206,17 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
 
     if (startX === -1) {
-      setMessage('Tocaste una línea del plano. Hacé clic dentro del área blanca de un lote.');
+      setMessage('Tocaste una línea del plano. Hacé clic dentro del área de un lote.');
       return;
     }
 
-    // Flood fill delimitado a un lote individual
+    // Relleno acotado exclusivamente al interior del lote
     const visited = new Uint8Array(localW * localH);
     const pendingX: number[] = [startX];
     const pendingY: number[] = [startY];
     visited[startY * localW + startX] = 1;
     let paintedPixels = 1;
-    // Límite calibrado para un lote individual en buffer 4000x3000
-    const maxPixels = 4_000;
+    const maxPixels = 3_000;
 
     while (pendingX.length > 0 && paintedPixels < maxPixels) {
       const cx = pendingX.pop()!;
@@ -213,7 +234,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         const ny = neighbors[i][1];
         if (nx < 0 || ny < 0 || nx >= localW || ny >= localH) continue;
         const vIdx = ny * localW + nx;
-        if (visited[vIdx] === 0 && isWhite(nx, ny)) {
+        if (visited[vIdx] === 0 && isWall[vIdx] === 0) {
           visited[vIdx] = 1;
           paintedPixels++;
           pendingX.push(nx);
@@ -224,11 +245,35 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
 
     if (paintedPixels >= maxPixels) {
-      setMessage('Esta zona sobrepasa el tamaño de un lote individual o no está cerrada por completo.');
+      setMessage('Esta zona sobrepasa el tamaño de un lote individual.');
       return;
     }
 
-    // Convertir el relleno de píxeles en un trazado SVG vectorial perfecto
+    // Expandir el área pintada hasta rozar las líneas originales para un calce perfecto
+    const finalMask = new Uint8Array(localW * localH);
+    for (let y = 0; y < localH; y++) {
+      const rowOffset = y * localW;
+      for (let x = 0; x < localW; x++) {
+        if (visited[rowOffset + x] === 1) {
+          for (let dy = -2; dy <= 2; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= localH) continue;
+            const nRowOffset = ny * localW;
+            for (let dx = -2; dx <= 2; dx++) {
+              const nx = x + dx;
+              if (nx >= 0 && nx < localW) {
+                const idx = (nRowOffset + nx) * 4;
+                if (data[idx] >= 200 && data[idx + 1] >= 200 && data[idx + 2] >= 200) {
+                  finalMask[nRowOffset + nx] = 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Convertir a trazado vectorial SVG exacto
     const svgScaleX = MAP_WIDTH / BUFFER_WIDTH;
     const svgScaleY = MAP_HEIGHT / BUFFER_HEIGHT;
     let pathD = '';
@@ -242,7 +287,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       let spanStart = 0;
       const rowOffset = y * localW;
       for (let x = 0; x < localW; x++) {
-        if (visited[rowOffset + x] === 1) {
+        if (finalMask[rowOffset + x] === 1) {
           if (!inSpan) {
             inSpan = true;
             spanStart = x;
@@ -278,13 +323,13 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     pathD = pathD.trim();
     if (!pathD) return;
 
-    // Actualizar datos del buffer para evitar sobrepintar el mismo lote
+    // Actualizar buffer temporal
     for (let y = 0; y < localH; y++) {
       const rowOffset = y * localW;
       for (let x = 0; x < localW; x++) {
-        if (visited[rowOffset + x] === 1) {
+        if (finalMask[rowOffset + x] === 1) {
           const idx = (y * localW + x) * 4;
-          data[idx] = 34; // Marcar en verde en el buffer
+          data[idx] = 34;
           data[idx + 1] = 197;
           data[idx + 2] = 94;
         }
@@ -410,7 +455,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
               onPointerDown={handlePaint}
               className="bg-white border border-[#202020] shadow-sm mx-auto select-none cursor-crosshair"
             >
-              {/* Plano CAD Vectorial base con líneas conectadas continuas */}
+              {/* Plano CAD Vectorial base 100% original con líneas finas nítidas */}
               <img
                 src={SVG_SOURCE}
                 alt="Plano forestal vectorial CAD"
