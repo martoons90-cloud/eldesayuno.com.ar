@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine } from 'lucide-react';
+import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface ForestryMapViewProps {
   onGoToIncome: () => void;
@@ -7,6 +7,10 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
+const MAP_SOURCE = {
+  full: '/forestry-map-full.svg',
+  detail: '/forestry-map.svg',
+} as const;
 
 /**
  * Prueba visual de selección por "balde de pintura" sobre el detalle del
@@ -15,8 +19,10 @@ const MAP_HEIGHT = 1044;
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [mapScope, setMapScope] = useState<'full' | 'detail'>('full');
+  const [zoom, setZoom] = useState(1);
   const [markedAreas, setMarkedAreas] = useState(0);
-  const [message, setMessage] = useState('Tocá dentro de una parcela para probar el marcado.');
+  const [message, setMessage] = useState('Mapa completo: usá el zoom para acercarte y tocá dentro de una parcela para probar el marcado.');
 
   const drawBaseMap = () => {
     const canvas = canvasRef.current;
@@ -30,12 +36,17 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       context.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
       context.drawImage(map, 0, 0, MAP_WIDTH, MAP_HEIGHT);
     };
-    map.src = '/forestry-map.svg';
+    map.src = MAP_SOURCE[mapScope];
   };
 
   useEffect(() => {
     drawBaseMap();
-  }, []);
+    setMarkedAreas(0);
+    setZoom(1);
+    setMessage(mapScope === 'full'
+      ? 'Mapa completo cargado. Usá el zoom para acercarte a la zona del loteo.'
+      : 'Detalle del loteo cargado. Tocá dentro de una parcela para probar el marcado.');
+  }, [mapScope]);
 
   const handlePaint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -91,6 +102,10 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     setMessage('Plano restablecido. Podés volver a probar otra parcela.');
   };
 
+  const changeMapScope = (scope: 'full' | 'detail') => {
+    if (scope !== mapScope) setMapScope(scope);
+  };
+
   return (
     <div className="max-w-[1440px] mx-auto space-y-5 animate-fade-in pb-10">
       <section className="bg-white border border-[#E3DFC8] p-5 sm:p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -106,6 +121,12 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => changeMapScope('full')} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${mapScope === 'full' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#163323] hover:bg-[#F4EFE6]'}`}>
+            Mapa completo
+          </button>
+          <button type="button" onClick={() => changeMapScope('detail')} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${mapScope === 'detail' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#163323] hover:bg-[#F4EFE6]'}`}>
+            Detalle loteo
+          </button>
           <button type="button" onClick={resetTest} className="px-3 py-2 bg-white border border-[#DCD4C0] text-xs font-bold uppercase tracking-wider text-[#163323] hover:bg-[#F4EFE6] flex items-center gap-1.5 cursor-pointer">
             <Eraser className="w-3.5 h-3.5" /> Limpiar prueba
           </button>
@@ -118,18 +139,25 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal</span>
-            <span className="text-[10px] text-emerald-100">Prueba sin guardar</span>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> {mapScope === 'full' ? 'Plano Forestal Completo' : 'Detalle del Loteo'}</span>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setZoom((current) => Math.max(1, Number((current - 0.25).toFixed(2))))} disabled={zoom <= 1} className="p-1 text-white hover:bg-white/15 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer" title="Alejar"><ZoomOut className="w-4 h-4" /></button>
+              <span className="text-[10px] text-emerald-100 min-w-9 text-center">{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => setZoom((current) => Math.min(3, Number((current + 0.25).toFixed(2))))} disabled={zoom >= 3} className="p-1 text-white hover:bg-white/15 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer" title="Acercar"><ZoomIn className="w-4 h-4" /></button>
+              <span className="text-[10px] text-emerald-100">Prueba sin guardar</span>
+            </div>
           </div>
-          <div className="p-3 sm:p-5 bg-[#F7F7F5]">
-            <canvas
-              ref={canvasRef}
-              width={MAP_WIDTH}
-              height={MAP_HEIGHT}
-              onPointerDown={handlePaint}
-              className="w-full h-auto bg-white border border-[#202020] cursor-crosshair touch-none shadow-sm"
-              aria-label="Plano forestal clickeable para prueba de marcado"
-            />
+          <div className="p-3 sm:p-5 bg-[#F7F7F5] overflow-auto max-h-[72vh]">
+            <div style={{ width: `${zoom * 100}%`, minWidth: `${zoom * 100}%` }}>
+              <canvas
+                ref={canvasRef}
+                width={MAP_WIDTH}
+                height={MAP_HEIGHT}
+                onPointerDown={handlePaint}
+                className="w-full h-auto bg-white border border-[#202020] cursor-crosshair touch-none shadow-sm"
+                aria-label="Plano forestal clickeable para prueba de marcado"
+              />
+            </div>
           </div>
         </div>
 
