@@ -9,7 +9,8 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
-const FIXED_ZOOM = 20;
+const FIXED_ZOOM = 50;
+const RENDER_SCALE = 20;
 const MAP_SOURCE = '/forestry-plan.pdf?revision=plano-grande-original-v1';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -68,8 +69,8 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const renderSequence = ++renderSequenceRef.current;
-    canvas.width = Math.round(MAP_WIDTH * zoom);
-    canvas.height = Math.round(MAP_HEIGHT * zoom);
+    canvas.width = Math.round(MAP_WIDTH * RENDER_SCALE);
+    canvas.height = Math.round(MAP_HEIGHT * RENDER_SCALE);
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
 
@@ -77,7 +78,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       const pdf = pdfDocumentRef.current ?? await getDocument({ url: MAP_SOURCE }).promise;
       pdfDocumentRef.current = pdf;
       const page = await pdf.getPage(1);
-      const pdfViewport = page.getViewport({ scale: zoom });
+      const pdfViewport = page.getViewport({ scale: RENDER_SCALE });
       if (renderSequence !== renderSequenceRef.current) return;
 
       canvas.width = Math.round(pdfViewport.width);
@@ -254,7 +255,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal · Detalle de lotes</span>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-emerald-100 hidden sm:inline">Rueda o barras para recorrer</span>
-              <span className="text-[10px] min-w-10 text-center">2000% fijo</span>
+              <span className="text-[10px] min-w-10 text-center">5000% fijo</span>
             </div>
           </div>
           <div ref={viewportRef} onScroll={syncMinimap} className="p-3 sm:p-5 bg-[#F7F7F5] overflow-auto h-[72vh] min-h-[520px]">
@@ -289,7 +290,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </div>
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            Zoom fijo al 2000% con líneas finas nítidas CAD. Hacé clic en cualquier sector del Mapa general o desplazate con el mouse/pantalla para recorrer las parcelas.
+            Zoom fijo al 5000% con líneas finas nítidas CAD. Hacé clic en cualquier sector del Mapa general o desplazate con el mouse/pantalla para recorrer las parcelas.
           </div>
         </aside>
       </section>
