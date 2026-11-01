@@ -10,9 +10,10 @@ const MAP_HEIGHT = 1044;
 // Esta es la lámina CAD de líneas finas y completas: conserva los límites de
 // cada lote sin convertir el plano en una mancha negra al acercar.
 const MAP_SOURCE = '/forestry-map.svg?revision=lineas-completas-v3';
-// El mapa general necesita abarcar el plano completo, no solo el sector que
-// está ampliado en el lienzo principal.
-const MAP_OVERVIEW_SOURCE = '/forestry-map-full.svg?revision=plano-entero-v1';
+// El mapa general y el plano navegable usan exactamente la misma lámina.
+// Así la miniatura contiene el plano entero y el marco dorado coincide con la
+// zona que se está recorriendo arriba.
+const MAP_OVERVIEW_SOURCE = MAP_SOURCE;
 
 /**
  * Prueba visual de selección por "balde de pintura" sobre el detalle del
