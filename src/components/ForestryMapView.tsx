@@ -117,8 +117,6 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         },
       }).then(() => {
         if (cancelled) return;
-        const bounds = loadedViewer.GetBounds();
-        if (bounds) loadedViewer.FitView(bounds.minX, bounds.maxX, bounds.minY, bounds.maxY, 0.04);
         setDxfLoading(false);
         setMessage('DXF original cargado. Usá la rueda para hacer zoom y arrastrá para recorrer el plano.');
       }).catch(() => {
