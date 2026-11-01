@@ -5,26 +5,32 @@ interface ForestryMapViewProps {
   onGoToIncome: () => void;
 }
 
+interface MarkedParcel {
+  id: string;
+  d: string;
+}
+
 const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
-const SVG_SOURCE = '/forestry-plan.svg?revision=vector-cad-v1';
+const BUFFER_WIDTH = 4000;
+const BUFFER_HEIGHT = 3000;
+const SVG_SOURCE = '/forestry-plan.svg?revision=vector-cad-v2';
 
 /**
  * Vista del plano forestal en formato 100% vectorial CAD nativo (SVG):
  * - Líneas finas nítidas que no se pixelan sin importar cuánto zoom se aplique.
- * - Carga instantánea en pocos milisegundos y navegación fluida sin trabas ni tildes.
- * - Prueba de marcado de parcelas con balde de pintura sobre capa interactiva.
+ * - Balde de pintura perfecto: rellena cada lote (cuadradito) de forma sólida,
+ *   nítida y definida sin sombras borrosas ni desbordes.
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const hasInitialScrolledRef = useRef(false);
-  const [markedAreas, setMarkedAreas] = useState(0);
+  const [markedParcels, setMarkedParcels] = useState<MarkedParcel[]>([]);
   const [zoom, setZoom] = useState(50); // 5000% zoom inicial
   const prevZoomRef = useRef(zoom);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
-  const [message, setMessage] = useState('Tocá dentro de una parcela para probar el marcado.');
+  const [message, setMessage] = useState('Hacé clic dentro de cualquier parcela (cuadradito) para pintarla.');
 
   const syncMinimap = () => {
     const viewport = viewportRef.current;
@@ -46,13 +52,13 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     img.src = SVG_SOURCE;
     img.onload = () => {
       const offscreen = document.createElement('canvas');
-      offscreen.width = 3200;
-      offscreen.height = 2400;
+      offscreen.width = BUFFER_WIDTH;
+      offscreen.height = BUFFER_HEIGHT;
       const ctx = offscreen.getContext('2d', { willReadFrequently: true });
       if (ctx) {
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, 3200, 2400);
-        ctx.drawImage(img, 0, 0, 3200, 2400);
+        ctx.fillRect(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
+        ctx.drawImage(img, 0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
         offscreenCanvasRef.current = offscreen;
       }
     };
@@ -91,61 +97,79 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
   }, [zoom]);
 
-  const handlePaint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const handlePaint = (event: React.PointerEvent<HTMLDivElement>) => {
     const offscreen = offscreenCanvasRef.current;
-    const overlay = overlayCanvasRef.current;
-    if (!offscreen || !overlay) return;
-    const overlayCtx = overlay.getContext('2d');
+    if (!offscreen) return;
     const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
-    if (!overlayCtx || !offCtx) return;
+    if (!offCtx) return;
 
-    const bounds = overlay.getBoundingClientRect();
+    const bounds = event.currentTarget.getBoundingClientRect();
     const clickX = event.clientX - bounds.left;
     const clickY = event.clientY - bounds.top;
 
-    const scaleX = offscreen.width / bounds.width;
-    const scaleY = offscreen.height / bounds.height;
-    const startX = Math.floor(clickX * scaleX);
-    const startY = Math.floor(clickY * scaleY);
+    // Convertir coordenadas del click al espacio del buffer raster
+    const scaleX = BUFFER_WIDTH / bounds.width;
+    const scaleY = BUFFER_HEIGHT / bounds.height;
+    const rawStartX = Math.floor(clickX * scaleX);
+    const rawStartY = Math.floor(clickY * scaleY);
+
+    if (rawStartX < 0 || rawStartX >= BUFFER_WIDTH || rawStartY < 0 || rawStartY >= BUFFER_HEIGHT) return;
 
     const BOX = 350;
-    const x0 = Math.max(0, startX - BOX);
-    const y0 = Math.max(0, startY - BOX);
-    const x1 = Math.min(offscreen.width, startX + BOX);
-    const y1 = Math.min(offscreen.height, startY + BOX);
-    const w = x1 - x0;
-    const h = y1 - y0;
+    const x0 = Math.max(0, rawStartX - BOX);
+    const y0 = Math.max(0, rawStartY - BOX);
+    const x1 = Math.min(BUFFER_WIDTH, rawStartX + BOX);
+    const y1 = Math.min(BUFFER_HEIGHT, rawStartY + BOX);
+    const localW = x1 - x0;
+    const localH = y1 - y0;
 
-    const image = offCtx.getImageData(x0, y0, w, h);
-    const { data } = image;
-    const localStartX = startX - x0;
-    const localStartY = startY - y0;
-    const startIndex = (localStartY * w + localStartX) * 4;
+    const image = offCtx.getImageData(x0, y0, localW, localH);
+    const data = image.data;
 
-    if (data[startIndex] < 200 || data[startIndex + 1] < 200 || data[startIndex + 2] < 200) {
-      setMessage('Tocaste una línea del plano. Probá dentro del área blanca de una parcela.');
+    const isWhite = (x: number, y: number) => {
+      const idx = (y * localW + x) * 4;
+      return data[idx] >= 210 && data[idx + 1] >= 210 && data[idx + 2] >= 210;
+    };
+
+    // Auto-ajuste para facilitar el clic: si tocó sobre una línea, busca el centro blanco más cercano
+    const localClickX = rawStartX - x0;
+    const localClickY = rawStartY - y0;
+    let startX = -1;
+    let startY = -1;
+
+    if (isWhite(localClickX, localClickY)) {
+      startX = localClickX;
+      startY = localClickY;
+    } else {
+      for (let r = 1; r <= 6; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = localClickX + dx;
+            const ny = localClickY + dy;
+            if (nx >= 0 && nx < localW && ny >= 0 && ny < localH && isWhite(nx, ny)) {
+              startX = nx;
+              startY = ny;
+              break;
+            }
+          }
+          if (startX !== -1) break;
+        }
+        if (startX !== -1) break;
+      }
+    }
+
+    if (startX === -1) {
+      setMessage('Tocaste una línea del plano. Hacé clic dentro del área blanca de una parcela.');
       return;
     }
 
-    const pendingX: number[] = [localStartX];
-    const pendingY: number[] = [localStartY];
-    data[startIndex] = 174;
-    data[startIndex + 1] = 220;
-    data[startIndex + 2] = 181;
-    data[startIndex + 3] = 255;
+    // Flood fill en 4 direcciones
+    const visited = new Uint8Array(localW * localH);
+    const pendingX: number[] = [startX];
+    const pendingY: number[] = [startY];
+    visited[startY * localW + startX] = 1;
     let paintedPixels = 1;
-    const maxPixels = 60_000;
-
-    const patchCanvas = document.createElement('canvas');
-    patchCanvas.width = w;
-    patchCanvas.height = h;
-    const patchCtx = patchCanvas.getContext('2d')!;
-    const patchImage = patchCtx.createImageData(w, h);
-    const pData = patchImage.data;
-    pData[startIndex] = 174;
-    pData[startIndex + 1] = 220;
-    pData[startIndex + 2] = 181;
-    pData[startIndex + 3] = 180;
+    const maxPixels = 35_000;
 
     while (pendingX.length > 0 && paintedPixels < maxPixels) {
       const cx = pendingX.pop()!;
@@ -161,19 +185,10 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       for (let i = 0; i < 4; i++) {
         const nx = neighbors[i][0];
         const ny = neighbors[i][1];
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        const nIndex = (ny * w + nx) * 4;
-        if (data[nIndex] >= 220 && data[nIndex + 1] >= 220 && data[nIndex + 2] >= 220) {
-          data[nIndex] = 174;
-          data[nIndex + 1] = 220;
-          data[nIndex + 2] = 181;
-          data[nIndex + 3] = 255;
-
-          pData[nIndex] = 174;
-          pData[nIndex + 1] = 220;
-          pData[nIndex + 2] = 181;
-          pData[nIndex + 3] = 180;
-
+        if (nx < 0 || ny < 0 || nx >= localW || ny >= localH) continue;
+        const vIdx = ny * localW + nx;
+        if (visited[vIdx] === 0 && isWhite(nx, ny)) {
+          visited[vIdx] = 1;
           paintedPixels++;
           pendingX.push(nx);
           pendingY.push(ny);
@@ -183,26 +198,74 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
 
     if (paintedPixels >= maxPixels) {
-      setMessage('Esta zona se comunica con una superficie muy grande o no cerrada. Para marcarla bien habrá que cerrar esas líneas.');
+      setMessage('Esta zona se comunica con una superficie muy grande o no cerrada. Para marcarla habrá que cerrar esas líneas.');
       return;
     }
 
-    offCtx.putImageData(image, x0, y0);
-    patchCtx.putImageData(patchImage, 0, 0);
-    overlayCtx.drawImage(patchCanvas, x0, y0, w, h);
+    // Convertir el relleno de píxeles en un trazado SVG vectorial perfecto
+    const svgScaleX = MAP_WIDTH / BUFFER_WIDTH;
+    const svgScaleY = MAP_HEIGHT / BUFFER_HEIGHT;
+    let pathD = '';
 
-    setMarkedAreas((prev) => prev + 1);
-    setMessage(`Área marcada de prueba (${paintedPixels.toLocaleString('es-AR')} píxeles). Todavía no se guardó ningún dato.`);
+    for (let y = 0; y < localH; y++) {
+      let inSpan = false;
+      let spanStart = 0;
+      const rowOffset = y * localW;
+      for (let x = 0; x < localW; x++) {
+        if (visited[rowOffset + x] === 1) {
+          if (!inSpan) {
+            inSpan = true;
+            spanStart = x;
+          }
+        } else {
+          if (inSpan) {
+            inSpan = false;
+            const sx = (x0 + spanStart) * svgScaleX;
+            const sy = (y0 + y) * svgScaleY;
+            const sw = (x - spanStart) * svgScaleX;
+            const sh = svgScaleY;
+            pathD += `M${sx.toFixed(2)} ${sy.toFixed(2)}h${sw.toFixed(2)}v${sh.toFixed(2)}h-${sw.toFixed(2)}z `;
+          }
+        }
+      }
+      if (inSpan) {
+        const sx = (x0 + spanStart) * svgScaleX;
+        const sy = (y0 + y) * svgScaleY;
+        const sw = (localW - spanStart) * svgScaleX;
+        const sh = svgScaleY;
+        pathD += `M${sx.toFixed(2)} ${sy.toFixed(2)}h${sw.toFixed(2)}v${sh.toFixed(2)}h-${sw.toFixed(2)}z `;
+      }
+    }
+
+    pathD = pathD.trim();
+    if (!pathD) return;
+
+    // Actualizar datos del buffer para evitar sobrepintar la misma parcela
+    for (let y = 0; y < localH; y++) {
+      const rowOffset = y * localW;
+      for (let x = 0; x < localW; x++) {
+        if (visited[rowOffset + x] === 1) {
+          const idx = (y * localW + x) * 4;
+          data[idx] = 34; // Marcar en verde en el buffer
+          data[idx + 1] = 197;
+          data[idx + 2] = 94;
+        }
+      }
+    }
+    offCtx.putImageData(image, x0, y0);
+
+    const newParcel: MarkedParcel = {
+      id: `${Date.now()}-${Math.random()}`,
+      d: pathD,
+    };
+
+    setMarkedParcels((prev) => [...prev, newParcel]);
+    setMessage(`¡Parcela pintada perfectamente! Total marcadas: ${markedParcels.length + 1}.`);
   };
 
   const resetTest = () => {
-    const overlay = overlayCanvasRef.current;
-    if (overlay) {
-      const ctx = overlay.getContext('2d');
-      if (ctx) ctx.clearRect(0, 0, overlay.width, overlay.height);
-    }
+    setMarkedParcels([]);
     loadOffscreenBuffer();
-    setMarkedAreas(0);
     setMessage('Plano restablecido. Podés volver a probar otra parcela.');
   };
 
@@ -224,13 +287,13 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="bg-white border border-[#E3DFC8] p-5 sm:p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-emerald-800">
-            <TreePine className="w-4 h-4" /> Control forestal · Vista vectorial CAD
+            <TreePine className="w-4 h-4" /> Control forestal · Marcado de lotes
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#163323] mt-1" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano 100% vectorial nativo con líneas finas CAD. Hacé todo el zoom que quieras sin pixelado y con navegación instantánea y fluida.
+            Plano 100% vectorial con bote de pintura de alta definición. Hacé clic dentro de cualquier cuadradito para rellenar la parcela en verde.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -300,22 +363,35 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                 position: 'relative',
                 maxWidth: 'none',
               }}
-              className="bg-white border border-[#202020] shadow-sm mx-auto"
+              onPointerDown={handlePaint}
+              className="bg-white border border-[#202020] shadow-sm mx-auto select-none cursor-crosshair"
             >
+              {/* Plano CAD Vectorial base */}
               <img
                 src={SVG_SOURCE}
                 alt="Plano forestal vectorial CAD"
                 className="w-full h-full block select-none pointer-events-none"
                 draggable={false}
               />
-              <canvas
-                ref={overlayCanvasRef}
-                width={3200}
-                height={2400}
-                onPointerDown={handlePaint}
-                className="absolute inset-0 w-full h-full cursor-crosshair touch-none"
-                aria-label="Capa interactiva de marcado de parcelas"
-              />
+
+              {/* Capa de parcelas pintadas con balde de pintura vectorial nítido */}
+              <svg
+                viewBox="0 0 800 600"
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                preserveAspectRatio="none"
+              >
+                {markedParcels.map((parcel) => (
+                  <path
+                    key={parcel.id}
+                    d={parcel.d}
+                    fill="#22C55E"
+                    fillOpacity={0.82}
+                    stroke="#15803D"
+                    strokeWidth={0.5}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
             </div>
           </div>
         </div>
@@ -327,17 +403,22 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general</p>
             <div onPointerDown={focusFromMinimap} className="relative aspect-[4/3] bg-white border border-[#202020] cursor-pointer overflow-hidden" title="Tocá una zona para ir allí">
               <img src={SVG_SOURCE} alt="Vista general de todo el plano forestal" className="absolute inset-0 w-full h-full object-contain pointer-events-none" />
+              <svg viewBox="0 0 800 600" className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+                {markedParcels.map((parcel) => (
+                  <path key={parcel.id} d={parcel.d} fill="#22C55E" fillOpacity={0.9} />
+                ))}
+              </svg>
               <div className="absolute border-2 border-[#E8B64B] bg-[#E8B64B]/15 pointer-events-none" style={{ left: `${viewportBox.left}%`, top: `${viewportBox.top}%`, width: `${viewportBox.width}%`, height: `${viewportBox.height}%` }} />
             </div>
             <p className="text-[10px] text-[#637568] leading-relaxed">El marco dorado indica la zona visible. Tocá en este mapa para moverte directamente.</p>
           </div>
           <div className="p-3 bg-[#FAF8F5] border border-[#E5DEC9] space-y-2">
-            <div className="flex justify-between"><span className="text-[#637568]">Áreas probadas</span><strong className="font-mono text-[#163323]">{markedAreas}</strong></div>
+            <div className="flex justify-between"><span className="text-[#637568]">Lotes marcados</span><strong className="font-mono text-[#163323]">{markedParcels.length}</strong></div>
             <div className="flex justify-between"><span className="text-[#637568]">Estado</span><strong className="text-amber-800">Sin guardar</strong></div>
           </div>
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            Plano 100% vectorial CAD con líneas finas nítidas sin pixelado. Navegación fluida y rápida en cualquier nivel de zoom.
+            Balde de pintura vectorial de alta precisión. Cada cuadradito pintado se rellena con color verde sólido definido y sin sombras borrosas.
           </div>
         </aside>
       </section>
