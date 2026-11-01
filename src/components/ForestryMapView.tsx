@@ -107,6 +107,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         colorCorrection: true,
         blackWhiteInversion: true,
         antialias: true,
+        preserveDrawingBuffer: true,
       });
       viewer = loadedViewer;
       dxfViewerRef.current = loadedViewer;
@@ -125,6 +126,15 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         },
       }).then(() => {
         if (cancelled) return;
+        ['Imagen', 'Imagen_ZonaUrbanizable', 'fondo'].forEach((layer) => loadedViewer.ShowLayer(layer, false));
+        loadedViewer.GetScene().traverse((object) => {
+          const material = (object as { material?: unknown }).material;
+          const materials = Array.isArray(material) ? material : [material];
+          materials.forEach((item) => {
+            const color = (item as { uniforms?: { color?: { value?: { setHex: (value: number) => void } } } })?.uniforms?.color?.value;
+            color?.setHex(0x161616);
+          });
+        });
         const origin = loadedViewer.GetOrigin();
         loadedViewer.FitView(
           ORIGINAL_DXF_EXTENTS.minX - origin.x,
@@ -133,6 +143,15 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           ORIGINAL_DXF_EXTENTS.maxY - origin.y,
           0.04,
         );
+        loadedViewer.Render();
+        let pointerDown: { x: number; y: number } | null = null;
+        loadedViewer.Subscribe('pointerdown', (event) => { pointerDown = event.detail.canvasCoord; });
+        loadedViewer.Subscribe('pointerup', (event) => {
+          const point = event.detail.canvasCoord as { x: number; y: number };
+          if (pointerDown && Math.hypot(point.x - pointerDown.x, point.y - pointerDown.y) < 6) paintDxfLot(point.x, point.y, loadedViewer);
+          pointerDown = null;
+        });
+        loadedViewer.Subscribe('viewChanged', () => clearPaintLayer());
         setDxfLoading(false);
         setMessage('DXF original cargado. Usá la rueda para hacer zoom y arrastrá para recorrer el plano.');
       }).catch(() => {
@@ -159,6 +178,69 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const camera = viewer.GetCamera();
     viewer.SetView(camera.position, (camera.right - camera.left) / factor);
   };
+
+  function clearPaintLayer() {
+    const canvas = paintCanvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
+    lastPaintIndexesRef.current = [];
+  }
+
+  function paintDxfLot(cssX: number, cssY: number, viewer: DxfViewerInstance) {
+    const source = viewer.GetCanvas();
+    const canvas = paintCanvasRef.current;
+    if (!canvas || !source.clientWidth || !source.clientHeight) return;
+    if (canvas.width !== source.width || canvas.height !== source.height) {
+      canvas.width = source.width;
+      canvas.height = source.height;
+    }
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return;
+    const base = document.createElement('canvas');
+    base.width = source.width;
+    base.height = source.height;
+    const baseContext = base.getContext('2d', { willReadFrequently: true });
+    if (!baseContext) return;
+    baseContext.drawImage(source, 0, 0);
+    const basePixels = baseContext.getImageData(0, 0, base.width, base.height);
+    const paintPixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(cssX * canvas.width / source.clientWidth)));
+    const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(cssY * canvas.height / source.clientHeight)));
+    const start = (y * canvas.width + x) * 4;
+    if (paintPixels.data[start + 3] > 0) {
+      setMessage('Esa área ya está marcada. Elegí otra parcela o usá “Limpiar prueba”.');
+      return;
+    }
+    if (basePixels.data[start] < 235 || basePixels.data[start + 1] < 235 || basePixels.data[start + 2] < 235) {
+      setMessage('Tocaste una línea. Probá dentro del área blanca de una parcela.');
+      return;
+    }
+    const pending: Array<[number, number]> = [[x, y]];
+    const paintedIndexes: number[] = [];
+    const color = STATUS_COLORS.en_proceso;
+    const maxPixels = Math.floor(canvas.width * canvas.height * 0.1);
+    while (pending.length && paintedIndexes.length < maxPixels) {
+      const [currentX, currentY] = pending.pop()!;
+      if (currentX < 0 || currentY < 0 || currentX >= canvas.width || currentY >= canvas.height) continue;
+      const index = (currentY * canvas.width + currentX) * 4;
+      if (basePixels.data[index] < 235 || basePixels.data[index + 1] < 235 || basePixels.data[index + 2] < 235 || paintPixels.data[index + 3] > 0) continue;
+      paintPixels.data[index] = color[0];
+      paintPixels.data[index + 1] = color[1];
+      paintPixels.data[index + 2] = color[2];
+      paintPixels.data[index + 3] = color[3];
+      paintedIndexes.push(index);
+      pending.push([currentX + 1, currentY], [currentX - 1, currentY], [currentX, currentY + 1], [currentX, currentY - 1]);
+    }
+    if (paintedIndexes.length >= maxPixels) {
+      setMessage('Esa superficie no está cerrada como un lote. Probá otra parcela más delimitada.');
+      return;
+    }
+    context.putImageData(paintPixels, 0, 0);
+    lastPaintIndexesRef.current = paintedIndexes;
+    setMarkedAreas((current) => current + 1);
+    setLotForm({ padron: '', product: 'Madera', cubicMeters: '', income: '', status: 'en_proceso' });
+    setMessage(`Lote seleccionado (${paintedIndexes.length.toLocaleString('es-AR')} píxeles). Cargá sus datos a la derecha.`);
+  }
 
   const pointFromEvent = (clientX: number, clientY: number) => {
     const content = mapContentRef.current;
@@ -237,8 +319,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     window.setTimeout(() => { viewport.scrollLeft = Math.max(0, focusX * viewport.scrollWidth - viewport.clientWidth / 2); viewport.scrollTop = Math.max(0, focusY * viewport.scrollHeight - viewport.clientHeight / 2); }, 0);
   };
   const resetTest = () => {
-    prepareMap();
-    lastPaintIndexesRef.current = [];
+    clearPaintLayer();
     setMarkedAreas(0);
     setLotForm(null);
     setMessage('Plano restablecido. Podés volver a probar otra parcela.');
@@ -248,7 +329,9 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     setLotForm({ ...lotForm, status });
     const context = paintCanvasRef.current?.getContext('2d', { willReadFrequently: true });
     if (!context || lastPaintIndexesRef.current.length === 0) return;
-    const paint = context.getImageData(0, 0, MAP_WIDTH, MAP_HEIGHT);
+    const canvas = paintCanvasRef.current;
+    if (!canvas) return;
+    const paint = context.getImageData(0, 0, canvas.width, canvas.height);
     const color = STATUS_COLORS[status];
     lastPaintIndexesRef.current.forEach((index) => {
       paint.data[index] = color[0]; paint.data[index + 1] = color[1]; paint.data[index + 2] = color[2]; paint.data[index + 3] = color[3];
@@ -296,6 +379,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </div>
           <div className="relative bg-[#F7F7F5] h-[72vh] min-h-[520px] overflow-hidden">
             <div ref={dxfMapRef} className="absolute inset-0" aria-label="Plano DXF forestal original" />
+            <canvas ref={paintCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true" />
             {dxfLoading && <div className="absolute inset-0 grid place-items-center bg-white/90 text-xs font-bold text-[#163323]">Cargando DXF original…</div>}
           </div>
         </div>
