@@ -18,6 +18,7 @@ import { IncidentReportsView } from './components/IncidentReportsView';
 import { CobranzasView } from './components/CobranzasView';
 import { ExpensesView } from './components/ExpensesView';
 import { IncomeView } from './components/IncomeView';
+import { ForestryMapView } from './components/ForestryMapView';
 import { CashFlowView } from './components/CashFlowView';
 import { ActasView } from './components/ActasView';
 import { AdminPanel, AdminSectionType } from './components/AdminPanel';
@@ -564,6 +565,10 @@ export default function App() {
             settings={settings}
             isAdmin={hasFinancialAccess(currentUser)}
           />
+        )}
+
+        {activeTab === 'forestry' && hasFinancialAccess(currentUser) && adminViewMode !== 'owner' && (
+          <ForestryMapView onGoToIncome={() => setActiveTab('ingresos')} />
         )}
 
         {/* 6. COBRANZAS & EXPENSAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS READ/PAY) */}
