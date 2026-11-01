@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine } from 'lucide-react';
 
 interface ForestryMapViewProps {
   onGoToIncome: () => void;
@@ -9,15 +9,13 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
-// Escala de rasterización interna optimizada: 3600 x 2700 px (~9.7 megapíxeles).
-// Carga en ~200 ms sin sobrecargar memoria ni congelar el navegador.
-const RENDER_SCALE = 4.5;
+const FIXED_ZOOM = 20;
 const MAP_SOURCE = '/forestry-plan.pdf?revision=plano-grande-original-v1';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const normalizeLineInk = (context: CanvasRenderingContext2D, width: number, height: number) => {
-  // Procesar por franjas para fluidez máxima
+  // Procesar por franjas evita un pico de memoria al usar el zoom de 1500%.
   const rowsPerChunk = Math.max(1, Math.floor(2_000_000 / width));
   for (let top = 0; top < height; top += rowsPerChunk) {
     const chunkHeight = Math.min(rowsPerChunk, height - top);
@@ -34,21 +32,20 @@ const normalizeLineInk = (context: CanvasRenderingContext2D, width: number, heig
 };
 
 /**
- * Vista del plano forestal completo con líneas finas CAD, navegación ultra fluida,
- * zoom dinámico instantáneo y prueba de marcado de parcelas ("balde de pintura").
+ * Vista del plano forestal completo con líneas finas CAD, navegación fluida,
+ * zoom dinámico (desde vista completa 100% de todo el loteo hasta detalle cercano)
+ * y prueba de marcado de parcelas ("balde de pintura").
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const overviewCanvasRef = useRef<HTMLCanvasElement>(null);
   const pdfDocumentRef = useRef<PDFDocumentProxy | null>(null);
-  const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const renderSequenceRef = useRef(0);
   const overviewRenderedRef = useRef(false);
   const hasInitialScrolledRef = useRef(false);
   const [markedAreas, setMarkedAreas] = useState(0);
-  const [zoom, setZoom] = useState(30); // 3000% zoom inicial de vista cercana
-  const prevZoomRef = useRef(zoom);
+  const zoom = FIXED_ZOOM;
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
   const [message, setMessage] = useState('Tocá dentro de una parcela para probar el marcado.');
 
@@ -67,29 +64,12 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     });
   };
 
-  // Mantener centrado suave cuando cambia el zoom sin recargar el PDF
-  useEffect(() => {
-    const prev = prevZoomRef.current;
-    if (prev !== zoom && viewportRef.current) {
-      const ratio = zoom / prev;
-      const vp = viewportRef.current;
-      const centerX = vp.scrollLeft + vp.clientWidth / 2;
-      const centerY = vp.scrollTop + vp.clientHeight / 2;
-      vp.scrollLeft = centerX * ratio - vp.clientWidth / 2;
-      vp.scrollTop = centerY * ratio - vp.clientHeight / 2;
-      prevZoomRef.current = zoom;
-      syncMinimap();
-    }
-  }, [zoom]);
-
   const drawBaseMap = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const renderSequence = ++renderSequenceRef.current;
-    const bufferWidth = Math.round(MAP_WIDTH * RENDER_SCALE);
-    const bufferHeight = Math.round(MAP_HEIGHT * RENDER_SCALE);
-    canvas.width = bufferWidth;
-    canvas.height = bufferHeight;
+    canvas.width = Math.round(MAP_WIDTH * zoom);
+    canvas.height = Math.round(MAP_HEIGHT * zoom);
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
 
@@ -97,7 +77,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       const pdf = pdfDocumentRef.current ?? await getDocument({ url: MAP_SOURCE }).promise;
       pdfDocumentRef.current = pdf;
       const page = await pdf.getPage(1);
-      const pdfViewport = page.getViewport({ scale: RENDER_SCALE });
+      const pdfViewport = page.getViewport({ scale: zoom });
       if (renderSequence !== renderSequenceRef.current) return;
 
       canvas.width = Math.round(pdfViewport.width);
@@ -111,16 +91,6 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       // El PDF trae trazos grises y rojos. Se unifican en negro fino para
       // conservar toda la geometría legible sobre fondo blanco.
       normalizeLineInk(context, canvas.width, canvas.height);
-
-      // Guardar copia limpia en memoria para resets instantáneos
-      const cleanCopy = document.createElement('canvas');
-      cleanCopy.width = canvas.width;
-      cleanCopy.height = canvas.height;
-      const cleanCtx = cleanCopy.getContext('2d');
-      if (cleanCtx) {
-        cleanCtx.drawImage(canvas, 0, 0);
-        baseCanvasRef.current = cleanCopy;
-      }
 
       if (!overviewRenderedRef.current && overviewCanvasRef.current) {
         const overview = overviewCanvasRef.current;
@@ -156,10 +126,6 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
   useEffect(() => { void drawBaseMap(); }, []);
 
-  const handleZoomStep = (delta: number) => {
-    setZoom((prev) => Math.max(10, Math.min(60, prev + delta)));
-  };
-
   const handlePaint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -169,8 +135,8 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const startX = Math.floor((event.clientX - bounds.left) * (canvas.width / bounds.width));
     const startY = Math.floor((event.clientY - bounds.top) * (canvas.height / bounds.height));
 
-    // Delimitar a una caja local para evitar procesar toda la matriz
-    const BOX = 400;
+    // Delimitar a una caja local para evitar procesar toda la matriz de 16000x12000
+    const BOX = 1500;
     const x0 = Math.max(0, startX - BOX);
     const y0 = Math.max(0, startY - BOX);
     const x1 = Math.min(canvas.width, startX + BOX);
@@ -197,7 +163,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     data[startIndex + 3] = 255;
     let paintedPixels = 1;
     // Límite preventivo para evitar desbordar si una línea no está cerrada
-    const maxPixels = 60_000;
+    const maxPixels = 600_000;
 
     while (pendingX.length > 0 && paintedPixels < maxPixels) {
       const cx = pendingX.pop()!;
@@ -229,9 +195,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
 
     if (paintedPixels >= maxPixels) {
-      if (baseCanvasRef.current) {
-        context.drawImage(baseCanvasRef.current, 0, 0);
-      }
+      void drawBaseMap();
       setMessage('Esta zona se comunica con una superficie muy grande. Para marcarla bien habrá que cerrar esas líneas del plano.');
       return;
     }
@@ -242,13 +206,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   };
 
   const resetTest = () => {
-    const canvas = canvasRef.current;
-    if (canvas && baseCanvasRef.current) {
-      const context = canvas.getContext('2d');
-      if (context) {
-        context.drawImage(baseCanvasRef.current, 0, 0);
-      }
-    }
+    void drawBaseMap();
     setMarkedAreas(0);
     setMessage('Plano restablecido. Podés volver a probar otra parcela.');
   };
@@ -277,7 +235,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano CAD de alta velocidad con líneas nítidas. Recorré las parcelas con zoom cercano de hasta 6000% y navegación instantánea.
+            Plano CAD completo con líneas finas nítidas en fondo blanco. Navegá el plano entero o acercate a cada manzana sin pérdida de trazado.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -292,51 +250,11 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
-          <div className="px-4 py-3 bg-[#163323] text-white flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-              <MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal · Detalle de lotes
-            </span>
+          <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal · Detalle de lotes</span>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-emerald-100 hidden md:inline">Rueda o barras para recorrer</span>
-              <div className="flex items-center bg-black/30 rounded px-1.5 py-0.5 border border-white/10 gap-1">
-                <button
-                  type="button"
-                  onClick={() => handleZoomStep(-5)}
-                  disabled={zoom <= 10}
-                  className="p-1 hover:bg-white/20 disabled:opacity-30 rounded cursor-pointer transition-colors"
-                  title="Alejar (500%)"
-                >
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-xs font-mono font-bold min-w-16 text-center text-[#F4EFE6]">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleZoomStep(5)}
-                  disabled={zoom >= 60}
-                  className="p-1 hover:bg-white/20 disabled:opacity-30 rounded cursor-pointer transition-colors"
-                  title="Acercar (500%)"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="hidden sm:flex items-center gap-1 bg-black/30 p-0.5 rounded border border-white/10">
-                {[20, 30, 40, 50].map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => setZoom(level)}
-                    className={`px-2 py-0.5 text-[10px] font-bold rounded cursor-pointer transition-colors ${
-                      zoom === level
-                        ? 'bg-[#BFA270] text-[#163323]'
-                        : 'text-white/80 hover:text-white hover:bg-white/15'
-                    }`}
-                  >
-                    {level * 100}%
-                  </button>
-                ))}
-              </div>
+              <span className="text-[10px] text-emerald-100 hidden sm:inline">Rueda o barras para recorrer</span>
+              <span className="text-[10px] min-w-10 text-center">2000% fijo</span>
             </div>
           </div>
           <div ref={viewportRef} onScroll={syncMinimap} className="p-3 sm:p-5 bg-[#F7F7F5] overflow-auto h-[72vh] min-h-[520px]">
@@ -371,7 +289,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </div>
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            Vista cercana de parcelas con carga ultra rápida. Podés cambiar el zoom instantáneamente con los botones de 2000%, 3000%, 4000% y 5000% o hacer clic en el Mapa general para moverte de sector.
+            Zoom fijo al 2000% con líneas finas nítidas CAD. Hacé clic en cualquier sector del Mapa general o desplazate con el mouse/pantalla para recorrer las parcelas.
           </div>
         </aside>
       </section>
