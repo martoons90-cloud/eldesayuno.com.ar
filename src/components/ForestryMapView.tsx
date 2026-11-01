@@ -4,7 +4,7 @@ import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine, Zoo
 interface ForestryMapViewProps { onGoToIncome: () => void; }
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
-const MAP_SOURCE = '/forestry-map.svg';
+const MAP_SOURCE = '/forestry-map-full.svg';
 type SelectionBox = { startX: number; startY: number; endX: number; endY: number };
 type ForestryStatus = 'pendiente' | 'en_proceso' | 'deforestado';
 type LotForm = { padron: string; product: string; cubicMeters: string; income: string; status: ForestryStatus };
@@ -166,7 +166,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           <h1 className="text-2xl sm:text-3xl font-bold text-[#163323] mt-1" style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}>
             Mapa de deforestación
           </h1>
-          <p className="text-xs text-[#526657] mt-1 max-w-2xl">Plano CAD vectorial: el dibujo se mantiene nítido incluso al ampliar.</p>
+          <p className="text-xs text-[#526657] mt-1 max-w-2xl">Plano CAD completo: usá el zoom para recorrer y trabajar cualquier sector sin perder nitidez.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={resetTest} className="px-3 py-2 bg-white border border-[#DCD4C0] text-xs font-bold uppercase tracking-wider text-[#163323] hover:bg-[#F4EFE6] flex items-center gap-1.5 cursor-pointer">
@@ -181,7 +181,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-[#163323] text-white flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano CAD Forestal</span>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano CAD completo</span>
             <div className="flex items-center gap-1.5">
               <button type="button" onClick={() => setSelectionMode((current) => !current)} className={`px-2 py-1 text-[10px] font-bold uppercase cursor-pointer ${selectionMode ? 'bg-[#BFA270] text-[#163323]' : 'bg-white/10 text-white hover:bg-white/20'}`}>
                 <MousePointer2 className="w-3 h-3 inline mr-1" />{selectionMode ? 'Arrastrá una zona' : 'Seleccionar y acercar'}
