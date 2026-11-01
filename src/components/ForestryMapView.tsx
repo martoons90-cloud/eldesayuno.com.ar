@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { ArrowLeft, Eraser, Eye, LayoutGrid, MapPinned, MousePointer2, PaintBucket, TreePine, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Eraser, MapPinned, MousePointer2, PaintBucket, TreePine } from 'lucide-react';
 
 interface ForestryMapViewProps {
   onGoToIncome: () => void;
@@ -9,6 +9,7 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
+const FIXED_ZOOM = 20;
 const MAP_SOURCE = '/forestry-plan.pdf?revision=plano-grande-original-v1';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -43,9 +44,8 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const renderSequenceRef = useRef(0);
   const overviewRenderedRef = useRef(false);
   const hasInitialScrolledRef = useRef(false);
-  const focalPointRef = useRef<{ x: number; y: number } | null>(null);
   const [markedAreas, setMarkedAreas] = useState(0);
-  const [zoom, setZoom] = useState(0.85);
+  const zoom = FIXED_ZOOM;
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
   const [message, setMessage] = useState('Tocá dentro de una parcela para probar el marcado.');
 
@@ -109,20 +109,13 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
       if (!hasInitialScrolledRef.current && viewportRef.current) {
         hasInitialScrolledRef.current = true;
-        // Al abrir, ajustar automáticamente para ver el plano completo en pantalla
-        const vp = viewportRef.current;
-        const fitScale = Math.min((vp.clientWidth - 20) / MAP_WIDTH, (vp.clientHeight - 20) / MAP_HEIGHT);
-        if (fitScale > 0 && fitScale < 1.2) {
-          setZoom(Number(fitScale.toFixed(2)));
-        }
-      } else if (focalPointRef.current && viewportRef.current) {
         const displayW = Math.round(MAP_WIDTH * zoom);
         const displayH = Math.round(MAP_HEIGHT * zoom);
-        const targetX = Math.round(focalPointRef.current.x * displayW - viewportRef.current.clientWidth / 2);
-        const targetY = Math.round(focalPointRef.current.y * displayH - viewportRef.current.clientHeight / 2);
+        // Centrar por defecto en la zona de parcelas (aprox 58% X, 50% Y)
+        const targetX = Math.round(0.58 * displayW - viewportRef.current.clientWidth / 2);
+        const targetY = Math.round(0.50 * displayH - viewportRef.current.clientHeight / 2);
         viewportRef.current.scrollLeft = Math.max(0, targetX);
         viewportRef.current.scrollTop = Math.max(0, targetY);
-        focalPointRef.current = null;
       }
 
       requestAnimationFrame(syncMinimap);
@@ -131,38 +124,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
   };
 
-  useEffect(() => { void drawBaseMap(); }, [zoom]);
-
-  const handleZoomChange = (nextZoom: number) => {
-    const clamped = Math.max(0.4, Math.min(15, Number(nextZoom.toFixed(2))));
-    if (clamped === zoom) return;
-    const viewport = viewportRef.current;
-    if (viewport) {
-      const displayW = Math.round(MAP_WIDTH * zoom);
-      const displayH = Math.round(MAP_HEIGHT * zoom);
-      focalPointRef.current = {
-        x: (viewport.scrollLeft + viewport.clientWidth / 2) / displayW,
-        y: (viewport.scrollTop + viewport.clientHeight / 2) / displayH,
-      };
-    }
-    setZoom(clamped);
-  };
-
-  const fitFullPlan = () => {
-    const vp = viewportRef.current;
-    if (!vp) return;
-    const fitScale = Math.min((vp.clientWidth - 20) / MAP_WIDTH, (vp.clientHeight - 20) / MAP_HEIGHT);
-    const targetZoom = Number(Math.max(0.4, Math.min(1, fitScale)).toFixed(2));
-    focalPointRef.current = { x: 0.5, y: 0.5 };
-    setZoom(targetZoom);
-    setMessage('Plano completo ajustado a pantalla.');
-  };
-
-  const focusDetail = () => {
-    focalPointRef.current = { x: 0.45, y: 0.45 };
-    setZoom(2.2);
-    setMessage('Vista ampliada: detalle de manzanas y parcelas individuales.');
-  };
+  useEffect(() => { void drawBaseMap(); }, []);
 
   const handlePaint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -172,9 +134,20 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const bounds = canvas.getBoundingClientRect();
     const startX = Math.floor((event.clientX - bounds.left) * (canvas.width / bounds.width));
     const startY = Math.floor((event.clientY - bounds.top) * (canvas.height / bounds.height));
-    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+
+    // Delimitar a una caja local para evitar procesar toda la matriz de 16000x12000
+    const BOX = 1500;
+    const x0 = Math.max(0, startX - BOX);
+    const y0 = Math.max(0, startY - BOX);
+    const x1 = Math.min(canvas.width, startX + BOX);
+    const y1 = Math.min(canvas.height, startY + BOX);
+    const w = x1 - x0;
+    const h = y1 - y0;
+    const image = context.getImageData(x0, y0, w, h);
     const { data } = image;
-    const startIndex = (startY * canvas.width + startX) * 4;
+    const localStartX = startX - x0;
+    const localStartY = startY - y0;
+    const startIndex = (localStartY * w + localStartX) * 4;
 
     // Si se toca una línea negra, la persona debe tocar dentro de la parcela.
     if (data[startIndex] < 220 || data[startIndex + 1] < 220 || data[startIndex + 2] < 220) {
@@ -182,23 +155,43 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       return;
     }
 
-    const pending: Array<[number, number]> = [[startX, startY]];
-    let paintedPixels = 0;
-    // Límite preventivo: evita que una abertura del dibujo pinte todo el plano.
-    const maxPixels = Math.floor(canvas.width * canvas.height * 0.14);
+    const pendingX: number[] = [localStartX];
+    const pendingY: number[] = [localStartY];
+    data[startIndex] = 174;
+    data[startIndex + 1] = 220;
+    data[startIndex + 2] = 181;
+    data[startIndex + 3] = 255;
+    let paintedPixels = 1;
+    // Límite preventivo para evitar desbordar si una línea no está cerrada
+    const maxPixels = 600_000;
 
-    while (pending.length > 0 && paintedPixels < maxPixels) {
-      const [x, y] = pending.pop()!;
-      if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
-      const index = (y * canvas.width + x) * 4;
-      if (data[index] < 230 || data[index + 1] < 230 || data[index + 2] < 230) continue;
+    while (pendingX.length > 0 && paintedPixels < maxPixels) {
+      const cx = pendingX.pop()!;
+      const cy = pendingY.pop()!;
 
-      data[index] = 174;
-      data[index + 1] = 220;
-      data[index + 2] = 181;
-      data[index + 3] = 255;
-      paintedPixels++;
-      pending.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+      const neighbors = [
+        [cx + 1, cy],
+        [cx - 1, cy],
+        [cx, cy + 1],
+        [cx, cy - 1],
+      ];
+
+      for (let i = 0; i < 4; i++) {
+        const nx = neighbors[i][0];
+        const ny = neighbors[i][1];
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const nIndex = (ny * w + nx) * 4;
+        if (data[nIndex] >= 230 && data[nIndex + 1] >= 230 && data[nIndex + 2] >= 230) {
+          data[nIndex] = 174;
+          data[nIndex + 1] = 220;
+          data[nIndex + 2] = 181;
+          data[nIndex + 3] = 255;
+          paintedPixels++;
+          pendingX.push(nx);
+          pendingY.push(ny);
+          if (paintedPixels >= maxPixels) break;
+        }
+      }
     }
 
     if (paintedPixels >= maxPixels) {
@@ -207,7 +200,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       return;
     }
 
-    context.putImageData(image, 0, 0);
+    context.putImageData(image, x0, y0);
     setMarkedAreas((current) => current + 1);
     setMessage(`Área marcada de prueba (${paintedPixels.toLocaleString('es-AR')} píxeles). Todavía no se guardó ningún dato.`);
   };
@@ -246,12 +239,6 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={fitFullPlan} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${zoom <= 1 ? 'bg-[#163323] text-white border-[#163323]' : 'bg-white text-[#163323] border-[#DCD4C0] hover:bg-[#F4EFE6]'}`}>
-            <LayoutGrid className="w-3.5 h-3.5" /> Plano completo
-          </button>
-          <button type="button" onClick={focusDetail} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${zoom > 1.5 ? 'bg-[#163323] text-white border-[#163323]' : 'bg-white text-[#163323] border-[#DCD4C0] hover:bg-[#F4EFE6]'}`}>
-            <Eye className="w-3.5 h-3.5" /> Vista detalle
-          </button>
           <button type="button" onClick={resetTest} className="px-3 py-2 bg-white border border-[#DCD4C0] text-xs font-bold uppercase tracking-wider text-[#163323] hover:bg-[#F4EFE6] flex items-center gap-1.5 cursor-pointer">
             <Eraser className="w-3.5 h-3.5" /> Limpiar prueba
           </button>
@@ -264,16 +251,10 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal · {zoom <= 1 ? 'Plano completo' : 'Detalle de lotes'}</span>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal · Detalle de lotes</span>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-emerald-100 hidden sm:inline">Rueda o barras para recorrer</span>
-              <button type="button" onClick={() => handleZoomChange(zoom - 1)} disabled={zoom <= 0.4} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Alejar">
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-[10px] min-w-8 text-center">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => handleZoomChange(zoom + 1)} disabled={zoom >= 15} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Acercar">
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
+              <span className="text-[10px] min-w-10 text-center">2000% fijo</span>
             </div>
           </div>
           <div ref={viewportRef} onScroll={syncMinimap} className="p-3 sm:p-5 bg-[#F7F7F5] overflow-auto h-[72vh] min-h-[520px]">
@@ -308,7 +289,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </div>
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            Usá "Plano completo" para ver todo el desarrollo de punta a punta, o "Vista detalle" para recorrer los lotes con gran tamaño y líneas nítidas.
+            Zoom fijo al 2000% con líneas finas nítidas CAD. Hacé clic en cualquier sector del Mapa general o desplazate con el mouse/pantalla para recorrer las parcelas.
           </div>
         </aside>
       </section>
