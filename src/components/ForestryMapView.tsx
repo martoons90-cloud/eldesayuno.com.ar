@@ -7,14 +7,14 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
-// Lámina CAD completa que abarca la totalidad del territorio y los loteos subdivididos.
-const MAP_SOURCE = '/forestry-map-full.svg?revision=plano-completo-v5';
+// Lámina CAD de líneas finas con detalle nítido y completo de cada lote, manzana y ochava.
+const MAP_SOURCE = '/forestry-map.svg?revision=plano-lineas-finas-v6';
 // El mapa general muestra la lámina completa de referencia y ubica la zona visible.
 const MAP_OVERVIEW_SOURCE = MAP_SOURCE;
 
 /**
- * Vista del plano forestal completo con navegación interactiva, zoom dinámico
- * y prueba de marcado por "balde de pintura".
+ * Vista del plano forestal con líneas finas CAD, navegación fluida,
+ * zoom con encuadre óptimo y prueba de marcado de parcelas ("balde de pintura").
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -22,7 +22,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const hasInitialScrolledRef = useRef(false);
   const focalPointRef = useRef<{ x: number; y: number } | null>(null);
   const [markedAreas, setMarkedAreas] = useState(0);
-  const [zoom, setZoom] = useState(5);
+  const [zoom, setZoom] = useState(3);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 25, height: 25 });
   const [message, setMessage] = useState('Tocá dentro de una parcela para probar el marcado.');
 
@@ -54,11 +54,9 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
       if (!hasInitialScrolledRef.current && viewportRef.current) {
         hasInitialScrolledRef.current = true;
-        // Encuadrar inicialmente en el sector de loteos subdivididos (x ~ 257, y ~ 488)
-        const targetX = Math.round(canvas.width * (257 / MAP_WIDTH) - viewportRef.current.clientWidth / 2);
-        const targetY = Math.round(canvas.height * (488 / MAP_HEIGHT) - viewportRef.current.clientHeight / 2);
-        viewportRef.current.scrollLeft = Math.max(0, targetX);
-        viewportRef.current.scrollTop = Math.max(0, targetY);
+        // Encuadre inicial idéntico a la captura de referencia aprobada
+        viewportRef.current.scrollLeft = Math.round((canvas.width - viewportRef.current.clientWidth) * 0.28);
+        viewportRef.current.scrollTop = Math.round((canvas.height - viewportRef.current.clientHeight) * 0.31);
       } else if (focalPointRef.current && viewportRef.current) {
         const targetX = Math.round(focalPointRef.current.x * canvas.width - viewportRef.current.clientWidth / 2);
         const targetY = Math.round(focalPointRef.current.y * canvas.height - viewportRef.current.clientHeight / 2);
@@ -75,7 +73,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   useEffect(() => { drawBaseMap(); }, [zoom]);
 
   const handleZoomChange = (nextZoom: number) => {
-    const clamped = Math.max(1, Math.min(8, Number(nextZoom.toFixed(1))));
+    const clamped = Math.max(1, Math.min(6, Number(nextZoom.toFixed(1))));
     if (clamped === zoom) return;
     const viewport = viewportRef.current;
     const canvas = canvasRef.current;
@@ -165,7 +163,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano CAD completo en fondo blanco y líneas negras. Recorrélo con desplazamiento y ubicá tu posición en el mapa general.
+            Plano CAD en fondo blanco y líneas negras con detalle de lotes y manzanas. Recorrélo con desplazamiento y ubicá tu posición en el mapa general.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -181,14 +179,14 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal completo</span>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal detallado</span>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-emerald-100">Rueda o barras para recorrer</span>
               <button type="button" onClick={() => handleZoomChange(zoom - 0.5)} disabled={zoom <= 1} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Alejar">
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
               <span className="text-[10px] min-w-8 text-center">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => handleZoomChange(zoom + 0.5)} disabled={zoom >= 8} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Acercar">
+              <button type="button" onClick={() => handleZoomChange(zoom + 0.5)} disabled={zoom >= 6} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Acercar">
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -209,7 +207,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
             <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general</p>
             <div onPointerDown={focusFromMinimap} className="relative aspect-[1180/1044] bg-black border border-[#202020] cursor-pointer overflow-hidden" title="Tocá una zona para ir allí">
-              <img src={MAP_OVERVIEW_SOURCE} alt="Vista general de todo el plano forestal" className="absolute inset-0 w-full h-full invert opacity-90" />
+              <img src={MAP_OVERVIEW_SOURCE} alt="Vista general del plano forestal" className="absolute inset-0 w-full h-full invert opacity-90" />
               <div className="absolute border-2 border-[#E8B64B] bg-[#E8B64B]/15 pointer-events-none" style={{ left: `${viewportBox.left}%`, top: `${viewportBox.top}%`, width: `${viewportBox.width}%`, height: `${viewportBox.height}%` }} />
             </div>
             <p className="text-[10px] text-[#637568] leading-relaxed">El marco dorado indica la zona visible. Tocá en este mapa para moverte directamente.</p>
@@ -220,7 +218,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           </div>
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            El mapa principal muestra la lámina completa con zoom para recorrer los lotes. El marco dorado del mapa general ubica tu posición en todo el territorio.
+            El mapa principal conserva la lámina con líneas finas CAD nítidas y zoom para recorrer los lotes. El marco dorado del mapa general ubica tu posición.
           </div>
         </aside>
       </section>
