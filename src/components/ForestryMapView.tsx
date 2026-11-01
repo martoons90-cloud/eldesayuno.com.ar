@@ -10,6 +10,9 @@ const MAP_HEIGHT = 1044;
 // Esta es la lámina CAD de líneas finas y completas: conserva los límites de
 // cada lote sin convertir el plano en una mancha negra al acercar.
 const MAP_SOURCE = '/forestry-map.svg?revision=lineas-completas-v3';
+// El mapa general necesita abarcar el plano completo, no solo el sector que
+// está ampliado en el lienzo principal.
+const MAP_OVERVIEW_SOURCE = '/forestry-map-full.svg?revision=plano-entero-v1';
 
 /**
  * Prueba visual de selección por "balde de pintura" sobre el detalle del
@@ -168,7 +171,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
             <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general</p>
             <div onPointerDown={focusFromMinimap} className="relative aspect-[1180/1044] bg-black border border-[#202020] cursor-pointer overflow-hidden" title="Tocá una zona para ir allí">
-              <img src={MAP_SOURCE} alt="Vista general del plano forestal" className="absolute inset-0 w-full h-full invert opacity-90" />
+              <img src={MAP_OVERVIEW_SOURCE} alt="Vista general de todo el plano forestal" className="absolute inset-0 w-full h-full invert opacity-90" />
               <div className="absolute border-2 border-[#E8B64B] bg-[#E8B64B]/15 pointer-events-none" style={{ left: `${viewportBox.left}%`, top: `${viewportBox.top}%`, width: `${viewportBox.width}%`, height: `${viewportBox.height}%` }} />
             </div>
             <p className="text-[10px] text-[#637568] leading-relaxed">El marco dorado indica la zona visible. Tocá en este mapa para moverte directamente.</p>
