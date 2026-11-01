@@ -7,12 +7,9 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
-// El plano grande es la base tanto para el recorrido como para el mapa
-// general. Conserva el trazo fino de la vista aprobada.
-const MAP_SOURCE = '/forestry-map-full.svg?revision=plano-grande-lineas-finas-v2';
-// El mapa general y el plano navegable usan exactamente la misma lámina.
-// Así la miniatura contiene el plano entero y el marco dorado coincide con la
-// zona que se está recorriendo arriba.
+// Lámina CAD con trazado detallado y nítido de cada lote y manzana.
+const MAP_SOURCE = '/forestry-map.svg?revision=plano-dxf-detalle-v4';
+// El mapa general muestra la lámina completa de referencia y ubica la zona visible.
 const MAP_OVERVIEW_SOURCE = MAP_SOURCE;
 
 /**
@@ -23,6 +20,7 @@ const MAP_OVERVIEW_SOURCE = MAP_SOURCE;
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const hasInitialScrolledRef = useRef(false);
   const [markedAreas, setMarkedAreas] = useState(0);
   const [zoom, setZoom] = useState(3);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 25, height: 25 });
@@ -53,6 +51,13 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       context.fillStyle = '#ffffff';
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(map, 0, 0, canvas.width, canvas.height);
+
+      if (!hasInitialScrolledRef.current && viewportRef.current) {
+        hasInitialScrolledRef.current = true;
+        viewportRef.current.scrollLeft = Math.round((canvas.width - viewportRef.current.clientWidth) * 0.28);
+        viewportRef.current.scrollTop = Math.round((canvas.height - viewportRef.current.clientHeight) * 0.31);
+      }
+
       requestAnimationFrame(syncMinimap);
     };
     map.src = MAP_SOURCE;
@@ -70,7 +75,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const startY = Math.floor((event.clientY - bounds.top) * (canvas.height / bounds.height));
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
     const { data } = image;
-    const startIndex = (startY * MAP_WIDTH + startX) * 4;
+    const startIndex = (startY * canvas.width + startX) * 4;
 
     // Si se toca una línea negra, la persona debe tocar dentro de la parcela.
     if (data[startIndex] < 220 || data[startIndex + 1] < 220 || data[startIndex + 2] < 220) {
@@ -137,7 +142,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano CAD completo en fondo blanco y líneas negras. Recorrélo con desplazamiento y ubicá tu posición en el mapa general.
+            Plano CAD en fondo blanco y líneas negras con detalle de lotes y manzanas. Recorrélo con desplazamiento y ubicá tu posición en el mapa general.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -153,8 +158,17 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal completo</span>
-            <div className="flex items-center gap-2"><span className="text-[10px] text-emerald-100">Rueda o barras para recorrer</span><button type="button" onClick={() => setZoom((value) => Math.max(2, Number((value - 0.5).toFixed(1))))} className="p-1 hover:bg-white/15 cursor-pointer" title="Alejar"><ZoomOut className="w-3.5 h-3.5" /></button><span className="text-[10px] min-w-8 text-center">{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(6, Number((value + 0.5).toFixed(1))))} className="p-1 hover:bg-white/15 cursor-pointer" title="Acercar"><ZoomIn className="w-3.5 h-3.5" /></button></div>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal detallado</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-emerald-100">Rueda o barras para recorrer</span>
+              <button type="button" onClick={() => setZoom((value) => Math.max(1, Number((value - 0.5).toFixed(1))))} className="p-1 hover:bg-white/15 cursor-pointer" title="Alejar">
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[10px] min-w-8 text-center">{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => setZoom((value) => Math.min(6, Number((value + 0.5).toFixed(1))))} className="p-1 hover:bg-white/15 cursor-pointer" title="Acercar">
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
           <div ref={viewportRef} onScroll={syncMinimap} className="p-3 sm:p-5 bg-[#F7F7F5] overflow-auto h-[72vh] min-h-[520px]">
             <canvas
