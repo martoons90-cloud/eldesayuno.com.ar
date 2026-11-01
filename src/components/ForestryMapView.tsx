@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { ArrowLeft, Eraser, Eye, LayoutGrid, MapPinned, MousePointer2, PaintBucket, TreePine, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface ForestryMapViewProps {
   onGoToIncome: () => void;
 }
 
-const MAP_WIDTH = 1180;
-const MAP_HEIGHT = 1044;
-// Lámina CAD con trazado detallado y nítido de cada lote, manzana y ochava.
-const MAP_SOURCE = '/forestry-map.svg?revision=plano-lineas-finas-v7';
-// El mapa general muestra la lámina completa de referencia y ubica la zona visible.
-const MAP_OVERVIEW_SOURCE = MAP_SOURCE;
+const MAP_WIDTH = 800;
+const MAP_HEIGHT = 600;
+const MAP_SOURCE = '/forestry-plan.pdf?revision=plano-grande-original-v1';
+const MAP_OVERVIEW_SOURCE = '/forestry-plan-overview.png?revision=plano-grande-original-v1';
+
+GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 /**
  * Vista del plano forestal completo con líneas finas CAD, navegación fluida,
@@ -20,6 +22,8 @@ const MAP_OVERVIEW_SOURCE = MAP_SOURCE;
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const pdfDocumentRef = useRef<PDFDocumentProxy | null>(null);
+  const renderSequenceRef = useRef(0);
   const hasInitialScrolledRef = useRef(false);
   const focalPointRef = useRef<{ x: number; y: number } | null>(null);
   const [markedAreas, setMarkedAreas] = useState(0);
@@ -42,21 +46,41 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     });
   };
 
-  const drawBaseMap = () => {
+  const drawBaseMap = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // Alta resolución de renderizado (mínimo 2x) para que ninguna línea fina se atenúe ni desaparezca
-    const renderScale = Math.max(2, zoom);
-    canvas.width = Math.round(MAP_WIDTH * renderScale);
-    canvas.height = Math.round(MAP_HEIGHT * renderScale);
+    const renderSequence = ++renderSequenceRef.current;
+    canvas.width = Math.round(MAP_WIDTH * zoom);
+    canvas.height = Math.round(MAP_HEIGHT * zoom);
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
-    const map = new Image();
-    map.onload = () => {
+
+    try {
+      const pdf = pdfDocumentRef.current ?? await getDocument({ url: MAP_SOURCE }).promise;
+      pdfDocumentRef.current = pdf;
+      const page = await pdf.getPage(1);
+      const pdfViewport = page.getViewport({ scale: zoom });
+      if (renderSequence !== renderSequenceRef.current) return;
+
+      canvas.width = Math.round(pdfViewport.width);
+      canvas.height = Math.round(pdfViewport.height);
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = '#ffffff';
       context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(map, 0, 0, canvas.width, canvas.height);
+      await page.render({ canvas, viewport: pdfViewport, background: '#ffffff' }).promise;
+      if (renderSequence !== renderSequenceRef.current) return;
+
+      // El PDF trae trazos grises y rojos. Se unifican en negro fino para
+      // conservar toda la geometría legible sobre fondo blanco.
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+      for (let index = 0; index < pixels.data.length; index += 4) {
+        if (pixels.data[index] < 248 || pixels.data[index + 1] < 248 || pixels.data[index + 2] < 248) {
+          pixels.data[index] = 18;
+          pixels.data[index + 1] = 18;
+          pixels.data[index + 2] = 18;
+        }
+      }
+      context.putImageData(pixels, 0, 0);
 
       if (!hasInitialScrolledRef.current && viewportRef.current) {
         hasInitialScrolledRef.current = true;
@@ -77,14 +101,15 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       }
 
       requestAnimationFrame(syncMinimap);
-    };
-    map.src = MAP_SOURCE;
+    } catch {
+      setMessage('No se pudo cargar el plano original. Actualizá la página para reintentar.');
+    }
   };
 
-  useEffect(() => { drawBaseMap(); }, [zoom]);
+  useEffect(() => { void drawBaseMap(); }, [zoom]);
 
   const handleZoomChange = (nextZoom: number) => {
-    const clamped = Math.max(0.4, Math.min(4, Number(nextZoom.toFixed(2))));
+    const clamped = Math.max(0.4, Math.min(10, Number(nextZoom.toFixed(2))));
     if (clamped === zoom) return;
     const viewport = viewportRef.current;
     if (viewport) {
@@ -152,7 +177,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
 
     if (paintedPixels >= maxPixels) {
-      drawBaseMap();
+      void drawBaseMap();
       setMessage('Esta zona se comunica con una superficie muy grande. Para marcarla bien habrá que cerrar esas líneas del plano.');
       return;
     }
@@ -163,7 +188,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   };
 
   const resetTest = () => {
-    drawBaseMap();
+    void drawBaseMap();
     setMarkedAreas(0);
     setMessage('Plano restablecido. Podés volver a probar otra parcela.');
   };
@@ -217,11 +242,11 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> Plano Forestal · {zoom <= 1 ? 'Plano completo' : 'Detalle de lotes'}</span>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-emerald-100 hidden sm:inline">Rueda o barras para recorrer</span>
-              <button type="button" onClick={() => handleZoomChange(zoom - 0.25)} disabled={zoom <= 0.4} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Alejar">
+              <button type="button" onClick={() => handleZoomChange(zoom - 0.5)} disabled={zoom <= 0.4} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Alejar">
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
               <span className="text-[10px] min-w-8 text-center">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => handleZoomChange(zoom + 0.25)} disabled={zoom >= 4} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Acercar">
+              <button type="button" onClick={() => handleZoomChange(zoom + 0.5)} disabled={zoom >= 10} className="p-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Acercar">
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -246,8 +271,8 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-950 leading-relaxed">{message}</div>
           <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
             <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general</p>
-            <div onPointerDown={focusFromMinimap} className="relative aspect-[1180/1044] bg-black border border-[#202020] cursor-pointer overflow-hidden" title="Tocá una zona para ir allí">
-              <img src={MAP_OVERVIEW_SOURCE} alt="Vista general del plano forestal" className="absolute inset-0 w-full h-full invert opacity-90" />
+            <div onPointerDown={focusFromMinimap} className="relative aspect-[4/3] bg-white border border-[#202020] cursor-pointer overflow-hidden" title="Tocá una zona para ir allí">
+              <img src={MAP_OVERVIEW_SOURCE} alt="Vista general de todo el plano forestal" className="absolute inset-0 w-full h-full object-contain" />
               <div className="absolute border-2 border-[#E8B64B] bg-[#E8B64B]/15 pointer-events-none" style={{ left: `${viewportBox.left}%`, top: `${viewportBox.top}%`, width: `${viewportBox.width}%`, height: `${viewportBox.height}%` }} />
             </div>
             <p className="text-[10px] text-[#637568] leading-relaxed">El marco dorado indica la zona visible. Tocá en este mapa para moverte directamente.</p>
