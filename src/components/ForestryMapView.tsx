@@ -8,8 +8,8 @@ interface ForestryMapViewProps {
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
 const MAP_SOURCE = {
-  full: '/forestry-map-full.svg',
-  detail: '/forestry-map.svg',
+  sector1: '/forestry-sector-1.svg',
+  sector2: '/forestry-sector-2.svg',
 } as const;
 
 /**
@@ -19,10 +19,10 @@ const MAP_SOURCE = {
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [mapScope, setMapScope] = useState<'full' | 'detail'>('full');
+  const [mapScope, setMapScope] = useState<'sector1' | 'sector2'>('sector1');
   const [zoom, setZoom] = useState(1);
   const [markedAreas, setMarkedAreas] = useState(0);
-  const [message, setMessage] = useState('Mapa completo: usá el zoom para acercarte y tocá dentro de una parcela para probar el marcado.');
+  const [message, setMessage] = useState('Sector 1 cargado. Usá el zoom para acercarte y tocá dentro de una parcela para probar el marcado.');
 
   const drawBaseMap = () => {
     const canvas = canvasRef.current;
@@ -43,9 +43,9 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     drawBaseMap();
     setMarkedAreas(0);
     setZoom(1);
-    setMessage(mapScope === 'full'
-      ? 'Mapa completo cargado. Usá el zoom para acercarte a la zona del loteo.'
-      : 'Detalle del loteo cargado. Tocá dentro de una parcela para probar el marcado.');
+    setMessage(mapScope === 'sector1'
+      ? 'Sector 1 cargado. Usá el zoom para acercarte a la zona del loteo.'
+      : 'Sector 2 cargado. Tocá dentro de una parcela para probar el marcado.');
   }, [mapScope]);
 
   const handlePaint = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -102,7 +102,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     setMessage('Plano restablecido. Podés volver a probar otra parcela.');
   };
 
-  const changeMapScope = (scope: 'full' | 'detail') => {
+  const changeMapScope = (scope: 'sector1' | 'sector2') => {
     if (scope !== mapScope) setMapScope(scope);
   };
 
@@ -117,15 +117,15 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano CAD en fondo blanco y líneas negras. Probá el marcado antes de vincular cada lote con su padrón e ingreso.
+            Dos sectores operativos del plano CAD, en fondo blanco y líneas negras. Probá el marcado antes de vincular cada lote con su padrón e ingreso.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => changeMapScope('full')} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${mapScope === 'full' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#163323] hover:bg-[#F4EFE6]'}`}>
-            Mapa completo
+          <button type="button" onClick={() => changeMapScope('sector1')} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${mapScope === 'sector1' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#163323] hover:bg-[#F4EFE6]'}`}>
+            Sector 1 · Loteo principal
           </button>
-          <button type="button" onClick={() => changeMapScope('detail')} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${mapScope === 'detail' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#163323] hover:bg-[#F4EFE6]'}`}>
-            Detalle loteo
+          <button type="button" onClick={() => changeMapScope('sector2')} className={`px-3 py-2 border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer ${mapScope === 'sector2' ? 'bg-[#1B3B2B] border-[#1B3B2B] text-white' : 'bg-white border-[#DCD4C0] text-[#163323] hover:bg-[#F4EFE6]'}`}>
+            Sector 2 · Loteo menor
           </button>
           <button type="button" onClick={resetTest} className="px-3 py-2 bg-white border border-[#DCD4C0] text-xs font-bold uppercase tracking-wider text-[#163323] hover:bg-[#F4EFE6] flex items-center gap-1.5 cursor-pointer">
             <Eraser className="w-3.5 h-3.5" /> Limpiar prueba
@@ -139,7 +139,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
         <div className="bg-white border border-[#DCD4C0] shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-[#163323] text-white flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> {mapScope === 'full' ? 'Plano Forestal Completo' : 'Detalle del Loteo'}</span>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><MapPinned className="w-4 h-4 text-[#BFA270]" /> {mapScope === 'sector1' ? 'Sector 1 · Loteo principal' : 'Sector 2 · Loteo menor'}</span>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setZoom((current) => Math.max(1, Number((current - 0.25).toFixed(2))))} disabled={zoom <= 1} className="p-1 text-white hover:bg-white/15 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer" title="Alejar"><ZoomOut className="w-4 h-4" /></button>
               <span className="text-[10px] text-emerald-100 min-w-9 text-center">{Math.round(zoom * 100)}%</span>
