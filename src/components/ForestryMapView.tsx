@@ -7,6 +7,14 @@ const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
 const MAP_SOURCE = '/forestry-map-full.svg';
 const ORIGINAL_DXF_SOURCE = '/forestry-original.dxf';
+// Límites de modelo declarados por el propio DXF. Se usan para evitar que las
+// coordenadas globales del plano desplacen el encuadre fuera del visor.
+const ORIGINAL_DXF_EXTENTS = {
+  minX: 3557088.065824,
+  maxX: 3598138.919864098,
+  minY: 7314183.411286832,
+  maxY: 7334470.404189366,
+};
 type SelectionBox = { startX: number; startY: number; endX: number; endY: number };
 type ForestryStatus = 'pendiente' | 'en_proceso' | 'deforestado';
 type LotForm = { padron: string; product: string; cubicMeters: string; income: string; status: ForestryStatus };
@@ -117,6 +125,14 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         },
       }).then(() => {
         if (cancelled) return;
+        const origin = loadedViewer.GetOrigin();
+        loadedViewer.FitView(
+          ORIGINAL_DXF_EXTENTS.minX - origin.x,
+          ORIGINAL_DXF_EXTENTS.maxX - origin.x,
+          ORIGINAL_DXF_EXTENTS.minY - origin.y,
+          ORIGINAL_DXF_EXTENTS.maxY - origin.y,
+          0.04,
+        );
         setDxfLoading(false);
         setMessage('DXF original cargado. Usá la rueda para hacer zoom y arrastrá para recorrer el plano.');
       }).catch(() => {
