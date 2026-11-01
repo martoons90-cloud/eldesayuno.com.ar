@@ -20,6 +20,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const mapContentRef = useRef<HTMLDivElement>(null);
+  const vectorMapRef = useRef<HTMLDivElement>(null);
   const lastPaintIndexesRef = useRef<number[]>([]);
   const [zoom, setZoom] = useState(1);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -27,6 +28,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const [markedAreas, setMarkedAreas] = useState(0);
   const [message, setMessage] = useState('Plano CAD cargado. Usá el zoom para acercarte y tocá dentro de una parcela para probar el marcado.');
   const [lotForm, setLotForm] = useState<LotForm | null>(null);
+  const [mapMarkup, setMapMarkup] = useState('');
 
   const prepareMap = () => {
     const paintCanvas = paintCanvasRef.current;
@@ -57,6 +59,27 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     setZoom(1);
     setMessage('Plano CAD cargado. Usá el zoom para acercarte a la zona del loteo.');
   }, []);
+
+  // El SVG se inserta en la página para conservar cada línea original del CAD
+  // y compensar su grosor en forma inversa al zoom.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(MAP_SOURCE)
+      .then((response) => response.ok ? response.text() : Promise.reject(new Error('No se pudo cargar el plano.')))
+      .then((markup) => { if (!cancelled) setMapMarkup(markup); })
+      .catch(() => { /* La imagen de respaldo se mantiene visible. */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const svg = vectorMapRef.current?.querySelector('svg');
+    const drawing = svg?.querySelector('g');
+    if (!svg || !drawing) return;
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.style.display = 'block';
+    drawing.setAttribute('stroke-width', (0.65 / zoom).toFixed(4));
+  }, [mapMarkup, zoom]);
 
   const pointFromEvent = (clientX: number, clientY: number) => {
     const content = mapContentRef.current;
@@ -201,7 +224,11 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
               style={{ width: `${Math.round(MAP_WIDTH * zoom)}px`, minWidth: `${Math.round(MAP_WIDTH * zoom)}px`, aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}` }}
               className="relative bg-white border border-[#202020] shadow-sm"
             >
-              <img src={MAP_SOURCE} alt="Plano forestal vectorial" draggable={false} className="absolute inset-0 w-full h-full select-none" />
+              {mapMarkup ? (
+                <div ref={vectorMapRef} className="absolute inset-0 w-full h-full select-none" dangerouslySetInnerHTML={{ __html: mapMarkup }} />
+              ) : (
+                <img src={MAP_SOURCE} alt="Plano forestal vectorial" draggable={false} className="absolute inset-0 w-full h-full select-none" />
+              )}
               <canvas ref={paintCanvasRef} width={MAP_WIDTH} height={MAP_HEIGHT} className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true" />
               <div onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} className={`absolute inset-0 touch-none ${selectionMode ? 'cursor-crosshair' : 'cursor-pointer'}`} aria-label="Plano forestal clickeable" />
               {selection && <div className="absolute border-2 border-emerald-700 bg-emerald-300/20 pointer-events-none" style={selectionStyle} />}
