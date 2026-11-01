@@ -7,9 +7,9 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
-// El plano sectorial conserva la grilla completa de lotes. La revisión en la
-// URL evita que un teléfono reutilice el SVG reducido que pudo quedar en caché.
-const MAP_SOURCE = '/forestry-sector-1.svg?revision=detallado-v2';
+// Esta es la lámina CAD de líneas finas y completas: conserva los límites de
+// cada lote sin convertir el plano en una mancha negra al acercar.
+const MAP_SOURCE = '/forestry-map.svg?revision=lineas-completas-v3';
 
 /**
  * Prueba visual de selección por "balde de pintura" sobre el detalle del
