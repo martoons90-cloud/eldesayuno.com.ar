@@ -7,9 +7,9 @@ interface ForestryMapViewProps {
 
 const MAP_WIDTH = 1180;
 const MAP_HEIGHT = 1044;
-// Esta es la lámina CAD de líneas finas y completas: conserva los límites de
-// cada lote sin convertir el plano en una mancha negra al acercar.
-const MAP_SOURCE = '/forestry-map.svg?revision=lineas-completas-v3';
+// El plano grande es la base tanto para el recorrido como para el mapa
+// general. Conserva el trazo fino de la vista aprobada.
+const MAP_SOURCE = '/forestry-map-full.svg?revision=plano-grande-lineas-finas-v2';
 // El mapa general y el plano navegable usan exactamente la misma lámina.
 // Así la miniatura contiene el plano entero y el marco dorado coincide con la
 // zona que se está recorriendo arriba.
