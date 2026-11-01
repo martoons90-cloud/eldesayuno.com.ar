@@ -8,19 +8,25 @@ interface ForestryMapViewProps {
 interface MarkedParcel {
   id: string;
   d: string;
+  bbox: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  };
 }
 
 const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
 const BUFFER_WIDTH = 4000;
 const BUFFER_HEIGHT = 3000;
-const SVG_SOURCE = '/forestry-plan.svg?revision=vector-cad-v2';
+const SVG_SOURCE = '/forestry-plan.svg?revision=connected-lots-v4';
 
 /**
  * Vista del plano forestal en formato 100% vectorial CAD nativo (SVG):
  * - Líneas finas nítidas que no se pixelan sin importar cuánto zoom se aplique.
- * - Balde de pintura perfecto: rellena cada lote (cuadradito) de forma sólida,
- *   nítida y definida sin sombras borrosas ni desbordes.
+ * - Balde de pintura perfecto para selección individual de lotes (cuadraditos).
+ * - Delimitación precisa de manzanas y parcelas sin filtraciones.
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -30,7 +36,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const [zoom, setZoom] = useState(50); // 5000% zoom inicial
   const prevZoomRef = useRef(zoom);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
-  const [message, setMessage] = useState('Hacé clic dentro de cualquier parcela (cuadradito) para pintarla.');
+  const [message, setMessage] = useState('Hacé clic dentro de cualquier lote (cuadradito) para seleccionarlo individualmente.');
 
   const syncMinimap = () => {
     const viewport = viewportRef.current;
@@ -107,6 +113,25 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const clickX = event.clientX - bounds.left;
     const clickY = event.clientY - bounds.top;
 
+    const clickSvgX = (clickX / bounds.width) * MAP_WIDTH;
+    const clickSvgY = (clickY / bounds.height) * MAP_HEIGHT;
+
+    // Permitir desmarcar haciendo clic sobre un lote ya pintado
+    const existingIndex = markedParcels.findIndex(
+      (p) =>
+        clickSvgX >= p.bbox.minX &&
+        clickSvgX <= p.bbox.maxX &&
+        clickSvgY >= p.bbox.minY &&
+        clickSvgY <= p.bbox.maxY
+    );
+
+    if (existingIndex !== -1) {
+      setMarkedParcels((prev) => prev.filter((_, i) => i !== existingIndex));
+      loadOffscreenBuffer();
+      setMessage('Lote desmarcado.');
+      return;
+    }
+
     // Convertir coordenadas del click al espacio del buffer raster
     const scaleX = BUFFER_WIDTH / bounds.width;
     const scaleY = BUFFER_HEIGHT / bounds.height;
@@ -131,7 +156,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       return data[idx] >= 210 && data[idx + 1] >= 210 && data[idx + 2] >= 210;
     };
 
-    // Auto-ajuste para facilitar el clic: si tocó sobre una línea, busca el centro blanco más cercano
+    // Auto-ajuste para facilitar el clic dentro del lote
     const localClickX = rawStartX - x0;
     const localClickY = rawStartY - y0;
     let startX = -1;
@@ -159,17 +184,18 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
 
     if (startX === -1) {
-      setMessage('Tocaste una línea del plano. Hacé clic dentro del área blanca de una parcela.');
+      setMessage('Tocaste una línea del plano. Hacé clic dentro del área blanca de un lote.');
       return;
     }
 
-    // Flood fill en 4 direcciones
+    // Flood fill delimitado a un lote individual
     const visited = new Uint8Array(localW * localH);
     const pendingX: number[] = [startX];
     const pendingY: number[] = [startY];
     visited[startY * localW + startX] = 1;
     let paintedPixels = 1;
-    const maxPixels = 35_000;
+    // Límite calibrado para un lote individual en buffer 4000x3000
+    const maxPixels = 4_000;
 
     while (pendingX.length > 0 && paintedPixels < maxPixels) {
       const cx = pendingX.pop()!;
@@ -198,7 +224,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
 
     if (paintedPixels >= maxPixels) {
-      setMessage('Esta zona se comunica con una superficie muy grande o no cerrada. Para marcarla habrá que cerrar esas líneas.');
+      setMessage('Esta zona sobrepasa el tamaño de un lote individual o no está cerrada por completo.');
       return;
     }
 
@@ -206,6 +232,10 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const svgScaleX = MAP_WIDTH / BUFFER_WIDTH;
     const svgScaleY = MAP_HEIGHT / BUFFER_HEIGHT;
     let pathD = '';
+    let minSvgX = Infinity;
+    let maxSvgX = -Infinity;
+    let minSvgY = Infinity;
+    let maxSvgY = -Infinity;
 
     for (let y = 0; y < localH; y++) {
       let inSpan = false;
@@ -225,6 +255,10 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             const sw = (x - spanStart) * svgScaleX;
             const sh = svgScaleY;
             pathD += `M${sx.toFixed(2)} ${sy.toFixed(2)}h${sw.toFixed(2)}v${sh.toFixed(2)}h-${sw.toFixed(2)}z `;
+            minSvgX = Math.min(minSvgX, sx);
+            maxSvgX = Math.max(maxSvgX, sx + sw);
+            minSvgY = Math.min(minSvgY, sy);
+            maxSvgY = Math.max(maxSvgY, sy + sh);
           }
         }
       }
@@ -234,13 +268,17 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         const sw = (localW - spanStart) * svgScaleX;
         const sh = svgScaleY;
         pathD += `M${sx.toFixed(2)} ${sy.toFixed(2)}h${sw.toFixed(2)}v${sh.toFixed(2)}h-${sw.toFixed(2)}z `;
+        minSvgX = Math.min(minSvgX, sx);
+        maxSvgX = Math.max(maxSvgX, sx + sw);
+        minSvgY = Math.min(minSvgY, sy);
+        maxSvgY = Math.max(maxSvgY, sy + sh);
       }
     }
 
     pathD = pathD.trim();
     if (!pathD) return;
 
-    // Actualizar datos del buffer para evitar sobrepintar la misma parcela
+    // Actualizar datos del buffer para evitar sobrepintar el mismo lote
     for (let y = 0; y < localH; y++) {
       const rowOffset = y * localW;
       for (let x = 0; x < localW; x++) {
@@ -257,16 +295,22 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const newParcel: MarkedParcel = {
       id: `${Date.now()}-${Math.random()}`,
       d: pathD,
+      bbox: {
+        minX: minSvgX,
+        maxX: maxSvgX,
+        minY: minSvgY,
+        maxY: maxSvgY,
+      },
     };
 
     setMarkedParcels((prev) => [...prev, newParcel]);
-    setMessage(`¡Parcela pintada perfectamente! Total marcadas: ${markedParcels.length + 1}.`);
+    setMessage(`¡Lote seleccionado individualmente! Total marcados: ${markedParcels.length + 1}.`);
   };
 
   const resetTest = () => {
     setMarkedParcels([]);
     loadOffscreenBuffer();
-    setMessage('Plano restablecido. Podés volver a probar otra parcela.');
+    setMessage('Plano restablecido. Podés volver a seleccionar lotes.');
   };
 
   const focusFromMinimap = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -293,7 +337,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano 100% vectorial con bote de pintura de alta definición. Hacé clic dentro de cualquier cuadradito para rellenar la parcela en verde.
+            Plano 100% vectorial con selección individual de lotes. Hacé clic dentro de cualquier parcela para marcarla o desmarcarla en verde nítido.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -366,7 +410,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
               onPointerDown={handlePaint}
               className="bg-white border border-[#202020] shadow-sm mx-auto select-none cursor-crosshair"
             >
-              {/* Plano CAD Vectorial base */}
+              {/* Plano CAD Vectorial base con líneas conectadas continuas */}
               <img
                 src={SVG_SOURCE}
                 alt="Plano forestal vectorial CAD"
@@ -374,7 +418,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                 draggable={false}
               />
 
-              {/* Capa de parcelas pintadas con balde de pintura vectorial nítido */}
+              {/* Capa de parcelas seleccionadas individualmente en verde nítido */}
               <svg
                 viewBox="0 0 800 600"
                 className="absolute inset-0 w-full h-full pointer-events-none"
@@ -385,7 +429,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                     key={parcel.id}
                     d={parcel.d}
                     fill="#22C55E"
-                    fillOpacity={0.82}
+                    fillOpacity={0.80}
                     stroke="#15803D"
                     strokeWidth={0.5}
                     vectorEffect="non-scaling-stroke"
@@ -413,12 +457,12 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             <p className="text-[10px] text-[#637568] leading-relaxed">El marco dorado indica la zona visible. Tocá en este mapa para moverte directamente.</p>
           </div>
           <div className="p-3 bg-[#FAF8F5] border border-[#E5DEC9] space-y-2">
-            <div className="flex justify-between"><span className="text-[#637568]">Lotes marcados</span><strong className="font-mono text-[#163323]">{markedParcels.length}</strong></div>
+            <div className="flex justify-between"><span className="text-[#637568]">Lotes seleccionados</span><strong className="font-mono text-[#163323]">{markedParcels.length}</strong></div>
             <div className="flex justify-between"><span className="text-[#637568]">Estado</span><strong className="text-amber-800">Sin guardar</strong></div>
           </div>
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            Balde de pintura vectorial de alta precisión. Cada cuadradito pintado se rellena con color verde sólido definido y sin sombras borrosas.
+            Selección individual por lote. Hacé clic dentro de cualquier cuadradito para pintarlo en verde, o volvé a hacer clic para desmarcarlo.
           </div>
         </aside>
       </section>
