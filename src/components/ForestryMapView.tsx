@@ -3,10 +3,12 @@ import {
   ArrowLeft,
   Check,
   CircleDot,
+  Database,
   Eraser,
   Layers,
   MapPinned,
   MousePointer2,
+  RefreshCw,
   Trash2,
   TreePine,
   X,
@@ -105,6 +107,9 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     return [];
   });
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'offline'>('synced');
+
   const [zoom, setZoom] = useState(50); // 5000% zoom inicial (admite hasta 10000%)
   const prevZoomRef = useRef(zoom);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
@@ -127,14 +132,62 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   const [formAmount, setFormAmount] = useState<string>('0');
   const [formNotes, setFormNotes] = useState('');
 
-  // Persistir en localStorage
+  // 1. Cargar desde la base de datos al montar
   useEffect(() => {
+    let isMounted = true;
+    const fetchFromDb = async () => {
+      try {
+        setIsSyncing(true);
+        const res = await fetch('/api/forestry/lots');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.lots) && isMounted) {
+            // Si la base de datos tiene datos, usarlos y sincronizar localStorage
+            if (json.lots.length > 0) {
+              setMarkedLots(json.lots);
+              try { localStorage.setItem(STORAGE_KEY, JSON.stringify(json.lots)); } catch {}
+            } else if (markedLots.length > 0) {
+              // Si la base de datos estaba vacía pero tenemos datos locales en el cliente, subirlos
+              syncLotsToDatabase(markedLots);
+            }
+            setSyncStatus('synced');
+          }
+        }
+      } catch (err) {
+        console.warn('[Forestry DB] Conectando localmente:', err);
+        setSyncStatus('offline');
+      } finally {
+        if (isMounted) setIsSyncing(false);
+      }
+    };
+
+    fetchFromDb();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Función auxiliar para sincronizar con la base de datos
+  const syncLotsToDatabase = async (lotsToSync: MarkedLot[]) => {
+    setSyncStatus('saving');
+    setIsSyncing(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(markedLots));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lotsToSync));
+      const res = await fetch('/api/forestry/lots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lots: lotsToSync }),
+      });
+      if (res.ok) {
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('offline');
+      }
     } catch (e) {
-      console.error('Error al guardar lotes:', e);
+      console.warn('[Forestry Sync Error]', e);
+      setSyncStatus('offline');
+    } finally {
+      setIsSyncing(false);
     }
-  }, [markedLots]);
+  };
 
   // Sincronizar el marco del minimapa (con 3x de zoom centrado en el loteo)
   const syncMinimap = () => {
@@ -264,26 +317,28 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const parsedAmount = parseFloat(formAmount) || 0;
     const nowIso = new Date().toISOString();
 
+    let updatedList: MarkedLot[] = [];
+
     if (selectedLotId && selectedLotId !== 'new') {
       // Modificar existente
-      setMarkedLots((prev) =>
-        prev.map((lot) =>
-          lot.id === selectedLotId
-            ? {
-                ...lot,
-                status: formStatus,
-                padron: formPadron.trim() || 'S/N',
-                manzana: formManzana.trim(),
-                lote: formLote.trim(),
-                extractedUnit: formUnit,
-                extractedAmount: parsedAmount,
-                notes: formNotes.trim(),
-                updatedAt: nowIso,
-              }
-            : lot
-        )
+      updatedList = markedLots.map((lot) =>
+        lot.id === selectedLotId
+          ? {
+              ...lot,
+              status: formStatus,
+              padron: formPadron.trim() || 'S/N',
+              manzana: formManzana.trim(),
+              lote: formLote.trim(),
+              extractedUnit: formUnit,
+              extractedAmount: parsedAmount,
+              notes: formNotes.trim(),
+              updatedAt: nowIso,
+            }
+          : lot
       );
-      setMessage(`Lote guardado correctamente.`);
+      setMarkedLots(updatedList);
+      syncLotsToDatabase(updatedList);
+      setMessage(`Lote guardado en la base de datos.`);
     } else if (newLotCoords) {
       // Crear nuevo
       const newLot: MarkedLot = {
@@ -301,10 +356,12 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
         updatedAt: nowIso,
       };
 
-      setMarkedLots((prev) => [...prev, newLot]);
+      updatedList = [...markedLots, newLot];
+      setMarkedLots(updatedList);
       setSelectedLotId(newLot.id);
       setNewLotCoords(null);
-      setMessage(`Nuevo lote registrado y guardado.`);
+      syncLotsToDatabase(updatedList);
+      setMessage(`Nuevo lote registrado y guardado en la base de datos.`);
     }
   };
 
@@ -314,18 +371,25 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       setNewLotCoords(null);
       return;
     }
-    setMarkedLots((prev) => prev.filter((lot) => lot.id !== selectedLotId));
+    const lotIdToDelete = selectedLotId;
+    const updatedList = markedLots.filter((lot) => lot.id !== lotIdToDelete);
+    setMarkedLots(updatedList);
     setSelectedLotId(null);
     setNewLotCoords(null);
-    setMessage(`Lote y punto eliminados del plano.`);
+    syncLotsToDatabase(updatedList);
+
+    // Llamada DELETE específica al backend
+    fetch(`/api/forestry/lots/${lotIdToDelete}`, { method: 'DELETE' }).catch(() => {});
+    setMessage(`Lote y punto eliminados de la base de datos.`);
   };
 
   const resetAll = () => {
     if (markedLots.length === 0) return;
-    if (window.confirm('¿Seguro que querés limpiar todos los puntos marcados?')) {
+    if (window.confirm('¿Seguro que querés limpiar todos los puntos marcados? Se borrarán de la base de datos.')) {
       setMarkedLots([]);
       setSelectedLotId(null);
       setNewLotCoords(null);
+      syncLotsToDatabase([]);
       setMessage('Plano restablecido.');
     }
   };
@@ -389,7 +453,29 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Posicionate sobre cualquier círculo para ver sus datos flotantes, o hacé clic sobre el lote para abrir y editar sus datos al costado.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Badge de estado de base de datos */}
+          <div
+            className={`px-2.5 py-1.5 rounded border text-[11px] font-bold flex items-center gap-1.5 ${
+              syncStatus === 'saving'
+                ? 'bg-amber-50 border-amber-300 text-amber-800'
+                : syncStatus === 'synced'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                : 'bg-stone-100 border-stone-300 text-stone-700'
+            }`}
+            title="Estado de persistencia en la base de datos"
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>
+              {syncStatus === 'saving'
+                ? 'Guardando...'
+                : syncStatus === 'synced'
+                ? 'Base de datos sincronizada'
+                : 'Guardado localmente'}
+            </span>
+            {isSyncing && <RefreshCw className="w-3 h-3 animate-spin ml-0.5" />}
+          </div>
+
           <button
             type="button"
             onClick={resetAll}
@@ -859,7 +945,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
               <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2 rounded">
                 <div className="flex items-center justify-between">
                   <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">
-                    Lotes registrados ({markedLots.length})
+                    Lotes en Base de Datos ({markedLots.length})
                   </p>
                 </div>
                 {markedLots.length > 0 ? (
@@ -898,7 +984,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
             <span>
-              <strong>Hover:</strong> cuadro flotante de datos. <strong>Click:</strong> abre la ficha aquí al costado.
+              <strong>Base de datos:</strong> Cada cambio se guarda automáticamente en el servidor y en la base de datos.
             </span>
           </div>
         </aside>

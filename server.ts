@@ -854,7 +854,7 @@ let memoryServerState: Record<string, any> | null = null;
 
 const EMPTY_SERVER_STATE = () => ({
   users: [], bookings: [], blocks: [], settings: {}, rules: [], contacts: [], documents: [],
-  inventory: [], incidents: [], notifications: [], fees: [], expenses: [], cashFlow: [],
+  inventory: [], incidents: [], notifications: [], fees: [], expenses: [], cashFlow: [], forestryLots: [],
 });
 
 function loadServerState(forceDisk = false): Record<string, any> {
@@ -1180,6 +1180,24 @@ async function syncRelationalTablesToSupabase(state: Record<string, any>): Promi
       }));
       try { await supabaseServerClient.from('rules').upsert(rows, { onConflict: 'id' }); } catch {}
     }
+    if (Array.isArray(state.forestryLots) && state.forestryLots.length > 0) {
+      const rows = state.forestryLots.map((l: any) => ({
+        id: l.id,
+        x: l.x,
+        y: l.y,
+        r: l.r || 0.065,
+        status: l.status || 'extraido',
+        padron: l.padron || '',
+        manzana: l.manzana || '',
+        lote: l.lote || '',
+        extracted_unit: l.extractedUnit || 'm3',
+        extracted_amount: l.extractedAmount || 0,
+        notes: l.notes || '',
+        updated_at: l.updatedAt || new Date().toISOString(),
+      }));
+      try { await supabaseServerClient.from('forestry_lots').upsert(rows, { onConflict: 'id' }); } catch {}
+    }
+
   } catch (err: any) {
     console.warn('[Supabase Relational Sync] Notice:', err.message);
   }
@@ -3003,6 +3021,88 @@ app.delete('/api/cash-flow/:id', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Error eliminando transacción de caja' });
   }
 });
+
+// -------------------------------------------------------------
+// CONTROL FORESTAL - LOTES Y EXTRACCIÓN (PERSISTENCIA Y SYNC)
+// -------------------------------------------------------------
+app.get('/api/forestry/lots', (_req, res) => {
+  try {
+    const state = loadServerState();
+    return res.json({ success: true, lots: state.forestryLots || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error cargando lotes forestales' });
+  }
+});
+
+app.post('/api/forestry/lots', async (req, res) => {
+  try {
+    const { lots, lot } = req.body;
+    const state = loadServerState();
+    if (!state.forestryLots) state.forestryLots = [];
+
+    if (Array.isArray(lots)) {
+      state.forestryLots = lots;
+    } else if (lot && lot.id) {
+      const idx = state.forestryLots.findIndex((l: any) => l.id === lot.id);
+      if (idx !== -1) {
+        state.forestryLots[idx] = { ...state.forestryLots[idx], ...lot, updatedAt: new Date().toISOString() };
+      } else {
+        state.forestryLots.push({ ...lot, updatedAt: new Date().toISOString() });
+      }
+    }
+
+    saveServerState(state);
+
+    // Intentar sincronizar en Supabase si está disponible
+    if (supabaseServerClient && Array.isArray(state.forestryLots)) {
+      try {
+        const rows = state.forestryLots.map((l: any) => ({
+          id: l.id,
+          x: l.x,
+          y: l.y,
+          r: l.r || 0.065,
+          status: l.status || 'extraido',
+          padron: l.padron || '',
+          manzana: l.manzana || '',
+          lote: l.lote || '',
+          extracted_unit: l.extractedUnit || 'm3',
+          extracted_amount: l.extractedAmount || 0,
+          notes: l.notes || '',
+          updated_at: l.updatedAt || new Date().toISOString(),
+        }));
+        await supabaseServerClient.from('forestry_lots').upsert(rows, { onConflict: 'id' });
+      } catch (sbErr) {
+        // En caso de cuota excedida en Supabase, ya queda asegurado en app-server-state.json
+      }
+    }
+
+    broadcastSyncEvent('forestry_lots_updated', { lots: state.forestryLots });
+    return res.json({ success: true, count: state.forestryLots.length, lots: state.forestryLots });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error guardando lotes forestales' });
+  }
+});
+
+app.delete('/api/forestry/lots/:id', async (req, res) => {
+  try {
+    const lotId = req.params.id;
+    const state = loadServerState();
+    state.forestryLots = (state.forestryLots || []).filter((l: any) => l.id !== lotId);
+    saveServerState(state);
+
+    if (supabaseServerClient) {
+      try {
+        await supabaseServerClient.from('forestry_lots').delete().eq('id', lotId);
+      } catch {}
+    }
+
+    broadcastSyncEvent('forestry_lots_updated', { lots: state.forestryLots });
+    return res.json({ success: true, count: state.forestryLots.length });
+  } catch (err: unknown) {
+    return res.status(500).json({ success: false, error: 'Error eliminando lote forestal' });
+  }
+});
+
 async function bootstrap() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
