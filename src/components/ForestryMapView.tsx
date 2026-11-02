@@ -7,7 +7,6 @@ import {
   Layers,
   MapPinned,
   MousePointer2,
-  Plus,
   Trash2,
   TreePine,
   X,
@@ -83,8 +82,13 @@ export interface MarkedLot {
 const MAP_WIDTH = 800;
 const MAP_HEIGHT = 600;
 const SVG_SOURCE = '/forestry-plan.svg?v=2.33.00-clean';
+const MINIMAP_SVG_SOURCE = '/forestry-plan-minimap.svg?v=2.33.04-clean';
+
+// Coordenadas del minimapa con el triple de zoom (centrado en el loteo: 280..550 x 200..405)
+const MINIMAP_VB = { x: 280, y: 200, width: 270, height: 205 };
+
 const STORAGE_KEY = 'eldesayuno_forestry_marked_lots_v1';
-const DEFAULT_RADIUS = 0.065; // Medida exacta calibrada para entrar dentro del lote
+const DEFAULT_RADIUS = 0.065; // Medida calibrada para entrar perfectamente dentro del lote
 
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -101,13 +105,12 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     return [];
   });
 
-  const [zoom, setZoom] = useState(50); // 5000% zoom inicial
+  const [zoom, setZoom] = useState(50); // 5000% zoom inicial (admite hasta 10000%)
   const prevZoomRef = useRef(zoom);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
   const [message, setMessage] = useState('Posicionate sobre un punto para ver sus datos o hacé clic para abrirlos al costado.');
 
   // Lote seleccionado para editar/ver en la barra lateral
-  // null = ninguno, 'new' = creando nuevo, string = id de lote existente
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
   const [newLotCoords, setNewLotCoords] = useState<{ x: number; y: number } | null>(null);
 
@@ -133,6 +136,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
   }, [markedLots]);
 
+  // Sincronizar el marco del minimapa (con 3x de zoom centrado en el loteo)
   const syncMinimap = () => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -140,11 +144,23 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const displayHeight = Math.round(MAP_HEIGHT * zoom);
     if (displayWidth <= 0 || displayHeight <= 0) return;
 
+    // Región visible en el plano 800x600:
+    const visX = (viewport.scrollLeft / displayWidth) * MAP_WIDTH;
+    const visY = (viewport.scrollTop / displayHeight) * MAP_HEIGHT;
+    const visW = (viewport.clientWidth / displayWidth) * MAP_WIDTH;
+    const visH = (viewport.clientHeight / displayHeight) * MAP_HEIGHT;
+
+    // Convertir a porcentaje dentro del viewBox del minimapa con triple zoom (280..550 x 200..405)
+    const leftPct = ((visX - MINIMAP_VB.x) / MINIMAP_VB.width) * 100;
+    const topPct = ((visY - MINIMAP_VB.y) / MINIMAP_VB.height) * 100;
+    const widthPct = (visW / MINIMAP_VB.width) * 100;
+    const heightPct = (visH / MINIMAP_VB.height) * 100;
+
     setViewportBox({
-      left: Math.max(0, Math.min(100, (viewport.scrollLeft / displayWidth) * 100)),
-      top: Math.max(0, Math.min(100, (viewport.scrollTop / displayHeight) * 100)),
-      width: Math.min(100, (viewport.clientWidth / displayWidth) * 100),
-      height: Math.min(100, (viewport.clientHeight / displayHeight) * 100),
+      left: Math.max(-10, Math.min(110, leftPct)),
+      top: Math.max(-10, Math.min(110, topPct)),
+      width: Math.max(1, Math.min(120, widthPct)),
+      height: Math.max(1, Math.min(120, heightPct)),
     });
   };
 
@@ -314,16 +330,22 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     }
   };
 
+  // Navegar tocando sobre el minimapa con triple zoom
   const focusFromMinimap = (event: React.PointerEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const x = (event.clientX - bounds.left) / bounds.width;
-    const y = (event.clientY - bounds.top) / bounds.height;
+    const ratioX = (event.clientX - bounds.left) / bounds.width;
+    const ratioY = (event.clientY - bounds.top) / bounds.height;
+
+    const targetSvgX = MINIMAP_VB.x + ratioX * MINIMAP_VB.width;
+    const targetSvgY = MINIMAP_VB.y + ratioY * MINIMAP_VB.height;
+
     const displayW = Math.round(MAP_WIDTH * zoom);
     const displayH = Math.round(MAP_HEIGHT * zoom);
-    viewport.scrollLeft = Math.max(0, Math.round(x * displayW - viewport.clientWidth / 2));
-    viewport.scrollTop = Math.max(0, Math.round(y * displayH - viewport.clientHeight / 2));
+
+    viewport.scrollLeft = Math.max(0, Math.round((targetSvgX / MAP_WIDTH) * displayW - viewport.clientWidth / 2));
+    viewport.scrollTop = Math.max(0, Math.round((targetSvgY / MAP_HEIGHT) * displayH - viewport.clientHeight / 2));
     syncMinimap();
   };
 
@@ -420,7 +442,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                 </button>
               </div>
               <div className="hidden sm:flex items-center gap-1 bg-black/30 p-0.5 rounded border border-white/10">
-                {[20, 30, 50, 75].map((level) => (
+                {[20, 30, 50, 75, 100].map((level) => (
                   <button
                     key={level}
                     type="button"
@@ -786,20 +808,23 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                 {message}
               </div>
 
-              {/* Minimapa */}
+              {/* Minimapa con el triple de zoom (centrado en el loteo) */}
               <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2 rounded">
-                <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general</p>
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general (3x Zoom)</p>
+                  <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100/80 px-1.5 py-0.2 rounded">Enfocado</span>
+                </div>
                 <div
                   onPointerDown={focusFromMinimap}
-                  className="relative aspect-[4/3] bg-white border border-[#202020] cursor-pointer overflow-hidden rounded-xs"
-                  title="Tocá una zona para ir allí"
+                  className="relative aspect-[4/3] bg-white border border-[#202020] cursor-pointer overflow-hidden rounded-xs shadow-2xs"
+                  title="Tocá una zona para ir allí en el plano"
                 >
                   <img
-                    src={SVG_SOURCE}
-                    alt="Vista general de todo el plano forestal"
-                    className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                    src={MINIMAP_SVG_SOURCE}
+                    alt="Vista del loteo con triple zoom"
+                    className="absolute inset-0 w-full h-full object-fill pointer-events-none"
                   />
-                  <svg viewBox="0 0 800 600" className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+                  <svg viewBox="280 200 270 205" className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
                     {markedLots.map((lot) => {
                       const cfg = LOT_STATUSES[lot.status] || LOT_STATUSES.extraido;
                       return (
@@ -807,16 +832,16 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                           key={lot.id}
                           cx={lot.x}
                           cy={lot.y}
-                          r={2.5}
+                          r={1.8}
                           fill={cfg.fill}
                           stroke="#0F172A"
-                          strokeWidth={0.5}
+                          strokeWidth={0.3}
                         />
                       );
                     })}
                   </svg>
                   <div
-                    className="absolute border-2 border-[#E8B64B] bg-[#E8B64B]/15 pointer-events-none"
+                    className="absolute border-2 border-[#E8B64B] bg-[#E8B64B]/20 pointer-events-none transition-all duration-75"
                     style={{
                       left: `${viewportBox.left}%`,
                       top: `${viewportBox.top}%`,
@@ -826,7 +851,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                   />
                 </div>
                 <p className="text-[10px] text-[#637568] leading-relaxed">
-                  El marco dorado indica la zona visible. Tocá para moverte rápidamente.
+                  Loteo ampliado 3x. El marco dorado marca el campo de visión. Tocá para navegar.
                 </p>
               </div>
 
@@ -873,7 +898,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
             <span>
-              <strong>Hover:</strong> muestra el cuadro flotante sobre el lote. <strong>Click:</strong> abre la ficha editable aquí al costado.
+              <strong>Hover:</strong> cuadro flotante de datos. <strong>Click:</strong> abre la ficha aquí al costado.
             </span>
           </div>
         </aside>
