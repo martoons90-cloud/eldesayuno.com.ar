@@ -10,6 +10,7 @@ interface MarkedLot {
   x: number;
   y: number;
   color: string;
+  r: number;
 }
 
 const MAP_WIDTH = 800;
@@ -23,22 +24,29 @@ const COLOR_OPTIONS = [
   { id: 'red', label: 'Rojo (Ocupado)', fill: '#EF4444', stroke: '#B91C1C' },
 ];
 
+const SIZE_OPTIONS = [
+  { id: 'small', label: 'Chico', r: 0.050 },
+  { id: 'normal', label: 'Normal (Lote)', r: 0.065 },
+  { id: 'large', label: 'Grande', r: 0.082 },
+];
+
 /**
  * Vista del plano forestal en formato 100% vectorial CAD nativo (SVG):
  * - Plano original CAD limpio: sin líneas raras de límites externos ni curvas topográficas cruzadas.
- * - Marcado de lotes con círculo de color de alta definición en el centro de cada cuadradito.
+ * - Marcado de lotes con círculo de color que entra perfectamente dentro de los cuadraditos de cada lote.
  * - Clic sobre un círculo existente para desmarcarlo.
- * - Zoom 5000% ultra fluido sin píxeles ni ralentizaciones.
+ * - Zoom 5000% ultra fluido sin píxeles ni lentitud.
  */
 export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
   const hasInitialScrolledRef = useRef(false);
   const [markedLots, setMarkedLots] = useState<MarkedLot[]>([]);
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
+  const [selectedSize, setSelectedSize] = useState(SIZE_OPTIONS[1]); // Normal (0.065) por defecto
   const [zoom, setZoom] = useState(50); // 5000% zoom inicial
   const prevZoomRef = useRef(zoom);
   const [viewportBox, setViewportBox] = useState({ left: 0, top: 0, width: 100, height: 100 });
-  const [message, setMessage] = useState('Hacé clic en el centro de cualquier lote para colocar un círculo de color.');
+  const [message, setMessage] = useState('Hacé clic en el centro de cualquier lote para colocar el punto.');
 
   const syncMinimap = () => {
     const viewport = viewportRef.current;
@@ -92,24 +100,25 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
     const svgX = (clickX / bounds.width) * MAP_WIDTH;
     const svgY = (clickY / bounds.height) * MAP_HEIGHT;
 
-    // Detectar si se hizo clic cerca de un círculo existente para desmarcarlo
-    // Radio de detección adaptable al zoom (~14 píxeles en pantalla)
-    const hitRadiusSvg = Math.max(0.65, 14 / zoom);
+    // Detectar si se hizo clic sobre o cerca de un punto existente para desmarcarlo
+    // Radio de detección adaptable al zoom (~10 píxeles en pantalla)
+    const hitRadiusSvg = Math.max(0.10, 10 / zoom);
     const existingIndex = markedLots.findIndex(
-      (lot) => Math.hypot(lot.x - svgX, lot.y - svgY) <= hitRadiusSvg
+      (lot) => Math.hypot(lot.x - svgX, lot.y - svgY) <= Math.max(lot.r * 1.5, hitRadiusSvg)
     );
 
     if (existingIndex !== -1) {
       setMarkedLots((prev) => prev.filter((_, i) => i !== existingIndex));
-      setMessage('Lote desmarcado.');
+      setMessage('Punto desmarcado.');
       return;
     }
 
     const newLot: MarkedLot = {
       id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      x: Number(svgX.toFixed(2)),
-      y: Number(svgY.toFixed(2)),
+      x: Number(svgX.toFixed(3)),
+      y: Number(svgY.toFixed(3)),
       color: selectedColor.fill,
+      r: selectedSize.r,
     };
 
     setMarkedLots((prev) => [...prev, newLot]);
@@ -118,7 +127,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
   const resetTest = () => {
     setMarkedLots([]);
-    setMessage('Plano restablecido. Podés volver a marcar lotes con círculos.');
+    setMessage('Plano restablecido. Podés volver a marcar lotes con puntos.');
   };
 
   const focusFromMinimap = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -145,7 +154,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             Mapa de deforestación
           </h1>
           <p className="text-xs text-[#526657] mt-1 max-w-2xl">
-            Plano 100% vectorial CAD con líneas nítidas. Hacé clic en el centro de cualquier lote para colocar un círculo de color o volvé a tocarlo para desmarcarlo.
+            Plano 100% vectorial CAD con líneas nítidas. Hacé clic en el centro de cualquier lote para colocar un punto dentro del cuadrado o volvé a tocarlo para quitarlo.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -226,30 +235,22 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                 draggable={false}
               />
 
-              {/* Capa de círculos de color en cada lote */}
+              {/* Capa de puntos de color dentro de cada lote */}
               <svg
                 viewBox="0 0 800 600"
                 className="absolute inset-0 w-full h-full pointer-events-none"
                 preserveAspectRatio="none"
               >
                 {markedLots.map((lot) => (
-                  <g key={lot.id}>
-                    <circle
-                      cx={lot.x}
-                      cy={lot.y}
-                      r={0.65}
-                      fill={lot.color}
-                      stroke="#0F172A"
-                      strokeWidth={0.12}
-                    />
-                    <circle
-                      cx={lot.x}
-                      cy={lot.y}
-                      r={0.22}
-                      fill="#FFFFFF"
-                      opacity={0.9}
-                    />
-                  </g>
+                  <circle
+                    key={lot.id}
+                    cx={lot.x}
+                    cy={lot.y}
+                    r={lot.r}
+                    fill={lot.color}
+                    stroke="#0B1A10"
+                    strokeWidth={0.012}
+                  />
                 ))}
               </svg>
             </div>
@@ -267,7 +268,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
           {/* Selector de color */}
           <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
-            <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Color del marcador</p>
+            <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Color del punto</p>
             <div className="grid grid-cols-2 gap-1.5">
               {COLOR_OPTIONS.map((c) => (
                 <button
@@ -290,6 +291,27 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
             </div>
           </div>
 
+          {/* Selector de tamaño */}
+          <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
+            <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Tamaño del punto</p>
+            <div className="grid grid-cols-3 gap-1">
+              {SIZE_OPTIONS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSelectedSize(s)}
+                  className={`px-2 py-1.5 rounded border text-center cursor-pointer transition-all ${
+                    selectedSize.id === s.id
+                      ? 'border-[#163323] bg-[#163323] text-white font-bold shadow-xs'
+                      : 'border-[#DCD4C0] bg-white text-[#163323] hover:bg-[#F4EFE6]'
+                  }`}
+                >
+                  <span className="text-[10px] block">{s.label.split(' ')[0]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="border border-[#E5DEC9] p-3 bg-[#FAF8F5] space-y-2">
             <p className="font-bold text-[#35483A] uppercase tracking-wide text-[10px]">Mapa general</p>
             <div onPointerDown={focusFromMinimap} className="relative aspect-[4/3] bg-white border border-[#202020] cursor-pointer overflow-hidden" title="Tocá una zona para ir allí">
@@ -300,10 +322,10 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                     key={lot.id}
                     cx={lot.x}
                     cy={lot.y}
-                    r={3.5}
+                    r={2.5}
                     fill={lot.color}
                     stroke="#0F172A"
-                    strokeWidth={0.8}
+                    strokeWidth={0.5}
                   />
                 ))}
               </svg>
@@ -319,7 +341,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
           <div className="border-t border-[#E8E2D2] pt-3 text-[#637568] leading-relaxed flex gap-2">
             <MousePointer2 className="w-4 h-4 shrink-0 text-[#BFA270]" />
-            Hacé clic en cualquier lote para colocar un círculo. Tocá sobre un círculo existente para desmarcarlo.
+            Hacé clic en el centro de cualquier cuadradito para marcarlo. Tocá sobre un punto existente para desmarcarlo.
           </div>
         </aside>
       </section>
