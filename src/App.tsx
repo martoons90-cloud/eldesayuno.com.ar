@@ -272,23 +272,23 @@ export default function App() {
           isMasterIntendente ? (
             <div className="space-y-6">
               {/* Admin Welcome Hero */}
-              <div className="bg-[#FFFFFF] border border-[#E3DFC8] p-6 sm:p-8 shadow-[0_4px_20px_-4px_rgba(23,43,26,0.06)]">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-[#EFEAE0]">
+              <div className="bg-[#18332F] border border-[#18332F] rounded-2xl p-6 sm:p-8 shadow-[0_18px_44px_-22px_rgba(24,51,47,0.62)]">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-white/15">
                   <div>
-                    <div className="flex items-center gap-2 text-xs text-[#7A8E7E]">
+                    <div className="flex items-center gap-2 text-xs text-[#C8D0CA]">
                       <span>Fideicomiso El Desayuno</span>
                       <span>·</span>
                       <span>Temporada 2026</span>
                       <span>·</span>
-                      <span className="font-semibold text-[#0F766E]">Intendencia General (100% Acceso)</span>
+                      <span className="font-semibold text-[#B9A487]">Intendencia General (100% Acceso)</span>
                     </div>
                     <h1
-                      className="text-2xl sm:text-3xl font-bold text-[#163323] mt-1.5"
-                      style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}
+                      className="text-2xl sm:text-3xl font-bold tracking-[-0.025em] text-white mt-1.5"
+                      style={{ fontFamily: "'HK Grotesk', 'Avenir Next', Arial, sans-serif" }}
                     >
                       Consola General de Intendencia
                     </h1>
-                    <p className="text-sm text-[#4E6152] mt-1 max-w-2xl leading-relaxed">
+                    <p className="text-sm text-[#E0E7E1] mt-1 max-w-2xl leading-relaxed">
                       Control integral del 100% del sistema: ocupación de la estancia, auditoría de reservas, bloqueo de fechas por mantenimiento, inventario, reportes de daños, finanzas y configuración de base de datos.
                     </p>
                   </div>
@@ -299,14 +299,14 @@ export default function App() {
                         setActiveTab('blocks');
                         setAdminSection('blocks');
                       }}
-                      className="px-4 py-2.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-white text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                      className="px-4 py-2.5 bg-[#B9A487] hover:bg-[#C9B69B] text-[#18332F] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
                     >
-                      <Lock className="w-3.5 h-3.5 text-[#BFA270]" />
+                      <Lock className="w-3.5 h-3.5" />
                       <span>Bloquear Fechas</span>
                     </button>
                     <button
                       onClick={() => setActiveTab('calendar')}
-                      className="px-4 py-2.5 bg-[#F6F2E8] hover:bg-[#EDE6D7] text-[#1B3B2B] border border-[#DDD5BF] text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2.5 bg-transparent hover:bg-white/10 text-white border border-white/35 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
                     >
                       <span>Ver Calendario</span>
                       <ArrowUpRight className="w-3.5 h-3.5" />
@@ -316,66 +316,66 @@ export default function App() {
 
                 {/* Administrative KPI grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 pt-6">
-                  <div className="border-l-2 border-[#1B3B2B] pl-3">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                  <div className="border-l-2 border-[#B9A487] pl-3">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#C8D0CA] block">
                       Copropietarios
                     </span>
-                    <div className="text-2xl font-bold font-mono tabular-nums text-[#19231A] mt-1">
+                    <div className="text-2xl font-bold font-mono tabular-nums text-white mt-1">
                       {users.filter((u) => u.active !== false).length}
                     </div>
-                    <p className="text-[10px] text-[#7A8E7E] mt-0.5">Padrón activo</p>
+                    <p className="text-[10px] text-[#C8D0CA] mt-0.5">Padrón activo</p>
                   </div>
 
-                  <div className="border-l-2 border-emerald-700 pl-3">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                  <div className="border-l-2 border-[#89988D] pl-3">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#C8D0CA] block">
                       Estadías
                     </span>
-                    <div className="text-2xl font-bold font-mono tabular-nums text-emerald-800 mt-1">
+                    <div className="text-2xl font-bold font-mono tabular-nums text-white mt-1">
                       {activeBookingsCount}
                     </div>
-                    <p className="text-[10px] text-[#7A8E7E] mt-0.5">En agenda 2026</p>
+                    <p className="text-[10px] text-[#C8D0CA] mt-0.5">En agenda 2026</p>
                   </div>
 
-                  <div className="border-l-2 border-[#BFA270] pl-3">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                  <div className="border-l-2 border-[#B9A487] pl-3">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#C8D0CA] block">
                       Noches Ocupadas
                     </span>
-                    <div className="text-2xl font-bold font-mono tabular-nums text-[#8F6F3A] mt-1">
+                    <div className="text-2xl font-bold font-mono tabular-nums text-white mt-1">
                       {totalDaysReserved}
                     </div>
-                    <p className="text-[10px] text-[#7A8E7E] mt-0.5">
+                    <p className="text-[10px] text-[#C8D0CA] mt-0.5">
                       Noches totales 2026
                     </p>
                   </div>
 
-                  <div className="border-l-2 border-amber-600 pl-3">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                  <div className="border-l-2 border-[#657B7B] pl-3">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#C8D0CA] block">
                       Bloqueos
                     </span>
-                    <div className="text-2xl font-bold font-mono tabular-nums text-amber-800 mt-1">
+                    <div className="text-2xl font-bold font-mono tabular-nums text-white mt-1">
                       {blocks.length}
                     </div>
-                    <p className="text-[10px] text-[#7A8E7E] mt-0.5">Mantenimiento</p>
+                    <p className="text-[10px] text-[#C8D0CA] mt-0.5">Mantenimiento</p>
                   </div>
 
-                  <div className="border-l-2 border-blue-700 pl-3">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                  <div className="border-l-2 border-[#89988D] pl-3">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#C8D0CA] block">
                       Stock de la Casa
                     </span>
-                    <div className="text-2xl font-bold font-mono tabular-nums text-blue-900 mt-1">
+                    <div className="text-2xl font-bold font-mono tabular-nums text-white mt-1">
                       {inventory.length}
                     </div>
-                    <p className="text-[10px] text-[#7A8E7E] mt-0.5">Ítems inventariados</p>
+                    <p className="text-[10px] text-[#C8D0CA] mt-0.5">Ítems inventariados</p>
                   </div>
 
-                  <div className="border-l-2 border-red-600 pl-3">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#6C7E70] block">
+                  <div className="border-l-2 border-[#B9A487] pl-3">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-[#C8D0CA] block">
                       Novedades / Daños
                     </span>
-                    <div className="text-2xl font-bold font-mono tabular-nums text-red-800 mt-1">
+                    <div className="text-2xl font-bold font-mono tabular-nums text-white mt-1">
                       {incidents.filter((i) => i.status !== 'resuelto' && i.status !== 'desestimado').length}
                     </div>
-                    <p className="text-[10px] text-[#7A8E7E] mt-0.5">Pendientes</p>
+                    <p className="text-[10px] text-[#C8D0CA] mt-0.5">Pendientes</p>
                   </div>
                 </div>
               </div>

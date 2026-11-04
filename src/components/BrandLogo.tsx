@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface BrandLogoProps {
   className?: string;
@@ -29,15 +29,21 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 }) => {
   const symbolSize = dimensions[size];
   const isLight = theme === 'light';
+  const [customLogoFailed, setCustomLogoFailed] = useState(false);
   const ink = isLight ? '#FFFFFF' : '#18332F';
   const cut = isLight ? '#18332F' : '#FFFFFF';
 
-  const symbol = logoUrl ? (
+  useEffect(() => {
+    setCustomLogoFailed(false);
+  }, [logoUrl]);
+
+  const symbol = logoUrl && !customLogoFailed ? (
     <img
       src={logoUrl}
       alt="El Desayuno Fideicomiso"
       className="object-contain shrink-0"
       style={{ width: symbolSize, height: symbolSize }}
+      onError={() => setCustomLogoFailed(true)}
     />
   ) : (
     <svg
