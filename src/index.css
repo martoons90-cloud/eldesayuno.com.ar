@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+:root {
+  --brand-petrol: #18332f;
+  --brand-ivory: #f4f1e9;
+  --brand-mineral: #89988d;
+  --brand-sand: #b9a487;
+  --brand-slate: #657b7b;
+  --brand-charcoal: #343d39;
+  --brand-line: #dce3dd;
+}
+
+html {
+  background: var(--brand-ivory);
+}
+
+body {
+  margin: 0;
+  color: var(--brand-charcoal);
+  background: var(--brand-ivory);
+  font-family: 'HK Grotesk', 'Avenir Next', 'Segoe UI', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.font-serif {
+  font-family: 'HK Grotesk', 'Avenir Next', 'Segoe UI', Arial, sans-serif !important;
+}
+
+::selection {
+  color: #ffffff;
+  background: var(--brand-petrol);
+}

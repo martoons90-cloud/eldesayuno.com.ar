@@ -165,7 +165,7 @@ export default function App() {
 
   if (isInitialSyncing) {
     return (
-      <div className="min-h-screen bg-[#FBF9F5] flex items-center justify-center text-sm text-[#526657]">
+      <div className="min-h-screen bg-[#F4F1E9] flex items-center justify-center text-sm text-[#657B7B]">
         <RefreshCw className="w-5 h-5 animate-spin mr-2 text-[#1B3B2B]" />
         Actualizando datos desde la base de datos central...
       </div>
@@ -174,7 +174,7 @@ export default function App() {
 
   if (initialSyncFailed) {
     return (
-      <div className="min-h-screen bg-[#FBF9F5] flex flex-col items-center justify-center gap-4 px-6 text-center text-sm text-[#526657]">
+      <div className="min-h-screen bg-[#F4F1E9] flex flex-col items-center justify-center gap-4 px-6 text-center text-sm text-[#657B7B]">
         <p>No se pudieron actualizar los datos desde la base de datos central.</p>
         <button
           type="button"
@@ -211,7 +211,7 @@ export default function App() {
     .reduce((sum, u) => sum + u.annualQuotaDays, 0);
 
   return (
-    <div className="min-h-screen bg-[#FBF9F5] text-[#19231A] flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F4F1E9] text-[#343D39] flex flex-col font-sans">
       {/* Top Header Contract */}
       <TopBar
         currentUser={currentUser}
@@ -724,10 +724,10 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="w-full bg-[#FFFFFF] border-t border-[#E3DFC8] py-4 text-center text-xs text-[#7A8E7E]">
+      <footer className="w-full bg-[#FCFCF8] border-t border-[#DCE3DD] py-4 text-center text-xs text-[#657B7B]">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="font-serif font-bold text-[#163323]">EL DESAYUNO SOCIEDAD</span>
+            <span className="font-bold tracking-[0.05em] text-[#18332F]">EL DESAYUNO FIDEICOMISO</span>
             <span>·</span>
             <span>Cuatro Partes, Un Mismo Objetivo</span>
           </div>

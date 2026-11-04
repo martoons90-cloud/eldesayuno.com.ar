@@ -106,9 +106,9 @@ export const TopBar: React.FC<TopBarProps> = ({
       ];
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#FFFFFF] border-b border-[#E3DFC8] shadow-[0_2px_10px_rgba(20,38,24,0.04)]">
+    <header className="sticky top-0 z-40 w-full bg-[#FCFCF8] border-b border-[#DCE3DD] shadow-[0_2px_14px_rgba(24,51,47,0.07)]">
       {/* Accent top line */}
-      <div className="h-1 w-full bg-gradient-to-r from-[#17341B] via-[#2A4D32] to-[#BFA270]" />
+      <div className="h-1 w-full bg-[#18332F]" />
 
       <div className="max-w-[1440px] mx-auto px-2 sm:px-4 lg:px-5">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 overflow-x-hidden">
@@ -121,15 +121,15 @@ export const TopBar: React.FC<TopBarProps> = ({
               <BrandLogo size="sm" variant="seal-only" logoUrl={logoUrl} />
               <div className="flex flex-col">
                 <span
-                  className="text-sm sm:text-base font-bold tracking-wider text-[#163323] leading-none group-hover:text-[#2A4D32] transition-colors"
-                  style={{ fontFamily: "'Cinzel', 'Playfair Display', serif" }}
+                  className="text-sm sm:text-base font-bold tracking-[0.06em] text-[#18332F] leading-none group-hover:text-[#657B7B] transition-colors"
+                  style={{ fontFamily: "'HK Grotesk', 'Avenir Next', Arial, sans-serif" }}
                 >
                   EL DESAYUNO
                 </span>
-                <span className="text-[8px] tracking-[0.2em] text-[#9E8252] font-semibold uppercase leading-tight mt-0.5 flex items-center gap-1.5 flex-wrap">
+                <span className="text-[8px] tracking-[0.28em] text-[#657B7B] font-medium uppercase leading-tight mt-0.5 flex items-center gap-1.5 flex-wrap">
                   <span>FIDEICOMISO</span>
                   <span
-                    className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-[#EFE9DB] text-[#163323] rounded border border-[#D5CDBC] shadow-2xs"
+                    className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-[#F4F1E9] text-[#18332F] rounded border border-[#DCE3DD] shadow-2xs"
                     title={`Versión activa del ERP: ${APP_VERSION}`}
                   >
                     {APP_VERSION}
@@ -144,10 +144,10 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* Quick Booking CTA */}
             <button
               onClick={onOpenNewBooking}
-              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#1B3B2B] hover:bg-[#132A1F] text-[#FAF8F5] text-[11px] font-semibold uppercase tracking-wider transition-colors shadow-2xs cursor-pointer shrink-0"
+              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#18332F] hover:bg-[#0D2522] text-white text-[11px] font-semibold uppercase tracking-wider transition-colors shadow-2xs cursor-pointer shrink-0"
               title="Solicitar nueva reserva de estadía"
             >
-              <PlusCircle className="w-3.5 h-3.5 text-[#BFA270]" />
+              <PlusCircle className="w-3.5 h-3.5 text-[#B9A487]" />
               <span>+ Reservar</span>
             </button>
 
@@ -281,7 +281,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       {/* Secondary Navigation Sub-Bar (Below Top Ribbon) */}
-      <div className="bg-[#FAF8F5] border-t border-[#E3DFC8] px-2 sm:px-4 lg:px-5">
+      <div className="bg-[#F4F1E9] border-t border-[#DCE3DD] px-2 sm:px-4 lg:px-5">
         <div className="max-w-[1440px] mx-auto flex items-center justify-start xl:justify-center overflow-x-auto py-1.5 scrollbar-none gap-1">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
@@ -291,8 +291,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                 onClick={() => onSelectTab(item.id)}
                 className={`px-3 py-1 text-xs font-semibold tracking-wide whitespace-nowrap transition-all rounded-xs cursor-pointer ${
                   isActive
-                    ? 'bg-[#1B3B2B] text-white shadow-2xs font-bold'
-                    : 'text-[#4A5D50] hover:text-[#163323] hover:bg-[#EFE9DB]'
+                    ? 'bg-[#18332F] text-white shadow-2xs font-bold'
+                    : 'text-[#657B7B] hover:text-[#18332F] hover:bg-white'
                 }`}
               >
                 {item.label}

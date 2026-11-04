@@ -36,34 +36,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col justify-between bg-[#F8F5EE] text-[#19231A]">
+    <div className="min-h-screen w-full flex flex-col justify-between bg-[#F4F1E9] text-[#343D39]">
       {/* Decorative top border strip with trust green */}
-      <div className="h-1.5 w-full bg-gradient-to-r from-[#17341B] via-[#2A4D32] to-[#BFA270]" />
+      <div className="h-1.5 w-full bg-[#18332F]" />
 
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 md:p-10">
         <div className="w-full max-w-[480px]">
           {/* Main Card */}
-          <div className="bg-[#FFFFFF] border border-[#E5DEC9] shadow-[0_10px_35px_-10px_rgba(23,43,26,0.1)] p-8 sm:p-10">
+          <div className="bg-white border border-[#DCE3DD] shadow-[0_14px_40px_-18px_rgba(24,51,47,0.22)] p-8 sm:p-10">
             {/* Header with Heraldic Seal */}
             <div className="flex flex-col items-center text-center pb-7 border-b border-[#EFE9DA]">
               <BrandLogo size="2xl" variant="seal-only" />
 
               <div className="mt-4">
                 <h1
-                  className="text-2xl font-bold tracking-wider text-[#163323]"
-                  style={{ fontFamily: "'Cinzel', 'Playfair Display', Georgia, serif" }}
+                  className="text-2xl font-bold tracking-[0.06em] text-[#18332F]"
+                  style={{ fontFamily: "'HK Grotesk', 'Avenir Next', Arial, sans-serif" }}
                 >
                   EL DESAYUNO
                 </h1>
-                <div className="text-[11px] font-semibold tracking-[0.25em] text-[#A68853] uppercase mt-1">
-                  S O C I E D A D
+                <div className="text-[11px] font-medium tracking-[0.28em] text-[#657B7B] uppercase mt-1">
+                  F I D E I C O M I S O
                 </div>
-                <div className="text-[10px] tracking-wider text-[#637568] uppercase mt-1">
-                  Cuatro Partes, Un Mismo Objetivo
+                <div className="text-[10px] tracking-wider text-[#657B7B] uppercase mt-1">
+                  Gestión patrimonial privada
                 </div>
               </div>
-              <div className="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-1 bg-[#F4EFE6] border border-[#E3DFC8] text-[11px] text-[#2D4E35] font-medium">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#2D4E35]" />
+              <div className="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-1 bg-[#F4F1E9] border border-[#DCE3DD] text-[11px] text-[#18332F] font-medium">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#18332F]" />
                 <span>Portal Privado de Beneficiarios</span>
               </div>
             </div>
@@ -125,7 +125,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full mt-2 py-3 px-4 bg-[#1B3B2B] hover:bg-[#142D21] active:bg-[#0E2017] text-[#FAF8F5] font-semibold text-xs uppercase tracking-widest transition-all duration-200 flex items-center justify-center gap-2 shadow-sm disabled:opacity-60 cursor-pointer"
+                className="w-full mt-2 py-3 px-4 bg-[#18332F] hover:bg-[#0D2522] active:bg-[#081A18] text-white font-semibold text-xs uppercase tracking-widest transition-all duration-200 flex items-center justify-center gap-2 shadow-sm disabled:opacity-60 cursor-pointer"
               >
                 {loading ? (
                   <span className="inline-block animate-pulse">Autenticando...</span>
@@ -150,7 +150,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center text-xs text-[#7B8D7F] border-t border-[#E8E2D2] bg-[#FAF8F4]">
+      <footer className="py-4 text-center text-xs text-[#657B7B] border-t border-[#DCE3DD] bg-[#FCFCF8]">
         <p className="flex items-center justify-center gap-2 flex-wrap">
           <span>El Desayuno Sociedad © {new Date().getFullYear()} · Sistema de Gestión de Estadías y Reserva de Turnos</span>
           <span
