@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, UsefulContact, canUploadExpenses } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
+import { formatDateDisplay, formatPeriodDisplay } from '../utils/date';
 import { CustomDialogModal } from './CustomDialogModal';
 import { ReceiptPreviewModal, ReceiptPreviewData } from './ReceiptPreviewModal';
 import {
@@ -57,6 +58,9 @@ export function getAutoExpenseColor(strKey: string) {
   const index = Math.abs(hash) % EXPENSE_COLOR_PALETTES.length;
   return EXPENSE_COLOR_PALETTES[index];
 }
+
+const normalizeInvoiceNumber = (value?: string) =>
+  String(value || '').trim().replace(/\s+/g, '').toLocaleUpperCase('es-AR');
 
 interface ExpensesViewProps {
   currentUser: User;
@@ -430,6 +434,25 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
     setIsSavingExpense(true);
     try {
+    const invoiceNumber = expenseForm.invoiceNumber.trim() || undefined;
+    // Se consulta una vez al confirmar: evita duplicados incluso si esta
+    // pestaña quedó abierta mientras otra persona cargaba una factura.
+    const centralExpenses = await storageService.fetchExpensesFromDatabase();
+    const normalizedInvoice = normalizeInvoiceNumber(invoiceNumber);
+    const duplicateInvoice = normalizedInvoice && centralExpenses.find((expense) =>
+      expense.id !== editingExpense?.id && normalizeInvoiceNumber(expense.invoiceNumber) === normalizedInvoice
+    );
+    if (duplicateInvoice) {
+      setDialog({
+        isOpen: true,
+        title: 'Número de factura repetido',
+        message: `El comprobante ${invoiceNumber} ya está registrado en “${duplicateInvoice.concept}” (${formatDateDisplay(duplicateInvoice.date)}).`,
+        type: 'alert',
+        confirmText: 'Aceptar',
+        onConfirm: () => {},
+      });
+      return;
+    }
     const itemToSave: ExpenseItem = {
       id: editingExpense ? editingExpense.id : 'exp-' + Date.now(),
       concept: expenseForm.concept.trim(),
@@ -441,7 +464,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       periodMonth: expenseForm.date?.slice(0, 7) || new Date().toISOString().slice(0, 7),
       date: expenseForm.date,
       provider: expenseForm.provider.trim(),
-      invoiceNumber: expenseForm.invoiceNumber.trim() || undefined,
+      invoiceNumber,
       userId: finalUserId,
       userName: finalUserName,
       partName: finalPartName,
@@ -1156,18 +1179,19 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </tr>
               ) : (
                 filteredExpenses.map((exp) => {
-                  const expPalette = getAutoExpenseColor(exp.id || exp.concept);
+                  // La línea lateral y el rótulo usan el mismo color de categoría.
+                  const expPalette = getAutoExpenseColor(exp.category);
                   const linkedCollections = getLinkedCollections(exp);
                   const alreadyTransferred = isExpenseAlreadyTransferred(exp);
                   return (
                     <tr key={exp.id} className={`hover:${expPalette.bg} transition-colors border-l-4 ${expPalette.bar}`}>
                       <td className="py-3 px-3 whitespace-nowrap font-mono text-[#56685B]">
-                        {exp.date}
-                        <span className="block text-[10px] text-[#7A8E7E]">Mes: {exp.periodMonth}</span>
+                        {formatDateDisplay(exp.date)}
+                        <span className="block text-[10px] text-[#7A8E7E]">Mes: {formatPeriodDisplay(exp.periodMonth)}</span>
                       </td>
                       <td className="py-3 px-3 font-semibold text-[#163323]">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`w-2.5 h-2.5 rounded-full ${expPalette.dot} shrink-0 shadow-2xs`} title="Color automático del gasto" />
+                          <span className={`w-2.5 h-2.5 rounded-full ${expPalette.dot} shrink-0 shadow-2xs`} title="Color de la categoría" />
                           <span className="text-[#163323]">{exp.concept}</span>
                           {exp.invoiceNumber && (
                             <span className="px-1.5 py-0.5 bg-[#FAF8F5] text-[#163323] border border-[#DDD5BF] font-mono text-[10px] font-bold rounded shrink-0">
@@ -1255,6 +1279,34 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     {isAdmin && (
                       <td className="py-3 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (exp.receiptUrl) {
+                                setPreviewReceipt({
+                                  url: exp.receiptUrl,
+                                  title: exp.concept,
+                                  provider: exp.provider,
+                                  amount: exp.amount,
+                                  date: exp.date,
+                                  notes: exp.notes,
+                                });
+                              } else {
+                                setDialog({
+                                  isOpen: true,
+                                  title: 'Detalle del gasto',
+                                  message: `Fecha: ${formatDateDisplay(exp.date)}\nProveedor: ${exp.provider || 'Sin informar'}\nFactura: ${exp.invoiceNumber || 'Sin número'}\nMonto: $${exp.amount.toLocaleString('es-AR')} ARS${exp.notes ? `\nObservaciones: ${exp.notes}` : ''}`,
+                                  type: 'alert',
+                                  confirmText: 'Aceptar',
+                                  onConfirm: () => {},
+                                });
+                              }
+                            }}
+                            className="p-1 text-[#2563EB] hover:bg-blue-50 transition-colors cursor-pointer"
+                            title={exp.receiptUrl ? 'Ver gasto y factura' : 'Ver detalle del gasto'}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
                           {linkedCollections.length > 0 && (
                             <button
                               onClick={() => setViewingExpenseCollections(exp)}

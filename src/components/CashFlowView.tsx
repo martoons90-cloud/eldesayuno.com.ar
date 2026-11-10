@@ -17,6 +17,7 @@ import {
   canUploadExpenses,
 } from '../types';
 import { storageService } from '../services/storageService';
+import { formatDateDisplay } from '../utils/date';
 import {
   DollarSign,
   TrendingUp,
@@ -1415,7 +1416,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     <div>
                       <span className="text-[10px] font-bold uppercase text-[#7A8E7E] block">{collection.category}</span>
                       <h5 className="font-bold text-xs text-[#163323] mt-0.5">{collection.concept}</h5>
-                      <span className="text-[11px] text-[#637568] block mt-1">Vencimiento: {collection.dueDate}</span>
+                      <span className="text-[11px] text-[#637568] block mt-1">Vencimiento: {formatDateDisplay(collection.dueDate)}</span>
                     </div>
                     <div className="pt-2 mt-2 border-t border-[#EFEAE0] flex items-center justify-between">
                       <span className="text-[10px] uppercase font-bold text-amber-900">Pendiente:</span>
@@ -1469,7 +1470,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     const isCredit = mov.type === 'ingreso';
                     return (
                       <tr key={mov.id} className="hover:bg-[#FAF8F5] transition-colors">
-                        <td className="py-3.5 px-4 font-mono text-[#637568]">{mov.date}</td>
+                        <td className="py-3.5 px-4 font-mono text-[#637568]">{formatDateDisplay(mov.date)}</td>
                         <td className="py-3.5 px-3">
                           <span
                             className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
@@ -1639,7 +1640,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       return (
                         <React.Fragment key={tx.id}>
                           <tr className="hover:bg-[#FAF8F5] transition-colors">
-                            <td className="py-3.5 px-4 font-mono text-[#637568]">{tx.date}</td>
+                            <td className="py-3.5 px-4 font-mono text-[#637568]">{formatDateDisplay(tx.date)}</td>
                             <td className="py-3.5 px-3">
                               <span
                                 className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-2xs ${
@@ -1956,7 +1957,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                       const balance = accountDetailBalanceById.get(movement.id) || 0;
                       return (
                         <tr key={movement.id} className="hover:bg-[#FAF8F5]">
-                          <td className="py-3 px-3 font-mono text-[#637568]">{movement.date}</td>
+                          <td className="py-3 px-3 font-mono text-[#637568]">{formatDateDisplay(movement.date)}</td>
                           <td className={`py-3 px-3 font-bold uppercase text-[10px] ${movement.displayType === 'Adelanto' ? 'text-[#55695B]' : isIncome ? 'text-emerald-700' : 'text-amber-800'}`}>{movement.displayType}</td>
                           <td className="py-3 px-3 uppercase text-[10px] text-[#526657]">{movement.category}</td>
                           <td className="py-3 px-4"><strong className="text-[#163323] block">{movement.concept}</strong>{movement.notes && <span className="text-[10px] text-[#7A8E7E]">{movement.notes}</span>}</td>
@@ -2013,7 +2014,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                   pendingExpenses.map((exp) => (
                     <tr key={exp.id} className="hover:bg-[#FAF8F5]">
                       <td className="py-3 px-4">
-                        <span className="font-mono text-[#637568] block">{exp.date}</span>
+                        <span className="font-mono text-[#637568] block">{formatDateDisplay(exp.date)}</span>
                         <strong className="text-[#163323]">{exp.userName}</strong>
                         <span className="block text-[10px] text-[#7A8E7E]">{exp.partName}</span>
                       </td>
@@ -2705,7 +2706,7 @@ export const CashFlowView: React.FC<CashFlowViewProps> = ({
                     <div key={expense.id} className="grid grid-cols-1 sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] gap-1 sm:gap-3 p-2.5 items-center">
                       <div>
                         <strong className="block text-[#163323]">{expense.concept}</strong>
-                        <span className="text-[10px] text-[#7A8E7E]">{expense.date}{expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}</span>
+                        <span className="text-[10px] text-[#7A8E7E]">{formatDateDisplay(expense.date)}{expense.invoiceNumber ? ` · Factura N° ${expense.invoiceNumber}` : ''}</span>
                       </div>
                       <div><span className="block sm:hidden text-[10px] uppercase text-[#637568]">Pendiente actual</span><span className="font-mono text-[#7B341E]">${pendingBefore.toLocaleString('es-AR')}</span></div>
                       <div><span className="block sm:hidden text-[10px] uppercase text-[#637568]">Reintegro ahora</span><strong className="font-mono text-[#0F5B47]">${appliedNow.toLocaleString('es-AR')}</strong></div>

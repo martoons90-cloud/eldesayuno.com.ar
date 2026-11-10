@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { R2_PUBLIC_URL } from '../config';
+import { formatDateDisplay } from '../utils/date';
 
 export interface ReceiptPreviewData {
   url: string;
@@ -219,7 +220,7 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
               {receipt.date && (
                 <span className="flex items-center gap-1 text-[#637568]">
                   <Calendar className="w-3.5 h-3.5 text-[#BFA270]" />
-                  <span>{receipt.date}</span>
+                  <span>{formatDateDisplay(receipt.date)}</span>
                 </span>
               )}
               {receipt.notes && (

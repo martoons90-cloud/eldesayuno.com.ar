@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, RecurrenceType, PaymentStatus, ExpenseItem } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
+import { formatDateDisplay } from '../utils/date';
 import { CustomDialogModal } from './CustomDialogModal';
 import { ReceiptPreviewModal, ReceiptPreviewData } from './ReceiptPreviewModal';
 import {
@@ -694,7 +695,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                       <span className="w-1.5 h-1.5 rounded-full bg-[#BFA270]" />
                       <strong className="text-white">{collection.concept}</strong>
                       <span className="text-emerald-300 font-medium">
-                        • Vence el {collection.dueDate || 'fin de mes'}
+                        • Vence el {collection.dueDate ? formatDateDisplay(collection.dueDate) : 'fin de mes'}
                       </span>
                     </div>
                   ))}
@@ -908,7 +909,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                       return (
                         <tr key={collection.id} className="bg-emerald-50/40 hover:bg-[#FAF8F5] transition-colors">
                           <td className="py-2.5 px-3 text-[#56685B] font-semibold">{collection.concept}</td>
-                          <td className="py-2.5 px-3 font-mono text-[#637568]">{collection.dueDate || '-'}</td>
+                          <td className="py-2.5 px-3 font-mono text-[#637568]">{collection.dueDate ? formatDateDisplay(collection.dueDate) : '-'}</td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-[#163323]">
                             ${amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                           </td>
@@ -1247,8 +1248,8 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                     </h3>
 
                     <div className="flex flex-wrap items-center gap-4 text-xs text-[#637568]">
-                      <span>Emisión: <strong className="text-[#163323] font-mono">{collection.issueDate}</strong></span>
-                      <span>Vencimiento: <strong className="text-[#163323] font-mono">{collection.dueDate}</strong></span>
+                      <span>Emisión: <strong className="text-[#163323] font-mono">{formatDateDisplay(collection.issueDate)}</strong></span>
+                      <span>Vencimiento: <strong className="text-[#163323] font-mono">{formatDateDisplay(collection.dueDate)}</strong></span>
                       {isAdmin && collection.notes && <span className="italic text-[#7A8E7E]">"{collection.notes}"</span>}
                     </div>
                   </div>
@@ -1470,7 +1471,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                                 <td className="py-2 px-3 text-[#637568] text-[11px]">
                                   {alloc.paidAt ? (
                                     <div>
-                                      <span className="font-mono">{alloc.paidAt}</span>
+                                      <span className="font-mono">{formatDateDisplay(alloc.paidAt)}</span>
                                       {alloc.paymentMethod && (
                                         <span className={`block text-[10px] uppercase font-bold ${alloc.paymentMethod === 'auto_debit' ? 'text-emerald-700' : 'text-[#7A8E7E]'}`}>
                                           {alloc.paymentMethod === 'auto_debit' ? '⚡ Débito Automático' : alloc.paymentMethod}
@@ -2139,7 +2140,7 @@ const CreateFeeCollectionModal: React.FC<CreateFeeModalProps> = ({
               <option value="">Cobranza manual — sin factura asociada</option>
               {selectableExpenses.map((expense) => (
                 <option key={expense.id} value={expense.id}>
-                  {expense.concept} · ${Number(expense.amount).toLocaleString('es-AR')} · {expense.periodMonth || expense.date}
+                  {expense.concept} · ${Number(expense.amount).toLocaleString('es-AR')} · {expense.periodMonth ? expense.periodMonth.split('-').reverse().join('/') : formatDateDisplay(expense.date)}
                 </option>
               ))}
             </select>

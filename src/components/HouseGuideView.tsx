@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HouseRule, UsefulContact, DocumentItem, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
+import { formatDateDisplay } from '../utils/date';
 import {
   BookOpen,
   Wifi,
@@ -87,7 +88,7 @@ export const HouseGuideView: React.FC<HouseGuideViewProps> = ({ settings }) => {
     const content = `=====================================================
 FIDEICOMISO "EL DESAYUNO SOCIEDAD"
 ${doc.title}
-Versión: ${doc.version} · Fecha: ${doc.date}
+Versión: ${doc.version} · Fecha: ${formatDateDisplay(doc.date)}
 =====================================================
 
 DESCRIPCIÓN:
@@ -433,7 +434,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                     </td>
                     <td className="py-3.5 px-3 text-[#4F6254]">
                       <span className="font-semibold block">{doc.version}</span>
-                      <span className="text-[10px] text-[#7A8E7E]">{doc.date}</span>
+                      <span className="text-[10px] text-[#7A8E7E]">{formatDateDisplay(doc.date)}</span>
                     </td>
                     <td className="py-3.5 px-3 font-mono tabular-nums text-[#637568]">
                       {doc.fileSize}
@@ -479,7 +480,7 @@ Estancia El Desayuno - San Antonio de Areco / Mercedes
                     {previewDoc.title}
                   </h3>
                   <span className="text-[11px] text-[#C9D6CC]">
-                    {previewDoc.version} · Fecha: {previewDoc.date}
+                    {previewDoc.version} · Fecha: {formatDateDisplay(previewDoc.date)}
                   </span>
                 </div>
               </div>

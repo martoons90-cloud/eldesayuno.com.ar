@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, Booking, DateBlock, TrustSettings, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
+import { formatDateDisplay } from '../utils/date';
 import { r2Service } from '../services/r2Service';
 import { pushService } from '../services/notificationService';
 import { d1Service, D1Config, D1_SCHEMA_SQL } from '../services/d1Service';
@@ -1374,9 +1375,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </span>
                       </div>
                       <div className="text-xs font-semibold text-[#19231A] mt-1.5 flex items-center gap-2">
-                        <span>Check-in: {pb.checkInDate}</span>
+                        <span>Check-in: {formatDateDisplay(pb.checkInDate)}</span>
                         <span className="text-[#BFA270]">→</span>
-                        <span>Check-out: {pb.checkOutDate}</span>
+                        <span>Check-out: {formatDateDisplay(pb.checkOutDate)}</span>
                       </div>
                       {pb.notes && (
                         <p className="text-[11px] text-[#55695B] italic mt-1.5 bg-[#FAF8F5] p-2 border border-[#ECE5D4]">
@@ -1503,7 +1504,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-3 font-semibold text-[#19231A] whitespace-nowrap">
-                        {b.checkInDate} <span className="text-[#BFA270]">→</span> {b.checkOutDate}
+                        {formatDateDisplay(b.checkInDate)} <span className="text-[#BFA270]">→</span> {formatDateDisplay(b.checkOutDate)}
                       </td>
                       <td className="py-3 px-3 font-mono font-bold tabular-nums">
                         {b.totalDays} noches
@@ -1621,7 +1622,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </span>
                     <span className="text-[#7A8E7E]">·</span>
                     <span className="font-mono font-bold text-[#163323]">
-                      {block.startDate} al {block.endDate} ({block.totalDays} días)
+                      {formatDateDisplay(block.startDate)} al {formatDateDisplay(block.endDate)} ({block.totalDays} días)
                     </span>
                   </div>
                   <h4 className="text-sm font-bold text-[#163323] mt-0.5">{block.title}</h4>

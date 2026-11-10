@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, Booking, DateBlock, TrustSettings, isUserAdmin } from '../types';
+import { formatDateDisplay } from '../utils/date';
 import {
   Calendar,
   CheckCircle2,
@@ -340,9 +341,9 @@ export const OwnerQuotaSummary: React.FC<OwnerQuotaSummaryProps> = ({
                     <span className="font-medium text-[#1B3B2B]">{nextStay.totalDays} noches</span>
                   </div>
                   <div className="text-lg font-bold text-[#163323] flex items-center gap-2">
-                    <span>{nextStay.checkInDate}</span>
+                    <span>{formatDateDisplay(nextStay.checkInDate)}</span>
                     <span className="text-[#BFA270]">→</span>
-                    <span>{nextStay.checkOutDate}</span>
+                    <span>{formatDateDisplay(nextStay.checkOutDate)}</span>
                   </div>
                   {nextStay.notes && (
                     <p className="text-xs text-[#4F6254] mt-1.5 italic">

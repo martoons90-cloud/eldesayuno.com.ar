@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryItem, InventoryCondition, User, TrustSettings, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
+import { formatDateDisplay } from '../utils/date';
 import { r2Service } from '../services/r2Service';
 import {
   Boxes,
@@ -453,7 +454,7 @@ export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentU
                   </td>
                   <td className="py-3.5 px-3">{getConditionBadge(item.condition)}</td>
                   <td className="py-3.5 px-3 font-mono text-[11px] text-[#7A8E7E] whitespace-nowrap">
-                    {item.lastCheckedDate}
+                    {formatDateDisplay(item.lastCheckedDate)}
                   </td>
                   <td className="py-3.5 px-3 text-[#637568] max-w-xs text-[11px] leading-snug">
                     {item.notes || '-'}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Booking, User, TrustSettings } from '../types';
 import { storageService } from '../services/storageService';
+import { formatDateDisplay } from '../utils/date';
 import { pushService } from '../services/notificationService';
 import {
   Calendar,
@@ -157,11 +158,11 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                     </span>
                     <span className="text-[#7A8E7E]">·</span>
                     <span className="text-[#637568]">
-                      Check-in: {b.checkInDate} (14:00 hs)
+                      Check-in: {formatDateDisplay(b.checkInDate)} (14:00 hs)
                     </span>
                     <span className="text-[#7A8E7E]">·</span>
                     <span className="text-[#637568]">
-                      Check-out: {b.checkOutDate} (11:00 hs)
+                      Check-out: {formatDateDisplay(b.checkOutDate)} (11:00 hs)
                     </span>
                     <span className="text-[#7A8E7E]">·</span>
                     <span className="text-amber-800 font-semibold flex items-center gap-1 text-[11px]">
@@ -170,9 +171,9 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                   </div>
 
                   <div className="text-lg font-bold text-[#163323] flex items-center gap-2">
-                    <span>{b.checkInDate}</span>
+                    <span>{formatDateDisplay(b.checkInDate)}</span>
                     <span className="text-[#BFA270]">→</span>
-                    <span>{b.checkOutDate}</span>
+                    <span>{formatDateDisplay(b.checkOutDate)}</span>
                   </div>
 
                   <div className="flex items-center gap-4 text-xs text-[#526657]">
@@ -245,18 +246,18 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                       </span>
                       <span className="text-[#7A8E7E]">·</span>
                       <span className="text-[#637568]">
-                        Check-in: {b.checkInDate} (14:00 hs)
+                        Check-in: {formatDateDisplay(b.checkInDate)} (14:00 hs)
                       </span>
                       <span className="text-[#7A8E7E]">·</span>
                       <span className="text-[#637568]">
-                        Check-out: {b.checkOutDate} (11:00 hs)
+                        Check-out: {formatDateDisplay(b.checkOutDate)} (11:00 hs)
                       </span>
                     </div>
 
                     <div className="text-lg font-bold text-[#163323] flex items-center gap-2">
-                      <span>{b.checkInDate}</span>
+                      <span>{formatDateDisplay(b.checkInDate)}</span>
                       <span className="text-[#BFA270]">→</span>
-                      <span>{b.checkOutDate}</span>
+                      <span>{formatDateDisplay(b.checkOutDate)}</span>
                     </div>
 
                     <div className="flex items-center gap-4 text-xs text-[#526657]">
@@ -337,7 +338,7 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                 {pastBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-[#FAF8F5]">
                     <td className="py-3 px-3 font-semibold text-[#163323]">
-                      {b.checkInDate} al {b.checkOutDate}
+                      {formatDateDisplay(b.checkInDate)} al {formatDateDisplay(b.checkOutDate)}
                     </td>
                     <td className="py-3 px-3 font-mono tabular-nums text-right sm:text-left font-bold text-[#19231A]">
                       {b.totalDays} días
@@ -375,7 +376,7 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
               >
                 <div>
                   <span className="line-through font-mono font-medium">
-                    {b.checkInDate} al {b.checkOutDate}
+                    {formatDateDisplay(b.checkInDate)} al {formatDateDisplay(b.checkOutDate)}
                   </span>{' '}
                   ({b.totalDays} días devueltos a cupo)
                   {b.cancellationReason && (
