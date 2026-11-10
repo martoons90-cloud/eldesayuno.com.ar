@@ -1265,6 +1265,19 @@ class SupabaseService {
     return this.deleteRow('contacts', contactId);
   }
 
+  public async saveContact(contact: Record<string, any>): Promise<boolean> {
+    return this.upsertRow('contacts', {
+      id: contact.id,
+      name: contact.name || '',
+      role: contact.role || '',
+      phone: contact.phone || '',
+      category: contact.category || 'servicios',
+      is_emergency: Boolean(contact.isEmergency),
+      available_hours: contact.availableHours || '',
+      notes: contact.notes || '',
+    });
+  }
+
   /** Guarda la ficha del documento después de que el archivo quedó en R2. */
   public async saveDocument(document: DocumentItem): Promise<boolean> {
     const attachmentUrl = document.attachmentUrl || document.photoUrl || document.downloadUrl || '';

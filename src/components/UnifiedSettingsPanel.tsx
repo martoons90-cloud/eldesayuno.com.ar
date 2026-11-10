@@ -423,23 +423,27 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
     isEmergency: false,
   });
 
-  const handleSaveContact = (e: React.FormEvent) => {
+  const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault();
+    let contact: UsefulContact;
     if (editingContact) {
-      const updated: UsefulContact = {
+      contact = {
         ...editingContact,
         ...contactFormData,
       };
-      storageService.saveContact(updated);
-      setEditingContact(null);
     } else {
-      const newContact: UsefulContact = {
+      contact = {
         id: 'cnt-' + Date.now(),
         ...contactFormData,
       };
-      storageService.saveContact(newContact);
-      setIsNewContactModalOpen(false);
     }
+    const saved = await storageService.saveContact(contact);
+    if (!saved) {
+      alert('La base de datos no confirmó el contacto. No se aplicaron cambios.');
+      return;
+    }
+    setEditingContact(null);
+    setIsNewContactModalOpen(false);
     setContactsList(storageService.getContacts());
     showSuccess('Contacto de asistencia guardado.');
   };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, canUploadExpenses } from '../types';
+import { User, ExpenseItem, ExpenseCategory, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, UsefulContact, canUploadExpenses } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import { CustomDialogModal } from './CustomDialogModal';
@@ -29,6 +29,7 @@ import {
   Check,
   Eye,
   ExternalLink,
+  UserPlus,
 } from 'lucide-react';
 
 // Automatic color palette generator for dynamic expenses and categories
@@ -137,6 +138,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   const [isUploadingBill, setIsUploadingBill] = useState(false);
   const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [providerContacts, setProviderContacts] = useState<UsefulContact[]>([]);
+  const [isProviderQuickAddOpen, setIsProviderQuickAddOpen] = useState(false);
+  const [isSavingProvider, setIsSavingProvider] = useState(false);
+  const [providerForm, setProviderForm] = useState({ name: '', cuit: '', contactName: '', phone: '', email: '', notes: '' });
 
   // Transfer Modal State
   const [transferTarget, setTransferTarget] = useState<'selected_expense' | 'all_period'>('all_period');
@@ -157,6 +162,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [viewingExpenseCollections, setViewingExpenseCollections] = useState<ExpenseItem | null>(null);
   const [expenseCategories, setExpenseCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [areExpenseCategoriesLoaded, setAreExpenseCategoriesLoaded] = useState(false);
+
+  const loadProviderContacts = () => {
+    setProviderContacts(storageService.getContacts().filter((contact) => contact.role.toLowerCase().includes('proveedor')));
+  };
 
   const getLinkedCollections = (expense: ExpenseItem) => feeCollections.filter(
     (collection) => collection.originalExpenseId === expense.id ||
@@ -194,14 +203,54 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     loadExpenses();
     loadFeeCollections();
     loadExpenseCategories();
+    loadProviderContacts();
     const unsub = storageService.subscribe(() => {
       void loadExpenses();
       void loadFeeCollections();
+      loadProviderContacts();
     });
     return () => {
       unsub();
     };
   }, []);
+
+  const handleSaveProvider = async () => {
+    const name = providerForm.name.trim();
+    if (!name) {
+      setDialog({ isOpen: true, title: 'Falta el proveedor', message: 'Indicá al menos el nombre o razón social del proveedor.', type: 'alert', confirmText: 'Aceptar', onConfirm: () => {} });
+      return;
+    }
+    if (isSavingProvider) return;
+    setIsSavingProvider(true);
+    try {
+      const details = [
+        providerForm.cuit.trim() && `CUIT: ${providerForm.cuit.trim()}`,
+        providerForm.contactName.trim() && `Contacto: ${providerForm.contactName.trim()}`,
+        providerForm.email.trim() && `Email: ${providerForm.email.trim()}`,
+        providerForm.notes.trim(),
+      ].filter(Boolean).join('\n');
+      const saved = await storageService.saveContact({
+        id: `provider-${Date.now()}`,
+        category: 'servicios',
+        name,
+        role: 'Proveedor',
+        phone: providerForm.phone.trim(),
+        availableHours: '',
+        notes: details,
+        isEmergency: false,
+      });
+      if (!saved) {
+        setDialog({ isOpen: true, title: 'Proveedor no guardado', message: 'La base de datos no confirmó el alta. No se aplicaron cambios.', type: 'alert', confirmText: 'Aceptar', onConfirm: () => {} });
+        return;
+      }
+      setExpenseForm((current) => ({ ...current, provider: name }));
+      setProviderForm({ name: '', cuit: '', contactName: '', phone: '', email: '', notes: '' });
+      setIsProviderQuickAddOpen(false);
+      loadProviderContacts();
+    } finally {
+      setIsSavingProvider(false);
+    }
+  };
 
   useEffect(() => {
     if (!areExpenseCategoriesLoaded || expenseCategories.length === 0) return;
@@ -1440,14 +1489,41 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-[#163323] mb-1">Proveedor / Entidad</label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block font-bold text-[#163323]">Proveedor / Entidad</label>
+                  <button type="button" onClick={() => setIsProviderQuickAddOpen((open) => !open)} className="text-[10px] font-bold uppercase tracking-wide text-[#1B3B2B] hover:underline flex items-center gap-1 cursor-pointer">
+                    <UserPlus className="w-3.5 h-3.5" /> {isProviderQuickAddOpen ? 'Cerrar alta' : 'Dar de alta proveedor'}
+                  </button>
+                </div>
                 <input
                   type="text"
+                  list="expense-providers"
                   placeholder="Ej: EPEC, Telecom, Casero Ramón"
                   value={expenseForm.provider}
                   onChange={(e) => setExpenseForm({ ...expenseForm, provider: e.target.value })}
                   className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]"
                 />
+                <datalist id="expense-providers">
+                  {providerContacts.map((provider) => <option key={provider.id} value={provider.name} />)}
+                </datalist>
+                {isProviderQuickAddOpen && (
+                  <div className="mt-2 p-3 border border-[#B9A487] bg-[#F9F6EE] space-y-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#18332F]">Alta rápida de proveedor</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input type="text" value={providerForm.name} onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })} placeholder="Razón social / nombre *" className="px-2.5 py-2 bg-white border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]" />
+                      <input type="text" value={providerForm.cuit} onChange={(e) => setProviderForm({ ...providerForm, cuit: e.target.value })} placeholder="CUIT (opcional)" className="px-2.5 py-2 bg-white border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]" />
+                      <input type="text" value={providerForm.contactName} onChange={(e) => setProviderForm({ ...providerForm, contactName: e.target.value })} placeholder="Persona de contacto" className="px-2.5 py-2 bg-white border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]" />
+                      <input type="tel" value={providerForm.phone} onChange={(e) => setProviderForm({ ...providerForm, phone: e.target.value })} placeholder="Teléfono" className="px-2.5 py-2 bg-white border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]" />
+                      <input type="email" value={providerForm.email} onChange={(e) => setProviderForm({ ...providerForm, email: e.target.value })} placeholder="Correo electrónico" className="px-2.5 py-2 bg-white border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B] sm:col-span-2" />
+                    </div>
+                    <textarea rows={2} value={providerForm.notes} onChange={(e) => setProviderForm({ ...providerForm, notes: e.target.value })} placeholder="Observaciones (opcional)" className="w-full px-2.5 py-2 bg-white border border-[#DDD5BF] text-xs focus:outline-none focus:border-[#1B3B2B]" />
+                    <div className="flex justify-end">
+                      <button type="button" disabled={isSavingProvider} onClick={handleSaveProvider} className="px-3 py-2 bg-[#18332F] text-white text-[10px] font-bold uppercase tracking-wide disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
+                        {isSavingProvider ? 'Guardando...' : 'Guardar proveedor'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

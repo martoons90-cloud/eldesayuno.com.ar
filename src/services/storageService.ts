@@ -1125,18 +1125,18 @@ class StorageService {
     return raw ? JSON.parse(raw) : DEFAULT_CONTACTS;
   }
 
-  public saveContact(contact: UsefulContact) {
+  public async saveContact(contact: UsefulContact): Promise<boolean> {
+    const saved = await supabaseService.saveContact(contact);
+    if (!saved) {
+      await this.hydrateFromAppStateAsync();
+      return false;
+    }
     const list = this.getContacts();
     const exists = list.some((c) => c.id === contact.id);
     const updated = exists ? list.map((c) => (c.id === contact.id ? contact : c)) : [...list, contact];
     localStorage.setItem(CONTACTS_KEY, JSON.stringify(updated));
     this.notify(false);
-
-    fetch('/api/contacts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(contact),
-    }).catch((err) => console.error('Error guardando contacto en servidor:', err));
+    return true;
   }
 
   public async deleteContact(contactId: string): Promise<boolean> {

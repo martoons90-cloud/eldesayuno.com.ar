@@ -105,7 +105,7 @@ export interface UsefulContact {
   id: string;
   category: 'emergencia' | 'seguridad' | 'personal' | 'servicios';
   name: string;
-  role: string;
+  role: string; // Incluye proveedores registrados desde Gastos.
   phone: string;
   availableHours: string;
   notes?: string;
