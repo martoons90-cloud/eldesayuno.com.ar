@@ -104,7 +104,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     category: ExpenseCategory;
     amount: number;
     currency: 'ARS' | 'USD';
-    periodMonth: string;
     date: string;
     provider: string;
     invoiceNumber: string;
@@ -122,7 +121,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     category: 'servicios',
     amount: 0,
     currency: 'ARS',
-    periodMonth: '2026-10',
     date: new Date().toISOString().split('T')[0],
     provider: '',
     invoiceNumber: '',
@@ -319,7 +317,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       category: exp.category,
       amount: exp.amount,
       currency: exp.currency || 'ARS',
-      periodMonth: exp.periodMonth || '2026-10',
       date: exp.date || new Date().toISOString().split('T')[0],
       provider: exp.provider || '',
       invoiceNumber: exp.invoiceNumber || '',
@@ -390,7 +387,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       category: expenseForm.category,
       amount: expenseForm.amount,
       currency: expenseForm.currency,
-      periodMonth: expenseForm.periodMonth,
+      // El período se obtiene siempre de la fecha: no se pide ni se puede
+      // desalinear manualmente al registrar el gasto.
+      periodMonth: expenseForm.date?.slice(0, 7) || new Date().toISOString().slice(0, 7),
       date: expenseForm.date,
       provider: expenseForm.provider.trim(),
       invoiceNumber: expenseForm.invoiceNumber.trim() || undefined,
@@ -904,7 +903,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       category: 'servicios',
                       amount: 0,
                       currency: 'ARS',
-                      periodMonth: selectedPeriod === 'all' ? '2026-10' : selectedPeriod,
                       date: new Date().toISOString().split('T')[0],
                       provider: '',
                       invoiceNumber: '',
@@ -1347,18 +1345,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-[#163323] mb-1">Período / Mes (YYYY-MM)</label>
-                  <input
-                    type="text"
-                    placeholder="2026-10"
-                    value={expenseForm.periodMonth}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, periodMonth: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#DDD5BF] font-mono text-xs focus:outline-none focus:border-[#1B3B2B]"
-                  />
-                </div>
-
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="block font-bold text-[#163323] mb-1">Fecha de Facturación / Pago</label>
                   <input
