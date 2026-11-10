@@ -1,12 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   Download,
   ExternalLink,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  RefreshCw,
   FileText,
   DollarSign,
   Building,
@@ -69,12 +65,14 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
 export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receipt, onClose }) => {
   const [scale, setScale] = useState(1);
-  const [rotation, setRotation] = useState(0);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const dragStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
 
   // Reset zoom & rotation when a new receipt is opened
   useEffect(() => {
     setScale(1);
-    setRotation(0);
+    dragStartRef.current = null;
   }, [receipt?.url]);
 
   // Handle ESC key to close
@@ -125,13 +123,56 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
 
   if (!receipt) return null;
 
-  const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.25, 3.5));
-  const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.25, 0.4));
-  const handleResetZoom = () => {
+  const resetZoom = () => {
     setScale(1);
-    setRotation(0);
+    requestAnimationFrame(() => {
+      if (viewerRef.current) {
+        viewerRef.current.scrollLeft = 0;
+        viewerRef.current.scrollTop = 0;
+      }
+    });
   };
-  const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
+
+  const handleImageDoubleClick = (event: React.MouseEvent<HTMLImageElement>) => {
+    if (scale === 2) {
+      resetZoom();
+      return;
+    }
+    const imageBounds = event.currentTarget.getBoundingClientRect();
+    const focusX = Math.min(1, Math.max(0, (event.clientX - imageBounds.left) / imageBounds.width));
+    const focusY = Math.min(1, Math.max(0, (event.clientY - imageBounds.top) / imageBounds.height));
+    setScale(2);
+    // Después de duplicar el tamaño, ubica bajo el cursor el sector tocado.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const viewer = viewerRef.current;
+      const image = imageRef.current;
+      if (!viewer || !image) return;
+      viewer.scrollLeft = Math.max(0, image.clientWidth * focusX - viewer.clientWidth / 2);
+      viewer.scrollTop = Math.max(0, image.clientHeight * focusY - viewer.clientHeight / 2);
+    }));
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (scale !== 2 || !viewerRef.current) return;
+    dragStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: viewerRef.current.scrollLeft,
+      scrollTop: viewerRef.current.scrollTop,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || !viewerRef.current) return;
+    viewerRef.current.scrollLeft = dragStart.scrollLeft - (event.clientX - dragStart.x);
+    viewerRef.current.scrollTop = dragStart.scrollTop - (event.clientY - dragStart.y);
+  };
+
+  const handlePointerEnd = () => {
+    dragStartRef.current = null;
+  };
 
   const handleDownload = () => {
     const cleanTitle = (receipt.title || 'comprobante')
@@ -239,50 +280,15 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
           </div>
         )}
 
-        {/* Toolbar for image manipulation */}
-        {!isPdf && (
-          <div className="bg-[#FAF8F5] px-4 py-1.5 border-b border-[#DDD5BF] flex items-center justify-center gap-2 shrink-0 text-xs text-[#163323]">
-            <button
-              onClick={handleZoomOut}
-              className="px-2 py-1 bg-white border border-[#DDD5BF] hover:border-[#1B3B2B] rounded flex items-center gap-1 text-[#163323] transition-colors cursor-pointer"
-              title="Reducir zoom"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Alejar</span>
-            </button>
-            <span className="px-2 py-1 font-mono text-[11px] font-semibold text-[#637568]">
-              {Math.round(scale * 100)}%
-            </span>
-            <button
-              onClick={handleZoomIn}
-              className="px-2 py-1 bg-white border border-[#DDD5BF] hover:border-[#1B3B2B] rounded flex items-center gap-1 text-[#163323] transition-colors cursor-pointer"
-              title="Aumentar zoom"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Acercar</span>
-            </button>
-            <div className="h-4 w-px bg-[#DDD5BF] mx-1" />
-            <button
-              onClick={handleRotate}
-              className="px-2 py-1 bg-white border border-[#DDD5BF] hover:border-[#1B3B2B] rounded flex items-center gap-1 text-[#163323] transition-colors cursor-pointer"
-              title="Girar 90°"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Girar</span>
-            </button>
-            <button
-              onClick={handleResetZoom}
-              className="px-2 py-1 bg-white border border-[#DDD5BF] hover:border-[#1B3B2B] rounded flex items-center gap-1 text-[#163323] transition-colors cursor-pointer"
-              title="Restablecer vista"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Reiniciar</span>
-            </button>
-          </div>
-        )}
-
         {/* Modal Body / Viewer */}
-        <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-neutral-900/10 min-h-[350px] max-h-[70vh]">
+        <div
+          ref={viewerRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          className={`flex-1 overflow-auto p-4 flex bg-neutral-900/10 min-h-[350px] max-h-[70vh] ${isPdf || scale === 1 ? 'items-center justify-center' : 'items-start justify-start cursor-grab active:cursor-grabbing touch-none'}`}
+        >
           {isPdf ? (
             <iframe
               src={safeBlobUrl}
@@ -290,16 +296,18 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
               title={receipt.title}
             />
           ) : (
-            <div className="overflow-auto max-w-full max-h-full flex items-center justify-center p-2">
+            <div className="min-w-max min-h-max p-2">
               <img
+                ref={imageRef}
                 src={safeBlobUrl || getPublicR2Url(receipt.url)}
                 alt={receipt.title}
+                onDoubleClick={handleImageDoubleClick}
                 style={{
-                  transform: `scale(${scale}) rotate(${rotation}deg)`,
-                  transformOrigin: 'center center',
-                  transition: 'transform 0.15s ease-out',
+                  width: scale === 2 ? '200%' : undefined,
+                  maxWidth: scale === 2 ? 'none' : '100%',
+                  maxHeight: scale === 2 ? 'none' : '62vh',
                 }}
-                className="max-h-[62vh] max-w-full object-contain rounded shadow-md border border-[#DDD5BF] select-none"
+                className="object-contain rounded shadow-md border border-[#DDD5BF] select-none cursor-zoom-in"
               />
             </div>
           )}
@@ -308,7 +316,7 @@ export const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ receip
         {/* Modal Footer */}
         <div className="bg-[#FAF8F5] px-4 py-2.5 sm:px-6 border-t border-[#DDD5BF] flex items-center justify-between shrink-0">
           <p className="text-[11px] text-[#637568]">
-            {isPdf ? 'Documento PDF' : 'Imagen digitalizada de la factura / comprobante'}
+            {isPdf ? 'Documento PDF' : scale === 2 ? '200% · Arrastrá para recorrer · Doble clic para volver' : 'Doble clic sobre una zona para acercar al 200%'}
           </p>
           <div className="flex items-center gap-2">
             <button
