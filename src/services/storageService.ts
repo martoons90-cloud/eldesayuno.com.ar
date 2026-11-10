@@ -1498,13 +1498,45 @@ class StorageService {
         return false;
       }
     }
+
+    // Si la cobranza nació de una factura/adelanto, dejar una marca explícita
+    // en esa factura antes de borrarla. Sin esta marca, al volver a editar el
+    // gasto un adelanto personal podía emitir la misma cobranza otra vez.
+    const linkedExpenses = this.getExpenses().filter(
+      (expense) => expense.transferredToFeeCollectionId === collectionId
+    );
+    const cancellationTime = new Date().toISOString();
+    const cancelledExpenses = linkedExpenses.map((expense) => ({
+      ...expense,
+      transferredToFeeCollectionId: undefined,
+      transferredPercentage: undefined,
+      transferredInstallments: undefined,
+      collectionCancelledAt: cancellationTime,
+    }));
+    for (const expense of cancelledExpenses) {
+      if (!await supabaseService.saveExpense(expense)) {
+        await this.hydrateFromAppStateAsync();
+        return false;
+      }
+    }
+
     const deleted = await supabaseService.deleteFeeCollection(collectionId);
     if (!deleted) {
+      // Restaurar el vínculo si la baja no pudo confirmarse para no dejar una
+      // factura activa con una cobranza existente pero sin relación.
+      for (const expense of linkedExpenses) {
+        await supabaseService.saveExpense(expense);
+      }
       await this.hydrateFromAppStateAsync();
       return false;
     }
     const list = this.getFeeCollections().filter((f) => f.id !== collectionId);
     localStorage.setItem(FEES_KEY, JSON.stringify(list));
+    if (cancelledExpenses.length > 0) {
+      const cancelledById = new Map(cancelledExpenses.map((expense) => [expense.id, expense]));
+      const expenses = this.getExpenses().map((expense) => cancelledById.get(expense.id) || expense);
+      localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+    }
     this.notify(false);
     return true;
   }

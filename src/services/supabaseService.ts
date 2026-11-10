@@ -367,6 +367,7 @@ class SupabaseService {
           transferred_to_fee_collection_id: e.transferredToFeeCollectionId || null,
           transferred_percentage: e.transferredPercentage ?? null,
           transferred_installments: e.transferredInstallments ?? null,
+          collection_cancelled_at: e.collectionCancelledAt || null,
           created_at: e.createdAt || new Date().toISOString(),
         }));
         const { error: expError } = await this.client.from('expenses').upsert(expRows, { onConflict: 'id' });
@@ -729,6 +730,7 @@ class SupabaseService {
           transferredToFeeCollectionId: e.transferred_to_fee_collection_id || undefined,
           transferredPercentage: e.transferred_percentage === null || e.transferred_percentage === undefined ? undefined : Number(e.transferred_percentage),
           transferredInstallments: e.transferred_installments === null || e.transferred_installments === undefined ? undefined : Number(e.transferred_installments),
+          collectionCancelledAt: e.collection_cancelled_at || undefined,
         }));
       }
       if (!cashFlowRes.error && Array.isArray(cashFlowRes.data)) {

@@ -328,7 +328,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       partName: exp.partName || '',
       status: exp.status,
       fundingSource: storageService.isOwnerAdvanceExpense(exp) ? 'owner_advance' : 'project_funds',
-      autoCollectForOthers: storageService.isOwnerAdvanceExpense(exp) && !exp.transferredToFeeCollectionId,
+      autoCollectForOthers: storageService.isOwnerAdvanceExpense(exp) && !exp.transferredToFeeCollectionId && !exp.collectionCancelledAt,
       paymentMethod: exp.paymentMethod || 'transfer',
       receiptUrl: exp.receiptUrl || '',
       notes: exp.notes || '',
@@ -416,6 +416,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       transferredToFeeCollectionId: editingExpense?.transferredToFeeCollectionId,
       transferredPercentage: editingExpense?.transferredPercentage,
       transferredInstallments: editingExpense?.transferredInstallments,
+      collectionCancelledAt: editingExpense?.collectionCancelledAt,
     };
 
     const saved = await storageService.saveExpense(itemToSave);
@@ -431,7 +432,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return;
     }
 
-    if (isAdmin && expenseForm.fundingSource === 'owner_advance' && expenseForm.status === 'paid' && expenseForm.autoCollectForOthers && !editingExpense?.transferredToFeeCollectionId) {
+    if (isAdmin && expenseForm.fundingSource === 'owner_advance' && expenseForm.status === 'paid' && expenseForm.autoCollectForOthers && !editingExpense?.transferredToFeeCollectionId && !editingExpense?.collectionCancelledAt) {
       const collectionSaved = await createAutomaticCollectionForExpense(itemToSave);
       if (!collectionSaved) {
         setDialog({
@@ -686,7 +687,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     };
     const collectionSaved = await storageService.saveFeeCollection(collection);
     if (!collectionSaved) return false;
-    return storageService.saveExpense({ ...expense, transferredToFeeCollectionId: collection.id, transferredPercentage: 100, transferredInstallments: 1 });
+    return storageService.saveExpense({ ...expense, transferredToFeeCollectionId: collection.id, transferredPercentage: 100, transferredInstallments: 1, collectionCancelledAt: undefined });
   };
 
   // TRANSFER TO COBRANZA (GENERATE FEE COLLECTION FROM MONTHLY EXPENSES OR INDIVIDUAL INVOICE)

@@ -329,6 +329,8 @@ export interface ExpenseItem {
   transferredToFeeCollectionId?: string; // ID of fee collection created from this expense/month
   transferredPercentage?: number; // % transferred to fee collection
   transferredInstallments?: number; // Number of installments created
+  /** Fecha en la que se anuló una cobranza asociada. Evita que un adelanto la regenere solo. */
+  collectionCancelledAt?: string;
   createdBy: string;
   userId?: string; // User who paid/submitted the expense
   userName?: string;

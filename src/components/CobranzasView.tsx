@@ -1547,6 +1547,7 @@ export const CobranzasView: React.FC<CobranzasViewProps> = ({
                   transferredToFeeCollectionId: collectionId,
                   transferredPercentage: 100,
                   transferredInstallments: installments,
+                  collectionCancelledAt: undefined,
                 })
               : false;
           }}
