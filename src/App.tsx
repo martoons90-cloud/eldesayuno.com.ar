@@ -18,6 +18,7 @@ import { IncidentReportsView } from './components/IncidentReportsView';
 import { CobranzasView } from './components/CobranzasView';
 import { ExpensesView } from './components/ExpensesView';
 import { IncomeView } from './components/IncomeView';
+import { FuelAccountView } from './components/FuelAccountView';
 import { ForestryMapView } from './components/ForestryMapView';
 import { CashFlowView } from './components/CashFlowView';
 import { ActasView } from './components/ActasView';
@@ -565,6 +566,10 @@ export default function App() {
             settings={settings}
             isAdmin={hasFinancialAccess(currentUser)}
           />
+        )}
+
+        {activeTab === 'fuel' && hasFinancialAccess(currentUser) && adminViewMode !== 'owner' && (
+          <FuelAccountView currentUser={currentUser} settings={settings} users={users} />
         )}
 
         {activeTab === 'forestry' && hasFinancialAccess(currentUser) && adminViewMode !== 'owner' && (

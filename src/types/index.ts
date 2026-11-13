@@ -249,6 +249,40 @@ export interface TrustSettings {
   cashFlowCategories?: CustomCategory[];
   feeCategories?: CustomCategory[];
   inventoryCategories?: CustomCategory[];
+  fuelAccount?: FuelAccount;
+}
+
+export interface FuelTicket {
+  id: string;
+  date: string;
+  ticketNumber: string;
+  fuelType: string;
+  liters: number;
+  amount: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface FuelVoucher {
+  id: string;
+  number: string;
+  issuedAt: string;
+  stationName: string;
+  assignedTo: string;
+  vehicle: string;
+  purpose: string;
+  authorizedAmount: number;
+  authorizedLiters: number;
+  status: 'issued' | 'partial' | 'settled' | 'cancelled';
+  createdBy: string;
+  createdAt: string;
+  tickets: FuelTicket[];
+}
+
+export interface FuelAccount {
+  stationName: string;
+  accountNumber: string;
+  vouchers: FuelVoucher[];
 }
 
 // -------------------------------------------------------------

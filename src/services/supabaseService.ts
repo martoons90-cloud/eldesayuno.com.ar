@@ -250,6 +250,7 @@ class SupabaseService {
         cbu: settings.cbu || '', alias_bancario: settings.aliasBancario || '', banco_nombre: settings.bancoNombre || '',
         location: settings.location || '', check_in_time: settings.checkInTime || '', check_out_time: settings.checkOutTime || '',
         logo_url: settings.logoUrl || '', wifi_ssid: settings.wifiSsid || '', wifi_password: settings.wifiPassword || '',
+        fuel_account: settings.fuelAccount || { stationName: '', accountNumber: '', vouchers: [] },
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
       .select()
@@ -810,6 +811,7 @@ class SupabaseService {
           logoUrl: s.logo_url,
           wifiSsid: s.wifi_ssid,
           wifiPassword: s.wifi_password,
+          fuelAccount: s.fuel_account || { stationName: '', accountNumber: '', vouchers: [] },
         };
       }
 
