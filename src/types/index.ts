@@ -259,6 +259,7 @@ export interface FuelTicket {
   fuelType: string;
   liters: number;
   amount: number;
+  expenseId?: string;
   createdBy: string;
   createdAt: string;
 }
