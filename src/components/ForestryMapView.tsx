@@ -18,6 +18,7 @@ import {
 
 interface ForestryMapViewProps {
   onGoToIncome: () => void;
+  canManage?: boolean;
 }
 
 export type LotStatus = 'extraido' | 'trabajando' | 'vacio';
@@ -92,7 +93,7 @@ const MINIMAP_VB = { x: 280, y: 200, width: 270, height: 205 };
 const STORAGE_KEY = 'eldesayuno_forestry_marked_lots_v1';
 const DEFAULT_RADIUS = 0.065; // Medida calibrada para entrar perfectamente dentro del lote
 
-export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }) => {
+export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome, canManage = true }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
   const hasInitialScrolledRef = useRef(false);
 
@@ -299,6 +300,12 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
       return;
     }
 
+    // Quien sólo consulta puede abrir lotes existentes, pero no crear puntos nuevos.
+    if (!canManage) {
+      setMessage('Tu acceso a Forestal es de consulta. Podés revisar los lotes ya registrados.');
+      return;
+    }
+
     // Clic en un lugar vacío: abrir formulario para registrar nuevo lote al costado
     setSelectedLotId('new');
     setNewLotCoords({ x: svgX, y: svgY });
@@ -314,6 +321,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
   const handleSaveSidebarLot = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
     const parsedAmount = parseFloat(formAmount) || 0;
     const nowIso = new Date().toISOString();
 
@@ -366,6 +374,7 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
   };
 
   const handleDeleteSidebarLot = () => {
+    if (!canManage) return;
     if (!selectedLotId || selectedLotId === 'new') {
       setSelectedLotId(null);
       setNewLotCoords(null);
@@ -858,7 +867,9 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
 
               {/* Acciones */}
               <div className="pt-2 flex items-center justify-between gap-2 border-t border-[#EAE3D2]">
-                {selectedLotId !== 'new' ? (
+                {!canManage ? (
+                  <span className="text-[11px] font-semibold text-[#64748B]">Modo consulta: los cambios no se guardan.</span>
+                ) : selectedLotId !== 'new' ? (
                   <button
                     type="button"
                     onClick={handleDeleteSidebarLot}
@@ -879,12 +890,12 @@ export const ForestryMapView: React.FC<ForestryMapViewProps> = ({ onGoToIncome }
                   </button>
                 )}
 
-                <button
+                {canManage && <button
                   type="submit"
                   className="px-3.5 py-1.5 bg-[#1B3B2B] text-white hover:bg-[#132A1F] rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs ml-auto"
                 >
                   <Check className="w-3.5 h-3.5 text-[#BFA270]" /> Guardar lote
-                </button>
+                </button>}
               </div>
             </form>
           ) : (

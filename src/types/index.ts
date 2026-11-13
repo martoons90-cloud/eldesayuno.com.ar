@@ -1,5 +1,14 @@
 export type UserRole = 'owner' | 'admin' | 'fiduciante' | 'intendente';
 
+/** Módulos administrables desde la Central de Permisos. */
+export type AppModuleId =
+  | 'dashboard' | 'calendar' | 'my-bookings' | 'reservations' | 'gastos'
+  | 'ingresos' | 'cobranzas' | 'cashflow' | 'fuel' | 'forestry'
+  | 'inventory' | 'incidents' | 'actas' | 'guide' | 'settings';
+
+export type ModuleAccessLevel = 'none' | 'view' | 'write';
+export type ModuleAccessMap = Partial<Record<AppModuleId, ModuleAccessLevel>>;
+
 export interface User {
   id: string;
   name: string;
@@ -18,6 +27,8 @@ export interface User {
   avatarInitials: string;
   phone: string;
   password?: string; // 6-character alphanumeric password
+  /** Excepciones individuales a los permisos que entrega el rol institucional. */
+  moduleAccess?: ModuleAccessMap;
   autoDebitEnabled?: boolean; // Débito automático de cuotas y expensas
   active: boolean;
   createdAt: string;
@@ -36,22 +47,61 @@ export const isUserCabezaDeEquipo = (user?: User | null): boolean =>
 
 // Full operational rights (inventory management, incident resolution, maintenance blocks)
 export const hasFullOperationalAccess = (user?: User | null): boolean =>
-  Boolean(isUserIntendente(user));
+  Boolean(isUserIntendente(user) || canWriteModule(user, 'reservations') || canWriteModule(user, 'inventory') || canWriteModule(user, 'forestry'));
 
 // Financial power: exclusively for Gastos, Cobranzas, Caja & Cuentas (Admin & Intendente)
 export const hasFinancialAccess = (user?: User | null): boolean =>
-  Boolean(isUserAdmin(user) || isUserIntendente(user));
+  Boolean(isUserAdmin(user) || isUserIntendente(user) || ['gastos', 'ingresos', 'cobranzas', 'cashflow', 'fuel'].some((module) => canWriteModule(user, module as AppModuleId)));
 
 // General account visibility: only Admin, Intendente, and Fiduciario / Fiduciante
 export const canViewGeneralFinancialAccount = (user?: User | null): boolean =>
-  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserFiduciante(user));
+  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserFiduciante(user) || canViewModule(user, 'cashflow'));
 
 // Upload expenses allowed for Cabezas de Equipo, Admin & Intendente
 export const canUploadExpenses = (user?: User | null): boolean =>
-  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserCabezaDeEquipo(user));
+  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserCabezaDeEquipo(user) || canWriteModule(user, 'gastos'));
 
 export const hasPrivilegedAccess = (user?: User | null): boolean =>
-  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserFiduciante(user) || isUserCabezaDeEquipo(user));
+  Boolean(isUserAdmin(user) || isUserIntendente(user) || isUserFiduciante(user) || isUserCabezaDeEquipo(user) || canViewModule(user, 'actas'));
+
+const ownerModuleAccess: Record<AppModuleId, ModuleAccessLevel> = {
+  dashboard: 'view', calendar: 'view', 'my-bookings': 'write', reservations: 'none',
+  gastos: 'view', ingresos: 'none', cobranzas: 'view', cashflow: 'view', fuel: 'none',
+  forestry: 'none', inventory: 'view', incidents: 'write', actas: 'none', guide: 'view', settings: 'none',
+};
+
+const financialAdminModuleAccess: Record<AppModuleId, ModuleAccessLevel> = {
+  ...ownerModuleAccess,
+  gastos: 'write', ingresos: 'write', cobranzas: 'write', cashflow: 'write', fuel: 'write',
+  forestry: 'write', inventory: 'write', incidents: 'write', actas: 'view',
+};
+
+const intendantModuleAccess: Record<AppModuleId, ModuleAccessLevel> = Object.keys(ownerModuleAccess).reduce(
+  (access, module) => ({ ...access, [module]: 'write' }),
+  {} as Record<AppModuleId, ModuleAccessLevel>
+);
+
+/** El rol establece la base; la central guarda únicamente excepciones por persona. */
+export const getDefaultModuleAccess = (user?: User | null, module?: AppModuleId): ModuleAccessLevel => {
+  if (!user || !module || user.active === false) return 'none';
+  if (isUserIntendente(user)) return intendantModuleAccess[module];
+  if (isUserAdmin(user)) return financialAdminModuleAccess[module];
+  if (isUserFiduciante(user)) return ({ ...ownerModuleAccess, actas: 'view', gastos: 'view' } as Record<AppModuleId, ModuleAccessLevel>)[module];
+  if (isUserCabezaDeEquipo(user)) return ({ ...ownerModuleAccess, gastos: 'write', actas: 'view' } as Record<AppModuleId, ModuleAccessLevel>)[module];
+  return ownerModuleAccess[module];
+};
+
+export const getModuleAccess = (user?: User | null, module?: AppModuleId): ModuleAccessLevel => {
+  if (!user || !module || user.active === false) return 'none';
+  if (isUserIntendente(user)) return 'write';
+  return user.moduleAccess?.[module] ?? getDefaultModuleAccess(user, module);
+};
+
+export const canViewModule = (user: User | null | undefined, module: AppModuleId): boolean =>
+  getModuleAccess(user, module) !== 'none';
+
+export const canWriteModule = (user: User | null | undefined, module: AppModuleId): boolean =>
+  getModuleAccess(user, module) === 'write';
 
 
 export type BookingStatus = 'confirmed' | 'pending' | 'cancelled' | 'completed';

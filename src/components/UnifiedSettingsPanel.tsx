@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem, CustomCategory, isUserIntendente } from '../types';
+import { User, UserRole, Booking, DateBlock, TrustSettings, HouseRule, UsefulContact, DocumentItem, CustomCategory, AppModuleId, ModuleAccessLevel, getDefaultModuleAccess, getModuleAccess, isUserIntendente } from '../types';
 import { storageService } from '../services/storageService';
 import { d1Service, D1Config } from '../services/d1Service';
 import { r2Service, R2Config } from '../services/r2Service';
@@ -63,6 +63,7 @@ import {
 
 export type SettingsTabId =
   | 'owners'
+  | 'permissions'
   | 'engine'
   | 'rules'
   | 'property'
@@ -113,6 +114,49 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   // Las claves de cuentas de terceros son exclusivas del intendente.
   const canViewAccountPasswords = isUserIntendente(currentUser);
+  const [permissionUserId, setPermissionUserId] = useState<string>('');
+  const [savingPermission, setSavingPermission] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!users.some((user) => user.id === permissionUserId)) {
+      setPermissionUserId(users.find((user) => user.id !== currentUser.id)?.id || users[0]?.id || '');
+    }
+  }, [users, permissionUserId, currentUser.id]);
+
+  const permissionTarget = users.find((user) => user.id === permissionUserId) || null;
+  const permissionModules: Array<{ id: AppModuleId; label: string; group: string; description: string }> = [
+    { id: 'dashboard', label: 'Inicio', group: 'General', description: 'Consola y resumen principal' },
+    { id: 'calendar', label: 'Calendario', group: 'General', description: 'Ocupación y agenda' },
+    { id: 'my-bookings', label: 'Mis estadías', group: 'Reservas', description: 'Reservas propias' },
+    { id: 'reservations', label: 'Reservas generales', group: 'Reservas', description: 'Planilla de todas las reservas' },
+    { id: 'gastos', label: 'Gastos', group: 'Finanzas', description: 'Facturas, proveedores y gastos' },
+    { id: 'ingresos', label: 'Ingresos', group: 'Finanzas', description: 'Libro de ingresos' },
+    { id: 'cobranzas', label: 'Cobranzas', group: 'Finanzas', description: 'Cuotas y cobros' },
+    { id: 'cashflow', label: 'Caja y cuentas', group: 'Finanzas', description: 'Movimientos y saldos' },
+    { id: 'fuel', label: 'Combustible', group: 'Finanzas', description: 'Vales y cuenta corriente' },
+    { id: 'forestry', label: 'Forestal', group: 'Operación', description: 'Control de deforestación' },
+    { id: 'inventory', label: 'Stock general', group: 'Operación', description: 'Existencias e inventario' },
+    { id: 'incidents', label: 'Novedades', group: 'Operación', description: 'Daños y novedades' },
+    { id: 'actas', label: 'Actas', group: 'Institucional', description: 'Actas y documentos oficiales' },
+    { id: 'guide', label: 'Reglamento', group: 'Institucional', description: 'Guía y reglamento' },
+    { id: 'settings', label: 'Ajustes', group: 'Sistema', description: 'Configuración integral' },
+  ];
+
+  const handlePermissionChange = async (module: AppModuleId, value: 'inherited' | ModuleAccessLevel) => {
+    if (!permissionTarget || isUserIntendente(permissionTarget)) return;
+    const key = `${permissionTarget.id}:${module}`;
+    setSavingPermission(key);
+    const nextAccess = { ...(permissionTarget.moduleAccess || {}) };
+    if (value === 'inherited') delete nextAccess[module];
+    else nextAccess[module] = value;
+    const saved = await storageService.saveUser({ ...permissionTarget, moduleAccess: nextAccess });
+    setSavingPermission(null);
+    if (!saved) {
+      alert('La base de datos no confirmó el permiso. No se aplicó el cambio.');
+      return;
+    }
+    showSuccess(`Permiso de ${permissionTarget.name} actualizado.`);
+  };
 
   // Shares / Equity Matrix Modal State
   const [isSharesMatrixModalOpen, setIsSharesMatrixModalOpen] = useState(false);
@@ -939,6 +983,12 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
       badge: users.length,
     },
     {
+      id: 'permissions',
+      label: 'Central de Permisos',
+      description: 'Acceso por persona: sin acceso, ver o gestionar',
+      icon: ShieldCheck,
+    },
+    {
       id: 'engine',
       label: 'Motor de Reservas & Operatoria',
       description: 'Buffer de limpieza, check-in/out y anticipación',
@@ -1633,7 +1683,91 @@ export const UnifiedSettingsPanel: React.FC<UnifiedSettingsPanelProps> = ({
           )}
 
           {/* ========================================================= */}
-          {/* 2. MOTOR DE RESERVAS & OPERATORIA                         */}
+          {/* 2. CENTRAL DE PERMISOS                                    */}
+          {/* ========================================================= */}
+          {activeTab === 'permissions' && (
+            <div className="space-y-6">
+              <div className="pb-4 border-b border-[#EFEAE0]">
+                <h3 className="text-base font-bold text-[#163323] flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-[#1B3B2B]" />
+                  <span>Central de Permisos por Persona</span>
+                </h3>
+                <p className="text-xs text-[#637568] mt-1 leading-relaxed">
+                  Elegí una persona y definí una excepción para cada módulo. <strong>Heredado</strong> mantiene lo que ya recibe por su rol; los cambios quedan guardados en la base central.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-[#D9E3E0] bg-[#F7FAF8] p-4 flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-[#536761] mb-1.5">Usuario a configurar</label>
+                  <select
+                    value={permissionUserId}
+                    onChange={(event) => setPermissionUserId(event.target.value)}
+                    className="w-full h-10 rounded-lg border border-[#CBD8D3] bg-white px-3 text-sm font-semibold text-[#18332F] outline-none focus:border-[#315D5B]"
+                  >
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>{user.name} · {user.partName || user.role}</option>
+                    ))}
+                  </select>
+                </div>
+                {permissionTarget && (
+                  <div className="rounded-lg border border-[#D9E3E0] bg-white px-3 py-2 text-xs text-[#536761]">
+                    <span className="font-bold text-[#18332F]">Rol base:</span> {isUserIntendente(permissionTarget) ? 'Intendencia (acceso total)' : permissionTarget.role === 'admin' ? 'Administrador' : permissionTarget.role === 'fiduciante' ? 'Fiduciante' : permissionTarget.isCabezaDeEquipo ? 'Cabeza de grupo' : 'Copropietario'}
+                  </div>
+                )}
+              </div>
+
+              {permissionTarget && isUserIntendente(permissionTarget) ? (
+                <div className="rounded-xl border border-[#BBD9D2] bg-[#EAF6F2] p-5 text-sm text-[#173D36]">
+                  La Intendencia conserva acceso total a todos los módulos y no puede restringirse desde esta central.
+                </div>
+              ) : permissionTarget ? (
+                <div className="space-y-5">
+                  {['General', 'Reservas', 'Finanzas', 'Operación', 'Institucional', 'Sistema'].map((group) => {
+                    const modules = permissionModules.filter((module) => module.group === group);
+                    if (!modules.length) return null;
+                    return (
+                      <section key={group} className="rounded-xl border border-[#E2E8E5] overflow-hidden">
+                        <div className="bg-[#F8FAF9] px-4 py-2.5 border-b border-[#E2E8E5] text-[10px] font-bold uppercase tracking-[0.15em] text-[#536761]">{group}</div>
+                        <div className="divide-y divide-[#EDF1EF]">
+                          {modules.map((module) => {
+                            const override = permissionTarget.moduleAccess?.[module.id];
+                            const inherited = getDefaultModuleAccess(permissionTarget, module.id);
+                            const effective = getModuleAccess(permissionTarget, module.id);
+                            const savingKey = `${permissionTarget.id}:${module.id}`;
+                            return (
+                              <div key={module.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-[#18332F]">{module.label}</p>
+                                  <p className="text-[11px] text-[#71817C]">{module.description} · Actual: <strong className="text-[#315D5B]">{effective === 'write' ? 'Gestionar' : effective === 'view' ? 'Sólo ver' : 'Sin acceso'}</strong></p>
+                                </div>
+                                <select
+                                  value={override || 'inherited'}
+                                  disabled={savingPermission === savingKey}
+                                  onChange={(event) => void handlePermissionChange(module.id, event.target.value as 'inherited' | ModuleAccessLevel)}
+                                  className="h-9 min-w-[168px] rounded-lg border border-[#CBD8D3] bg-white px-2 text-xs font-semibold text-[#18332F] outline-none focus:border-[#315D5B] disabled:opacity-50"
+                                >
+                                  <option value="inherited">Heredado ({inherited === 'write' ? 'Gestionar' : inherited === 'view' ? 'Sólo ver' : 'Sin acceso'})</option>
+                                  <option value="none">Sin acceso</option>
+                                  <option value="view">Sólo ver</option>
+                                  <option value="write">Gestionar</option>
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-[#637568]">Todavía no hay usuarios para configurar.</p>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* 3. MOTOR DE RESERVAS & OPERATORIA                         */}
           {/* ========================================================= */}
           {activeTab === 'engine' && (
             <form onSubmit={handleSaveSettingsGeneral} className="space-y-6">

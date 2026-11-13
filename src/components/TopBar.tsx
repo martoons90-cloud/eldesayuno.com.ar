@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrandLogo } from './BrandLogo';
-import { User, NotificationPush, hasPrivilegedAccess, isUserAdmin, isUserIntendente, isUserFiduciante, isUserCabezaDeEquipo, hasFinancialAccess } from '../types';
+import { User, NotificationPush, hasPrivilegedAccess, isUserAdmin, isUserIntendente, isUserFiduciante, isUserCabezaDeEquipo, getModuleAccess } from '../types';
 import { d1Service } from '../services/d1Service';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { UserProfileModal } from './UserProfileModal';
@@ -106,6 +106,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         ...(privileged ? [{ id: 'actas', label: 'Actas' }] : []),
         { id: 'guide', label: 'Reglamento' },
       ];
+  const permittedNavItems = navItems.filter((item) => getModuleAccess(currentUser, item.id as any) !== 'none');
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#FCFCF8] border-b border-[#DCE3DD] shadow-[0_2px_14px_rgba(24,51,47,0.07)]">
@@ -145,7 +146,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="text-[10px] font-bold tracking-[0.14em] uppercase text-[#657B7B]">Centro de gestión</span>
             <span className="h-4 w-px bg-[#DCE3DD]" />
             <span className="truncate text-sm font-semibold text-[#18332F]">
-              {navItems.find((item) => item.id === activeTab)?.label || 'El Desayuno'}
+              {permittedNavItems.find((item) => item.id === activeTab)?.label || 'El Desayuno'}
             </span>
           </div>
 
@@ -383,7 +384,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span>Solicitar Nueva Reserva</span>
           </button>
 
-          {navItems.map((item) => (
+          {permittedNavItems.map((item) => (
             <button
               key={item.id}
               onClick={() => {

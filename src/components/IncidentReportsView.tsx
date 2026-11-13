@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { IncidentReport, IncidentStatus, IncidentUrgency, User, Booking, TrustSettings, isUserIntendente } from '../types';
+import { IncidentReport, IncidentStatus, IncidentUrgency, User, Booking, TrustSettings, canWriteModule } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
 import {
@@ -33,7 +33,7 @@ export const IncidentReportsView: React.FC<IncidentReportsViewProps> = ({
   bookings,
   settings,
 }) => {
-  const isAdmin = isUserIntendente(currentUser);
+  const isAdmin = canWriteModule(currentUser, 'incidents');
 
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [isLoadingIncidents, setIsLoadingIncidents] = useState(true);

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport, hasFinancialAccess, isUserIntendente, isUserAdmin, canViewGeneralFinancialAccount } from './types';
+import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryItem, IncidentReport, canWriteModule, canViewModule, isUserIntendente, isUserAdmin, canViewGeneralFinancialAccount } from './types';
 import { storageService } from './services/storageService';
 import { LoginScreen } from './components/LoginScreen';
 import { TopBar } from './components/TopBar';
@@ -531,7 +531,7 @@ export default function App() {
         )}
 
         {/* 2. CALENDAR VIEW (ACCESSIBLE TO ALL) */}
-        {activeTab === 'calendar' && (
+        {activeTab === 'calendar' && canViewModule(currentUser, 'calendar') && (
           <CalendarView
             bookings={bookings}
             blocks={blocks}
@@ -553,7 +553,7 @@ export default function App() {
         )}
 
         {/* 3. MY BOOKINGS VIEW (PERSONAL STAYS) */}
-        {activeTab === 'my-bookings' && (
+        {activeTab === 'my-bookings' && canViewModule(currentUser, 'my-bookings') && (
           <MyBookingsView
             currentUser={currentUser}
             bookings={bookings}
@@ -563,60 +563,60 @@ export default function App() {
         )}
 
         {/* 4. GASTOS & FACTURAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS READ/AUDIT) */}
-        {activeTab === 'gastos' && (
+        {activeTab === 'gastos' && canViewModule(currentUser, 'gastos') && (
           <ExpensesView
             currentUser={currentUser}
             settings={settings}
-            isAdmin={hasFinancialAccess(currentUser) && adminViewMode !== 'owner'}
+            isAdmin={canWriteModule(currentUser, 'gastos') && adminViewMode !== 'owner'}
             onNavigateToCobranzas={() => setActiveTab('cobranzas')}
           />
         )}
 
         {/* 5. INGRESOS (ADMINISTRADOR & INTENDENTE: un único libro enlazado a Caja) */}
-        {activeTab === 'ingresos' && hasFinancialAccess(currentUser) && adminViewMode !== 'owner' && (
+        {activeTab === 'ingresos' && canViewModule(currentUser, 'ingresos') && adminViewMode !== 'owner' && (
           <IncomeView
             currentUser={currentUser}
             settings={settings}
-            isAdmin={hasFinancialAccess(currentUser)}
+            isAdmin={canWriteModule(currentUser, 'ingresos')}
           />
         )}
 
-        {activeTab === 'fuel' && hasFinancialAccess(currentUser) && adminViewMode !== 'owner' && (
+        {activeTab === 'fuel' && canViewModule(currentUser, 'fuel') && adminViewMode !== 'owner' && (
           <FuelAccountView currentUser={currentUser} settings={settings} users={users} />
         )}
 
-        {activeTab === 'forestry' && hasFinancialAccess(currentUser) && adminViewMode !== 'owner' && (
-          <ForestryMapView onGoToIncome={() => setActiveTab('ingresos')} />
+        {activeTab === 'forestry' && canViewModule(currentUser, 'forestry') && adminViewMode !== 'owner' && (
+          <ForestryMapView onGoToIncome={() => setActiveTab('ingresos')} canManage={canWriteModule(currentUser, 'forestry')} />
         )}
 
         {/* 6. COBRANZAS & EXPENSAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS READ/PAY) */}
-        {activeTab === 'cobranzas' && (
+        {activeTab === 'cobranzas' && canViewModule(currentUser, 'cobranzas') && (
           <CobranzasView
             currentUser={currentUser}
             users={users}
             settings={settings}
-            isAdmin={hasFinancialAccess(currentUser) && adminViewMode !== 'owner'}
+            isAdmin={canWriteModule(currentUser, 'cobranzas') && adminViewMode !== 'owner'}
           />
         )}
 
         {/* 7. CAJA & CUENTAS (ADMINISTRADOR & INTENDENTE WRITE; OTHERS AUDIT) */}
-        {activeTab === 'cashflow' && (
+        {activeTab === 'cashflow' && canViewModule(currentUser, 'cashflow') && (
           <CashFlowView
             currentUser={currentUser}
             settings={settings}
-            isAdmin={hasFinancialAccess(currentUser) && adminViewMode !== 'owner'}
+            isAdmin={canWriteModule(currentUser, 'cashflow') && adminViewMode !== 'owner'}
             canViewGeneral={canViewGeneralFinancialAccount(currentUser) && adminViewMode !== 'owner'}
             onNavigateToCobranzas={() => setActiveTab('cobranzas')}
           />
         )}
 
         {/* 7. INVENTARIO & STOCK */}
-        {activeTab === 'inventory' && (
+        {activeTab === 'inventory' && canViewModule(currentUser, 'inventory') && (
           <InventoryStockView currentUser={currentUser} settings={settings} />
         )}
 
         {/* 8. NOVEDADES & DAÑOS */}
-        {activeTab === 'incidents' && (
+        {activeTab === 'incidents' && canViewModule(currentUser, 'incidents') && (
           <IncidentReportsView
             currentUser={currentUser}
             bookings={bookings}

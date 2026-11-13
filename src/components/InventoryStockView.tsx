@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { InventoryItem, InventoryCondition, User, TrustSettings, isUserIntendente } from '../types';
+import { InventoryItem, InventoryCondition, User, TrustSettings, canWriteModule } from '../types';
 import { storageService } from '../services/storageService';
 import { formatDateDisplay } from '../utils/date';
 import { r2Service } from '../services/r2Service';
@@ -21,7 +21,7 @@ interface InventoryStockViewProps {
 }
 
 export const InventoryStockView: React.FC<InventoryStockViewProps> = ({ currentUser, settings }) => {
-  const isAdmin = isUserIntendente(currentUser);
+  const isAdmin = canWriteModule(currentUser, 'inventory');
 
   const [inventory, setInventory] = useState<InventoryItem[]>(storageService.getInventory());
   const [selectedCategory, setSelectedCategory] = useState<string>('all');

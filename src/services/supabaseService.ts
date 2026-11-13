@@ -332,6 +332,8 @@ class SupabaseService {
           avatar_initials: u.avatarInitials || '',
           created_at: u.createdAt || new Date().toISOString(),
           password: u.password !== undefined ? u.password : '',
+          is_cabeza_de_equipo: Boolean(u.isCabezaDeEquipo),
+          module_access: u.moduleAccess && typeof u.moduleAccess === 'object' ? u.moduleAccess : {},
         }));
         try { await this.client.from('users').upsert(userRows, { onConflict: 'id' }); } catch {}
       }
@@ -700,6 +702,7 @@ class SupabaseService {
           avatarInitials: u.avatar_initials || '',
           createdAt: u.created_at || '',
           password: u.password || '',
+          moduleAccess: u.module_access && typeof u.module_access === 'object' && !Array.isArray(u.module_access) ? u.module_access : {},
         }));
       }
       if (!expensesRes.error && Array.isArray(expensesRes.data)) {
@@ -1029,6 +1032,7 @@ class SupabaseService {
       avatar_initials: user.avatarInitials || '',
       created_at: user.createdAt || new Date().toISOString(),
       password: user.password !== undefined ? user.password : '',
+      module_access: user.moduleAccess && typeof user.moduleAccess === 'object' ? user.moduleAccess : {},
     });
   }
 

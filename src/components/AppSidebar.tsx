@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrandLogo } from './BrandLogo';
 import {
   BookOpen,
@@ -16,10 +16,13 @@ import {
   Shield,
   TriangleAlert,
   WalletCards,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import {
   User,
   hasPrivilegedAccess,
+  getModuleAccess,
   isUserAdmin,
   isUserIntendente,
 } from '../types';
@@ -62,6 +65,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   onSelectTab,
   onOpenNewBooking,
 }) => {
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    Principal: true,
+    'Operación': true,
+    Finanzas: true,
+    Sistema: false,
+  });
   const isIntendente = isUserIntendente(currentUser);
   const isFinancialAdmin = isUserAdmin(currentUser);
   const privileged = hasPrivilegedAccess(currentUser);
@@ -138,12 +147,20 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
       <nav className="relative flex-1 overflow-y-auto px-3 py-4 scrollbar-thin" aria-label="Navegación principal">
         {sections.map((section) => {
-          const items = navigation.filter((item) => item.section === section);
+          const items = navigation.filter((item) => item.section === section && getModuleAccess(currentUser, item.id as any) !== 'none');
           if (!items.length) return null;
           return (
             <div key={section} className="mb-5">
-              <p className="px-3 mb-1.5 text-[9px] font-bold tracking-[0.16em] uppercase text-[#AABBB8]">{section}</p>
-              <div className="space-y-0.5">
+              <button
+                type="button"
+                onClick={() => setExpandedSections((current) => ({ ...current, [section]: !current[section] }))}
+                className="w-full flex items-center justify-between px-3 mb-1.5 text-[9px] font-bold tracking-[0.16em] uppercase text-[#AABBB8] hover:text-white cursor-pointer"
+                aria-expanded={expandedSections[section] !== false}
+              >
+                <span>{section}</span>
+                {expandedSections[section] !== false ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+              <div className={expandedSections[section] !== false ? 'space-y-0.5' : 'hidden'}>
                 {items.map((item) => {
                   const Icon = iconByTab[item.id as keyof typeof iconByTab];
                   const selected = activeTab === item.id;
