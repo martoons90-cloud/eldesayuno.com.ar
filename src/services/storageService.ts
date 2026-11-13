@@ -1683,7 +1683,8 @@ class StorageService {
 
   /** Un gasto pagado por un socio genera crédito a su favor; no es una salida de Caja. */
   public isOwnerAdvanceExpense(expense: ExpenseItem): boolean {
-    return Boolean(expense.userId) && expense.reimbursementStatus !== 'not_applicable';
+    return (Boolean(expense.userId) || Boolean(expense.payerShares?.some((share) => share.userId && Number(share.amount) > 0))) &&
+      expense.reimbursementStatus !== 'not_applicable';
   }
 
   /**
@@ -1699,6 +1700,15 @@ class StorageService {
     const advanceLedgerId = `ledger-advance-${expense.id}`;
     const existingIds = new Set(this.getCashFlows().map((transaction) => transaction.id));
     const removeIfExists = async (id: string) => !existingIds.has(id) || await this.deleteCashFlowTransaction(id);
+    const removeAdvanceLedgers = async () => {
+      const advanceLedgers = this.getCashFlows().filter((transaction) =>
+        transaction.expenseId === expense.id && transaction.id.startsWith(advanceLedgerId)
+      );
+      for (const ledger of advanceLedgers) {
+        if (!await this.deleteCashFlowTransaction(ledger.id)) return false;
+      }
+      return true;
+    };
     const isApprovedAndPaid = expense.status === 'paid' &&
       (expense.approvalStatus === 'approved' || !expense.approvalStatus);
 
@@ -1706,11 +1716,36 @@ class StorageService {
       // No se elimina un pago físico ya asentado. Una factura puede volver a
       // quedar pendiente de forma parcial y los movimientos de Caja deben
       // conservar su trazabilidad.
-      return removeIfExists(advanceLedgerId);
+      return removeAdvanceLedgers();
     }
 
     if (this.isOwnerAdvanceExpense(expense)) {
       if (!await removeIfExists(cashExpenseId)) return false;
+      if (!await removeAdvanceLedgers()) return false;
+      const payerShares = (expense.payerShares || []).filter((share) => share.userId && Number(share.amount) > 0);
+      if (payerShares.length > 0) {
+        const totalShares = payerShares.reduce((sum, share) => sum + Number(share.amount), 0);
+        if (Math.abs(totalShares - Number(expense.amount)) > 0.01) return false;
+        for (const share of payerShares) {
+          if (!await this.saveCashFlowTransaction({
+            id: `${advanceLedgerId}-${share.userId}`,
+            type: 'ingreso',
+            category: 'adelanto_socio',
+            concept: `Adelanto personal compartido: ${expense.concept}`,
+            amount: Number(share.amount),
+            currency: expense.currency || 'ARS',
+            date: expense.date,
+            userId: share.userId,
+            userName: share.userName,
+            partName: share.partName,
+            expenseId: expense.id,
+            notes: `Saldo a favor por aporte compartido.${expense.invoiceNumber ? ` Comprobante N° ${expense.invoiceNumber}.` : ''}`,
+            createdBy: expense.createdBy || 'Sistema Gastos',
+            createdAt: expense.createdAt || new Date().toISOString(),
+          })) return false;
+        }
+        return true;
+      }
       return this.saveCashFlowTransaction({
         id: advanceLedgerId,
         type: 'ingreso',
@@ -1732,7 +1767,7 @@ class StorageService {
     // Los movimientos con id cf-exp-* corresponden a pagos históricos ya
     // realizados. Los nuevos pagos se registran explícitamente desde Caja
     // como cf-invoice-payment-* para admitir pagos parciales y múltiples.
-    return removeIfExists(advanceLedgerId);
+    return removeAdvanceLedgers();
   }
 
   public getOwnerAvailableCredit(userId: string): number {

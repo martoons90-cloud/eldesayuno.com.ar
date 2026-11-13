@@ -311,6 +311,14 @@ export type ExpenseCategory =
   | 'insumos' // Productos de limpieza, insumos quincho
   | 'otro';
 
+/** Parte de un gasto que fue adelantada por un copropietario. */
+export interface ExpensePayerShare {
+  userId: string;
+  userName: string;
+  partName?: string;
+  amount: number;
+}
+
 export interface ExpenseItem {
   id: string;
   concept: string; // e.g., "Factura Luz EPEC Octubre 2026"
@@ -335,6 +343,8 @@ export interface ExpenseItem {
   userId?: string; // User who paid/submitted the expense
   userName?: string;
   partName?: string;
+  /** Permite que un mismo comprobante sea adelantado por más de un socio. */
+  payerShares?: ExpensePayerShare[];
   approvalStatus?: 'pending' | 'approved' | 'rejected'; // Subject to admin approval
   approvedAt?: string;
   approvedBy?: string;
