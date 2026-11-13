@@ -722,6 +722,9 @@ class StorageService {
 
   // La base central es la fuente de verdad para todas las reservas.
   public async createBookingAsync(booking: Omit<Booking, 'id' | 'createdAt'>): Promise<Booking> {
+    if (!booking.userId?.trim() || !booking.userName?.trim()) {
+      throw new Error('Toda reserva debe tener un copropietario asignado.');
+    }
     const bookingToCreate: Booking = {
       ...booking,
       status: booking.status || ('pending' as BookingStatus),

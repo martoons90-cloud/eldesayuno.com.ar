@@ -107,6 +107,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   // Validation function
   const validateBooking = () => {
+    if (!isMaintenanceBlock && (!reservationOwner?.id || !reservationOwner.name?.trim())) {
+      return 'Toda reserva debe tener un copropietario asignado.';
+    }
     if (!checkInDate || !checkOutDate) {
       return 'Debe seleccionar ambas fechas: Check-in y Check-out.';
     }

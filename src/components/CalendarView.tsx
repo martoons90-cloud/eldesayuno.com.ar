@@ -460,22 +460,30 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               } else if (info.type === 'block') {
                 cellBg = 'bg-[#FFFBEB]';
                 cellBorder = 'border-amber-300';
-                if (isUserIntendente(currentUser) && dateStr === info.block.startDate) {
-                  badge = (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDeleteBlock(info.block);
-                      }}
-                      className="mt-1 w-full px-1.5 py-0.5 text-[9px] font-semibold text-red-700 bg-white border border-red-200 hover:bg-red-50 flex items-center justify-center gap-1 cursor-pointer"
-                      title="Eliminar bloqueo de mantenimiento"
+                badge = (
+                  <>
+                    <div
+                      className="mt-1 px-1.5 py-0.5 text-[9px] font-semibold text-amber-950 bg-amber-200 border border-amber-300 truncate"
+                      title={`Bloqueo administrativo: ${info.block.title}`}
                     >
-                      <Trash2 className="w-2.5 h-2.5" />
-                      Eliminar
-                    </button>
-                  );
-                }
+                      {dateStr === info.block.startDate ? info.block.title : 'Bloqueo'}
+                    </div>
+                    {isUserIntendente(currentUser) && dateStr === info.block.startDate && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteBlock(info.block);
+                        }}
+                        className="mt-1 w-full px-1.5 py-0.5 text-[9px] font-semibold text-red-700 bg-white border border-red-200 hover:bg-red-50 flex items-center justify-center gap-1 cursor-pointer"
+                        title="Eliminar bloqueo de mantenimiento"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                        Eliminar
+                      </button>
+                    )}
+                  </>
+                );
               } else if (info.type === 'cleaning') {
                 cellBg = 'bg-[#F2F7F2]';
                 cellBorder = 'border-emerald-200';
