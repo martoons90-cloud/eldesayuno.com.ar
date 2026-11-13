@@ -78,7 +78,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const canSubmitExpense = canUploadExpenses(currentUser);
   const isGroupLeaderSubmitter = canSubmitExpense && !isAdmin;
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-10');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
@@ -86,6 +86,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   // Modals
   const [isNewExpenseModalOpen, setIsNewExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
+  const [expenseToSplit, setExpenseToSplit] = useState<ExpenseItem | null>(null);
+  const [splitPayerShares, setSplitPayerShares] = useState<ExpensePayerShare[]>([]);
+  const [isSavingSplit, setIsSavingSplit] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [previewReceipt, setPreviewReceipt] = useState<ReceiptPreviewData | null>(null);
   const [dialog, setDialog] = useState<{
@@ -389,6 +392,51 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     setIsNewExpenseModalOpen(true);
   };
 
+  const openSplitExpense = (expense: ExpenseItem) => {
+    const existingShares = expense.payerShares?.length
+      ? expense.payerShares
+      : expense.userId
+        ? [{ userId: expense.userId, userName: expense.userName || '', partName: expense.partName || '', amount: Number(expense.amount) }]
+        : [];
+    setExpenseToSplit(expense);
+    setSplitPayerShares(existingShares);
+  };
+
+  const saveExpenseSplit = async () => {
+    if (!expenseToSplit || isSavingSplit) return;
+    const shares = splitPayerShares.map((share) => {
+      const user = allCurrentUsers.find((item) => item.id === share.userId);
+      return { userId: share.userId, userName: user?.name || share.userName, partName: user?.partName || share.partName, amount: Number(share.amount) || 0 };
+    });
+    const total = shares.reduce((sum, share) => sum + share.amount, 0);
+    if (shares.length === 0 || shares.some((share) => !share.userId || share.amount <= 0) || Math.abs(total - Number(expenseToSplit.amount)) > 0.01) {
+      setDialog({ isOpen: true, title: 'Reparto incompleto', message: `El total entre pagadores debe sumar exactamente $${Number(expenseToSplit.amount).toLocaleString('es-AR')}.`, type: 'alert', confirmText: 'Aceptar', onConfirm: () => {} });
+      return;
+    }
+    setIsSavingSplit(true);
+    try {
+      const primary = shares[0];
+      const saved = await storageService.saveExpense({
+        ...expenseToSplit,
+        userId: primary.userId,
+        userName: primary.userName,
+        partName: primary.partName,
+        payerShares: shares,
+        reimbursementStatus: 'unpaid',
+        reimbursedAmount: expenseToSplit.reimbursedAmount || 0,
+      });
+      if (!saved) {
+        setDialog({ isOpen: true, title: 'No se pudo guardar el reparto', message: 'La base de datos no confirmó el pago compartido.', type: 'alert', confirmText: 'Aceptar', onConfirm: () => {} });
+        return;
+      }
+      setExpenseToSplit(null);
+      await loadExpenses();
+      setDialog({ isOpen: true, title: 'Pago compartido guardado', message: 'El gasto sigue siendo único y se actualizaron los saldos a favor de cada pagador.', type: 'success', confirmText: 'Aceptar', onConfirm: () => {} });
+    } finally {
+      setIsSavingSplit(false);
+    }
+  };
+
   // Save Expense
   const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -511,7 +559,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       reimbursedAmount: expenseForm.fundingSource === 'owner_advance' ? (editingExpense?.reimbursedAmount || 0) : 0,
       paymentMethod: expenseForm.paymentMethod,
       receiptUrl: expenseForm.receiptUrl,
-      notes: expenseForm.notes.trim(),
+      notes: '',
       createdBy: currentUser.name,
       createdAt: editingExpense ? editingExpense.createdAt : new Date().toISOString(),
       transferredToFeeCollectionId: editingExpense?.transferredToFeeCollectionId,
@@ -833,7 +881,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return;
     }
 
-    const formattedPeriodLabel = selectedPeriod === '2026-10' ? 'Octubre 2026' : selectedPeriod;
+    const formattedPeriodLabel = selectedPeriod === 'all' ? 'todos los períodos' : selectedPeriod === '2026-10' ? 'Octubre 2026' : selectedPeriod;
     const createdCount = Math.max(1, installmentsCount);
     const baseDueDateObj = new Date(transferDueDate || Date.now());
     const advancePayerId = transferTarget === 'selected_expense' && selectedExpenseForTransfer && storageService.isOwnerAdvanceExpense(selectedExpenseForTransfer)
@@ -1382,6 +1430,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                             </button>
                           )}
 
+                          {!alreadyTransferred && exp.status === 'paid' && (
+                            <button
+                              type="button"
+                              onClick={() => openSplitExpense(exp)}
+                              className="p-1 text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                              title="Dividir pago entre personas"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           <button
                             onClick={() => handleEditExpense(exp)}
                             className="p-1 text-[#637568] hover:text-[#163323] cursor-pointer"
@@ -1565,88 +1624,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     : 'Se registra como factura pendiente. El pago (total o parcial) se decide después desde Caja/Banco.'}
                 </p>
                 {expenseForm.fundingSource === 'owner_advance' && isAdmin && (
-                  <div className="mt-3 border-t border-blue-200 pt-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <strong className="block text-xs text-[#163323]">¿El comprobante fue pagado entre varias personas?</strong>
-                        <small className="block mt-0.5 text-[#526657]">Se guarda un solo gasto y un saldo a favor individual por cada aporte.</small>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (expenseForm.payerShares.length > 0) {
-                            setExpenseForm({ ...expenseForm, payerShares: [] });
-                            return;
-                          }
-                          const payer = allCurrentUsers.find((user) => user.id === expenseForm.userId) || allCurrentUsers[0];
-                          setExpenseForm({
-                            ...expenseForm,
-                            payerShares: payer ? [{ userId: payer.id, userName: payer.name, partName: payer.partName, amount: Number(expenseForm.amount) || 0 }] : [],
-                            autoCollectForOthers: false,
-                          });
-                        }}
-                        className="px-2.5 py-1.5 border border-blue-300 bg-white text-[10px] uppercase font-bold tracking-wide text-blue-800 hover:bg-blue-100 cursor-pointer"
-                      >
-                        {expenseForm.payerShares.length > 0 ? 'Usar un solo pagador' : 'Dividir entre personas'}
-                      </button>
-                    </div>
-                    {expenseForm.payerShares.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {expenseForm.payerShares.map((share, index) => (
-                          <div key={`${share.userId}-${index}`} className="grid grid-cols-[1fr_8rem_auto] gap-2 items-center">
-                            <select
-                              value={share.userId}
-                              onChange={(e) => {
-                                const payer = allCurrentUsers.find((user) => user.id === e.target.value);
-                                const payerShares = [...expenseForm.payerShares];
-                                payerShares[index] = { ...payerShares[index], userId: e.target.value, userName: payer?.name || '', partName: payer?.partName || '' };
-                                setExpenseForm({ ...expenseForm, payerShares });
-                              }}
-                              className="px-2.5 py-2 bg-white border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
-                            >
-                              <option value="">Seleccionar pagador...</option>
-                              {allCurrentUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.partName})</option>)}
-                            </select>
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              value={share.amount || ''}
-                              onChange={(e) => {
-                                const payerShares = [...expenseForm.payerShares];
-                                payerShares[index] = { ...payerShares[index], amount: Number(e.target.value) || 0 };
-                                setExpenseForm({ ...expenseForm, payerShares });
-                              }}
-                              placeholder="Importe"
-                              className="px-2.5 py-2 bg-white border border-[#DDD5BF] font-mono text-xs font-bold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setExpenseForm({ ...expenseForm, payerShares: expenseForm.payerShares.filter((_, currentIndex) => currentIndex !== index) })}
-                              className="p-2 text-red-700 hover:bg-red-100 cursor-pointer"
-                              title="Quitar pagador"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                          <button
-                            type="button"
-                            onClick={() => setExpenseForm({ ...expenseForm, payerShares: [...expenseForm.payerShares, { userId: '', userName: '', partName: '', amount: 0 }] })}
-                            className="font-bold text-blue-800 hover:underline cursor-pointer"
-                          >
-                            + Agregar otra persona
-                          </button>
-                          <span className={Math.abs(expenseForm.payerShares.reduce((sum, share) => sum + (Number(share.amount) || 0), 0) - Number(expenseForm.amount)) < 0.01 ? 'font-bold text-emerald-700' : 'font-bold text-amber-800'}>
-                            Repartido: ${expenseForm.payerShares.reduce((sum, share) => sum + (Number(share.amount) || 0), 0).toLocaleString('es-AR')} de ${Number(expenseForm.amount).toLocaleString('es-AR')}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {expenseForm.fundingSource === 'owner_advance' && isAdmin && expenseForm.payerShares.length === 0 && (
                   <label className="mt-3 flex items-start gap-2 cursor-pointer text-xs text-[#163323]">
                     <input
                       type="checkbox"
@@ -1659,9 +1636,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       <small className="block mt-0.5 text-[#526657]">Se distribuye según el porcentaje de cada copropietario, en una cuota con vencimiento a 15 días. La parte propia se compensa con su saldo a favor.</small>
                     </span>
                   </label>
-                )}
-                {expenseForm.fundingSource === 'owner_advance' && isAdmin && expenseForm.payerShares.length > 0 && (
-                  <p className="mt-3 text-[11px] font-medium text-blue-800">Los adelantos compartidos no generan cobranzas automáticas. Se registran únicamente los saldos a favor de quienes pagaron.</p>
                 )}
               </div>
 
@@ -1765,17 +1739,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     </button>
                   </div>
                 )}
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block font-bold text-[#163323] mb-1">Observaciones</label>
-                <textarea
-                  rows={2}
-                  value={expenseForm.notes}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, notes: e.target.value })}
-                  placeholder="Detalles adicionales del comprobante..."
-                  className="w-full px-3 py-1.5 bg-[#FAF8F5] border border-[#DDD5BF] text-xs text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
-                />
               </div>
 
               <div className="md:col-span-2 sticky bottom-0 bg-white flex items-center justify-end gap-2 pt-3 pb-0 border-t border-[#E3DFC8]">
@@ -2347,6 +2310,68 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {expenseToSplit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
+          <div className="bg-white border border-[#E3DFC8] max-w-2xl w-full p-5 shadow-xl relative">
+            <button type="button" onClick={() => setExpenseToSplit(null)} className="absolute top-4 right-4 p-1 text-[#637568] hover:text-[#163323] cursor-pointer" aria-label="Cerrar">
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2 border-b border-[#E3DFC8] pb-3 pr-8">
+              <div className="w-8 h-8 bg-blue-700 text-white rounded flex items-center justify-center"><Users className="w-4 h-4" /></div>
+              <div>
+                <h3 className="text-base font-bold text-[#163323]">Dividir pago del gasto</h3>
+                <p className="text-xs text-[#637568]">{expenseToSplit.concept} · <strong>${Number(expenseToSplit.amount).toLocaleString('es-AR')} ARS</strong></p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-[#526657]">El comprobante continúa siendo uno solo. Indicá cuánto adelantó cada persona; no se crea ninguna cobranza.</p>
+            <div className="mt-4 space-y-2">
+              {splitPayerShares.map((share, index) => (
+                <div key={`${share.userId}-${index}`} className="grid grid-cols-[1fr_9rem_auto] gap-2 items-center">
+                  <select
+                    value={share.userId}
+                    onChange={(event) => {
+                      const user = allCurrentUsers.find((item) => item.id === event.target.value);
+                      const updated = [...splitPayerShares];
+                      updated[index] = { ...updated[index], userId: event.target.value, userName: user?.name || '', partName: user?.partName || '' };
+                      setSplitPayerShares(updated);
+                    }}
+                    className="px-2.5 py-2 border border-[#DDD5BF] text-xs font-semibold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                  >
+                    <option value="">Seleccionar persona...</option>
+                    {allCurrentUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.partName})</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={share.amount || ''}
+                    onChange={(event) => {
+                      const updated = [...splitPayerShares];
+                      updated[index] = { ...updated[index], amount: Number(event.target.value) || 0 };
+                      setSplitPayerShares(updated);
+                    }}
+                    placeholder="Importe"
+                    className="px-2.5 py-2 border border-[#DDD5BF] font-mono text-xs font-bold text-[#163323] focus:outline-none focus:border-[#1B3B2B]"
+                  />
+                  <button type="button" onClick={() => setSplitPayerShares(splitPayerShares.filter((_, currentIndex) => currentIndex !== index))} className="p-2 text-red-700 hover:bg-red-50 cursor-pointer" title="Quitar persona">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <button type="button" onClick={() => setSplitPayerShares([...splitPayerShares, { userId: '', userName: '', partName: '', amount: 0 }])} className="font-bold text-blue-800 hover:underline cursor-pointer">+ Agregar pagador</button>
+              <span className={Math.abs(splitPayerShares.reduce((sum, share) => sum + (Number(share.amount) || 0), 0) - Number(expenseToSplit.amount)) < 0.01 ? 'font-bold text-emerald-700' : 'font-bold text-amber-800'}>
+                Repartido: ${splitPayerShares.reduce((sum, share) => sum + (Number(share.amount) || 0), 0).toLocaleString('es-AR')} de ${Number(expenseToSplit.amount).toLocaleString('es-AR')}
+              </span>
+            </div>
+            <div className="mt-5 pt-4 border-t border-[#E3DFC8] flex justify-end gap-2">
+              <button type="button" onClick={() => setExpenseToSplit(null)} className="px-4 py-2 border border-[#DDD5BF] text-xs font-bold uppercase tracking-wide text-[#526657] hover:bg-[#FAF8F5] cursor-pointer">Cancelar</button>
+              <button type="button" disabled={isSavingSplit} onClick={saveExpenseSplit} className="px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">{isSavingSplit ? 'Guardando...' : 'Guardar reparto'}</button>
             </div>
           </div>
         </div>

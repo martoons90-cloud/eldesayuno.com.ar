@@ -61,7 +61,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({ currentUser, settings: _
   const [incomeCategories, setIncomeCategories] = useState<Array<{ id: string; name: string }>>(
     INCOME_CATEGORIES.map((category) => ({ id: category.id, name: category.label }))
   );
-  const [selectedPeriod, setSelectedPeriod] = useState(currentPeriod);
+  const [selectedPeriod, setSelectedPeriod] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | IncomeCategory>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
