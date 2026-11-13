@@ -112,10 +112,10 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Accent top line */}
       <div className="h-1 w-full bg-[#18332F]" />
 
-      <div className="max-w-[1440px] mx-auto px-2 sm:px-4 lg:px-5">
+      <div className="max-w-[1540px] mx-auto px-2 sm:px-4 lg:px-8">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 overflow-x-hidden">
           {/* Zone 1: Wordmark & Logo */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 lg:hidden">
             <button
               onClick={() => onSelectTab('dashboard')}
               className="flex items-center gap-2 text-left cursor-pointer group focus:outline-none"
@@ -139,6 +139,14 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </span>
               </div>
             </button>
+          </div>
+
+          <div className="hidden lg:flex items-center gap-3 min-w-0">
+            <span className="text-[10px] font-bold tracking-[0.14em] uppercase text-[#657B7B]">Centro de gestión</span>
+            <span className="h-4 w-px bg-[#DCE3DD]" />
+            <span className="truncate text-sm font-semibold text-[#18332F]">
+              {navItems.find((item) => item.id === activeTab)?.label || 'El Desayuno'}
+            </span>
           </div>
 
           {/* Zone 2: Primary Actions & User Status */}
@@ -188,7 +196,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 se abre el menú con el perfil y, si corresponde, las vistas disponibles. */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="xl:hidden relative w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-xs shrink-0 cursor-pointer ring-2 ring-transparent hover:ring-[#BFA270] transition-all"
+              className="lg:hidden relative w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-xs shrink-0 cursor-pointer ring-2 ring-transparent hover:ring-[#BFA270] transition-all"
               style={{ backgroundColor: currentUser.color }}
               title="Mi perfil y vistas de acceso"
               aria-label="Abrir mi perfil y elegir vista"
@@ -213,7 +221,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* Password Change Button */}
             <button
               onClick={() => setIsPasswordModalOpen(true)}
-              className="hidden xl:inline-flex p-1.5 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer shrink-0"
+              className="hidden lg:inline-flex p-1.5 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer shrink-0"
               title="Cambiar mi Contraseña"
             >
               <KeyRound className="w-4 h-4 text-[#BFA270]" />
@@ -222,7 +230,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* User Pill / Identity */}
             <button
               onClick={() => setIsProfileModalOpen(true)}
-              className="hidden xl:flex items-center gap-2 pl-2 border-l border-[#E6E0CF] shrink-0 text-left hover:opacity-80 transition-opacity cursor-pointer group"
+              className="hidden lg:flex items-center gap-2 pl-2 border-l border-[#E6E0CF] shrink-0 text-left hover:opacity-80 transition-opacity cursor-pointer group"
               title="Ver mi perfil y privilegios fiduciarios"
             >
               <div className="relative">
@@ -265,7 +273,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* Subtle Logout icon button */}
             <button
               onClick={onLogout}
-              className="hidden xl:inline-flex p-2 text-[#637568] hover:text-red-700 hover:bg-red-50 transition-colors rounded-full cursor-pointer shrink-0"
+              className="hidden lg:inline-flex p-2 text-[#637568] hover:text-red-700 hover:bg-red-50 transition-colors rounded-full cursor-pointer shrink-0"
               title="Cerrar sesión"
             >
               <LogOut className="w-4 h-4" />
@@ -274,7 +282,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             {/* Mobile menu hamburger (visible on screens < 1150px) */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="xl:hidden p-1.5 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer shrink-0"
+              className="lg:hidden p-1.5 text-[#46574B] hover:text-[#163323] hover:bg-[#F4EFE6] transition-colors cursor-pointer shrink-0"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -282,31 +290,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* Secondary Navigation Sub-Bar (Below Top Ribbon) */}
-      <div className="bg-[#F4F1E9] border-t border-[#DCE3DD] px-2 sm:px-4 lg:px-5">
-        <div className="max-w-[1440px] mx-auto flex items-center justify-start xl:justify-center overflow-x-auto py-1.5 scrollbar-none gap-1">
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onSelectTab(item.id)}
-                className={`px-3 py-1 text-xs font-semibold tracking-wide whitespace-nowrap transition-all rounded-xs cursor-pointer ${
-                  isActive
-                    ? 'bg-[#18332F] text-white shadow-2xs font-bold'
-                    : 'text-[#657B7B] hover:text-[#18332F] hover:bg-white'
-                }`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="xl:hidden bg-[#FAF8F5] border-t border-[#E3DFC8] px-4 pt-3 pb-5 space-y-2 animate-fade-in">
+        <div className="lg:hidden bg-[#FAF8F5] border-t border-[#E3DFC8] px-4 pt-3 pb-5 space-y-2 animate-fade-in">
           {/* User profile strip in mobile */}
           <div className="flex items-center justify-between p-3 bg-white border border-[#E3DFC8] mb-3">
             <button

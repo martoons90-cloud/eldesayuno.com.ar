@@ -8,6 +8,7 @@ import { User, Booking, DateBlock, TrustSettings, NotificationPush, InventoryIte
 import { storageService } from './services/storageService';
 import { LoginScreen } from './components/LoginScreen';
 import { TopBar } from './components/TopBar';
+import { AppSidebar } from './components/AppSidebar';
 import { OwnerQuotaSummary } from './components/OwnerQuotaSummary';
 import { CalendarView } from './components/CalendarView';
 import { BookingModal } from './components/BookingModal';
@@ -211,8 +212,32 @@ export default function App() {
     .filter((u) => u.active !== false)
     .reduce((sum, u) => sum + u.annualQuotaDays, 0);
 
+  const handleNavigation = (tab: string) => {
+    setActiveTab(tab);
+    if (
+      tab === 'owners' ||
+      tab === 'blocks' ||
+      tab === 'reservations' ||
+      tab === 'settings' ||
+      tab === 'd1' ||
+      tab === 'logo'
+    ) {
+      setAdminSection(tab as AdminSectionType);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#F4F1E9] text-[#343D39] flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F4F1E9] text-[#343D39] font-sans">
+      <AppSidebar
+        currentUser={currentUser}
+        activeTab={activeTab}
+        logoUrl={settings.logoUrl}
+        adminViewMode={adminViewMode}
+        onToggleAdminViewMode={handleToggleAdminViewMode}
+        onSelectTab={handleNavigation}
+        onOpenNewBooking={handleOpenNewBooking}
+      />
+      <div className="min-h-screen flex flex-col lg:pl-[276px]">
       {/* Top Header Contract */}
       <TopBar
         currentUser={currentUser}
@@ -220,19 +245,7 @@ export default function App() {
         logoUrl={settings.logoUrl}
         adminViewMode={adminViewMode}
         onToggleAdminViewMode={handleToggleAdminViewMode}
-        onSelectTab={(tab) => {
-          setActiveTab(tab);
-          if (
-            tab === 'owners' ||
-            tab === 'blocks' ||
-            tab === 'reservations' ||
-            tab === 'settings' ||
-            tab === 'd1' ||
-            tab === 'logo'
-          ) {
-            setAdminSection(tab as AdminSectionType);
-          }
-        }}
+        onSelectTab={handleNavigation}
         onLogout={handleLogout}
         onOpenNewBooking={handleOpenNewBooking}
         notifications={userNotifications}
@@ -240,7 +253,7 @@ export default function App() {
       />
 
       {/* Main Viewport Container (1440px target, zero collapse) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="flex-1 max-w-[1540px] w-full mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8">
         {/* Banner indicating Copropietario Mode for Intendente when toggled */}
         {isIntendente && adminViewMode === 'owner' && (
           <div className="mb-6 p-3 bg-teal-50 border border-teal-200 text-teal-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
@@ -786,6 +799,7 @@ export default function App() {
 
       {/* Toast Notification Provider */}
       <PushNotificationToast currentUser={currentUser} />
+      </div>
     </div>
   );
 }

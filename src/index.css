@@ -23,6 +23,13 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* La app mantiene el fondo marfil del manual; las superficies quedan más livianas
+   para que la navegación lateral sea la pieza institucional dominante. */
+main > section,
+main > div > section {
+  border-radius: 14px;
+}
+
 button,
 input,
 select,
