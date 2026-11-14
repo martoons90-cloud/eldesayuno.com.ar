@@ -253,7 +253,7 @@ export default function App() {
       />
 
       {/* Main Viewport Container (1440px target, zero collapse) */}
-      <main className="flex-1 max-w-[1540px] w-full mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 bg-[radial-gradient(circle_at_85%_0%,rgba(49,93,91,0.07),transparent_31%),linear-gradient(180deg,#F8FAF9_0%,#F4F1E9_100%)]">
+      <main data-app-workspace className="app-workspace flex-1 max-w-[1540px] w-full mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 bg-[radial-gradient(circle_at_85%_0%,rgba(49,93,91,0.07),transparent_31%),linear-gradient(180deg,#F8FAF9_0%,#F4F1E9_100%)]">
         {/* Banner indicating Copropietario Mode for Intendente when toggled */}
         {isIntendente && adminViewMode === 'owner' && (
           <div className="mb-6 p-3 bg-teal-50 border border-teal-200 text-teal-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">

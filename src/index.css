@@ -30,6 +30,70 @@ main > div > section {
   border-radius: 14px;
 }
 
+/* Sistema visual común para cada módulo. Los componentes antiguos conservan
+   su contenido y comportamiento, pero ahora comparten las mismas superficies,
+   controles y jerarquía que el sidebar institucional. */
+[data-app-workspace] {
+  color: #30433d;
+}
+
+[data-app-workspace] :where(.bg-white, .bg-\[\#FFFFFF\])[class*='border'] {
+  border-color: #dce6e1 !important;
+  border-radius: 14px;
+  box-shadow: 0 14px 30px -28px rgba(24, 51, 47, 0.55);
+}
+
+[data-app-workspace] :where(.bg-\[\#FAF8F5\], .bg-\[\#F8F5EE\], .bg-\[\#F4F1E9\])[class*='border'] {
+  border-color: #dce6e1 !important;
+  border-radius: 12px;
+}
+
+[data-app-workspace] button {
+  border-radius: 8px;
+}
+
+[data-app-workspace] :is(input, select, textarea) {
+  border-color: #d2dfd9 !important;
+  border-radius: 8px;
+  background-color: #fbfcfb;
+}
+
+[data-app-workspace] :is(input, select, textarea):focus {
+  border-color: #315d5b !important;
+  box-shadow: 0 0 0 3px rgba(49, 93, 91, 0.12);
+}
+
+[data-app-workspace] table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-app-workspace] thead {
+  background: #f2f6f4 !important;
+}
+
+[data-app-workspace] thead th {
+  color: #526b63 !important;
+}
+
+[data-app-workspace] tbody tr {
+  transition: background-color 160ms ease;
+}
+
+[data-app-workspace] tbody tr:hover {
+  background-color: #f5f8f6 !important;
+}
+
+[data-app-workspace] :where(.shadow-xs, .shadow-2xs) {
+  box-shadow: 0 10px 24px -22px rgba(24, 51, 47, 0.5) !important;
+}
+
+@media (max-width: 1023px) {
+  [data-app-workspace] {
+    padding-bottom: 2rem;
+  }
+}
+
 button,
 input,
 select,
