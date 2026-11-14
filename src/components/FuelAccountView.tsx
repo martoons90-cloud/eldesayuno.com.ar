@@ -149,14 +149,14 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-5">
-      <div className="bg-white border border-[#E3DFC8] p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-[#DCE6E1] p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-[10px] uppercase tracking-wider font-bold text-[#B0833E] flex items-center gap-1"><Fuel className="w-3.5 h-3.5" /> Operatoria de combustible</div>
+          <div className="text-[10px] uppercase tracking-wider font-bold text-[#315D5B] flex items-center gap-1"><Fuel className="w-3.5 h-3.5" /> Operatoria de combustible</div>
           <h1 className="text-2xl font-bold text-[#163323] mt-1">Cuenta Corriente de Combustible</h1>
           <p className="text-sm text-[#637568] mt-1">Vales y tickets de retiro. Cada ticket queda como gasto pendiente hasta que se pague a la estación.</p>
           {account.stationName && <p className="text-[11px] text-[#7A8E7E] mt-2">Cuenta operativa: <strong className="text-[#526657]">{account.stationName}</strong></p>}
         </div>
-        {canManage && <div className="flex gap-2"><button type="button" onClick={() => setIsAccountOpen(true)} className="px-3 py-2 border border-[#DDD5BF] text-xs font-bold uppercase tracking-wide text-[#526657] hover:bg-[#F4F1E9] cursor-pointer">Configurar</button><button type="button" onClick={() => setIsVoucherOpen(true)} className="px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-[#132A1F] cursor-pointer"><Plus className="w-4 h-4 text-[#BFA270]" /> Nuevo vale</button></div>}
+        {canManage && <div className="flex gap-2"><button type="button" onClick={() => setIsAccountOpen(true)} className="px-3.5 py-2.5 rounded-[9px] border border-[#CFDDD7] bg-white text-xs font-bold uppercase tracking-wide text-[#18332F] hover:bg-[#F2F7F4] cursor-pointer">Configurar</button><button type="button" onClick={() => setIsVoucherOpen(true)} className="px-4 py-2.5 rounded-[9px] bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-[#132A1F] cursor-pointer"><Plus className="w-4 h-4 text-white/80" /> Nuevo vale</button></div>}
       </div>
 
       {error && <div className="border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm">{error}</div>}
@@ -167,7 +167,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
           ['Litros registrados', `${totals.liters.toLocaleString('es-AR')} L`, 'Según tickets cargados'],
           ['Vales abiertos', String(totals.openVouchers), 'Emitidos o con carga parcial'],
           ['Sin ticket', String(totals.pendingTickets), 'Vales pendientes de rendir'],
-        ].map(([label, value, detail]) => <div key={label} className="bg-white border border-[#E3DFC8] p-4"><span className="block text-[10px] uppercase font-bold text-[#637568]">{label}</span><strong className="block mt-2 font-mono text-xl text-[#163323]">{value}</strong><span className="block text-[11px] text-[#7A8E7E] mt-1">{detail}</span></div>)}
+        ].map(([label, value, detail]) => <div key={label} className="bg-white border border-[#DCE6E1] rounded-[14px] p-4"><span className="block text-[10px] uppercase font-bold text-[#637568]">{label}</span><strong className="block mt-2 font-mono text-xl text-[#163323]">{value}</strong><span className="block text-[11px] text-[#7A8E7E] mt-1">{detail}</span></div>)}
       </div>
 
       <div className="bg-white border border-[#E3DFC8] overflow-hidden">

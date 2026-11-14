@@ -8,6 +8,11 @@
   --brand-slate: #657b7b;
   --brand-charcoal: #343d39;
   --brand-line: #dce3dd;
+  --ui-primary: #18332f;
+  --ui-primary-hover: #28514b;
+  --ui-secondary-border: #cddbd4;
+  --ui-control-radius: 9px;
+  --ui-surface-radius: 14px;
 }
 
 html {
@@ -49,7 +54,47 @@ main > div > section {
 }
 
 [data-app-workspace] button {
-  border-radius: 8px;
+  border-radius: var(--ui-control-radius) !important;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+/* Un solo lenguaje para las acciones: verde institucional para confirmar,
+   blanco sobrio para acciones secundarias. El dorado queda reservado a detalles
+   informativos, no a botones que compiten entre sí. */
+:where(header, [data-app-workspace]) button[class*="bg-[#18332F]"],
+:where(header, [data-app-workspace]) button[class*="bg-[#1B3B2B]"],
+:where(header, [data-app-workspace]) button[class*="bg-[#163323]"],
+:where(header, [data-app-workspace]) button[class*="bg-[#132A1F]"] {
+  color: #fff !important;
+  background-color: var(--ui-primary) !important;
+  border-color: var(--ui-primary) !important;
+}
+
+:where(header, [data-app-workspace]) button[class*="bg-[#18332F]"]:hover,
+:where(header, [data-app-workspace]) button[class*="bg-[#1B3B2B]"]:hover,
+:where(header, [data-app-workspace]) button[class*="bg-[#163323]"]:hover,
+:where(header, [data-app-workspace]) button[class*="bg-[#132A1F]"]:hover {
+  background-color: var(--ui-primary-hover) !important;
+  border-color: var(--ui-primary-hover) !important;
+}
+
+:where(header, [data-app-workspace]) button[class*="border-[#DDD5BF]"],
+:where(header, [data-app-workspace]) button[class*="border-[#E3DFC8]"],
+:where(header, [data-app-workspace]) button[class*="border-[#DCD4C0]"] {
+  color: var(--ui-primary) !important;
+  background-color: #fff !important;
+  border-color: var(--ui-secondary-border) !important;
+}
+
+:where(header, [data-app-workspace]) button[class*="border-[#DDD5BF]"]:hover,
+:where(header, [data-app-workspace]) button[class*="border-[#E3DFC8]"]:hover,
+:where(header, [data-app-workspace]) button[class*="border-[#DCD4C0]"]:hover {
+  background-color: #f2f7f4 !important;
+  border-color: #9db9ab !important;
+}
+
+header button {
+  border-radius: var(--ui-control-radius) !important;
 }
 
 [data-app-workspace] :is(input, select, textarea) {
