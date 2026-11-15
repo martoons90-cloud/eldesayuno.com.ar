@@ -20,7 +20,9 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [ticketVoucherId, setTicketVoucherId] = useState<string | null>(null);
   const [ticketPendingDeletion, setTicketPendingDeletion] = useState<{ voucherId: string; ticket: FuelTicket } | null>(null);
+  const [voucherPendingDeletion, setVoucherPendingDeletion] = useState<FuelVoucher | null>(null);
   const [isDeletingTicket, setIsDeletingTicket] = useState(false);
+  const [isDeletingVoucher, setIsDeletingVoucher] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<FuelVoucher | null>(null);
   const [recipientType, setRecipientType] = useState<'owner' | 'third_party'>('owner');
   const [error, setError] = useState('');
@@ -204,6 +206,53 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
     }
   };
 
+  const deleteVoucher = async () => {
+    if (!voucherPendingDeletion || isDeletingVoucher) return;
+    const voucher = voucherPendingDeletion;
+    setIsDeletingVoucher(true);
+    setError('');
+    setSuccess('');
+    const localExpenses = storageService.getExpenses();
+    const expensesById = new Map<string, ExpenseItem>();
+    for (const ticket of voucher.tickets || []) {
+      const expense = ticket.expenseId ? localExpenses.find((item) => item.id === ticket.expenseId) : undefined;
+      if (expense) expensesById.set(expense.id, expense);
+    }
+    const expenses = Array.from(expensesById.values());
+    const removedExpenseIds: string[] = [];
+
+    try {
+      for (const ticket of voucher.tickets || []) {
+        if (!ticket.expenseId) continue;
+        if (!await storageService.deleteExpense(ticket.expenseId)) {
+          for (const expense of expenses.filter((item) => removedExpenseIds.includes(item.id))) {
+            await storageService.saveExpense(expense);
+          }
+          setError(`No se pudo eliminar el gasto del ticket ${ticket.ticketNumber}. El vale se mantiene.`);
+          return;
+        }
+        removedExpenseIds.push(ticket.expenseId);
+      }
+
+      const next: FuelAccount = {
+        ...account,
+        vouchers: account.vouchers.filter((item) => item.id !== voucher.id),
+      };
+      if (await persist(next)) {
+        setVoucherPendingDeletion(null);
+        setSuccess(`Vale ${voucher.number} eliminado${voucher.tickets.length ? ' junto con sus tickets y gastos asociados' : ''}.`);
+      } else {
+        for (const expense of expenses.filter((item) => removedExpenseIds.includes(item.id))) {
+          await storageService.saveExpense(expense);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el vale.');
+    } finally {
+      setIsDeletingVoucher(false);
+    }
+  };
+
   const formatVoucherDate = (value: string) => {
     const [year, month, day] = value.slice(0, 10).split('-');
     return year && month && day ? `${day}/${month}/${year}` : value;
@@ -307,6 +356,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
                 <div className="flex flex-wrap gap-2 self-start">
                   <button type="button" onClick={() => setSelectedVoucher(voucher)} className="px-3 py-2 border border-[#CFDDD7] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Ver vale</button>
                   {canManage && <button type="button" onClick={() => { setTicketVoucherId(voucher.id); setTicketForm((old) => ({ ...old, fuelType: voucher.fuelType || 'Diésel común' })); setError(''); }} disabled={voucher.status === 'cancelled'} className="px-3 py-2 border border-[#1B3B2B] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] disabled:opacity-50 cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Cargar ticket</button>}
+                  {canManage && <button type="button" onClick={() => { setError(''); setVoucherPendingDeletion(voucher); }} disabled={isDeletingVoucher} aria-label={`Eliminar vale ${voucher.number}`} title="Eliminar vale" className="p-2 border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50 cursor-pointer"><Trash2 className="w-4 h-4" /></button>}
                 </div>
               </div>;
             })}
@@ -345,6 +395,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
         <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-[#526657]">Monto máximo (ARS)<input type="number" min="0" value={voucherForm.authorizedAmount || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedAmount: Number(event.target.value) || 0 })} placeholder="Libre" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label><label className="text-xs font-bold text-[#526657]">Cantidad máxima (litros)<input type="number" min="0" step="any" value={voucherForm.authorizedLiters || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedLiters: Number(event.target.value) || 0 })} placeholder="Libre" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label></div>
         <p className="text-xs text-[#637568]">Si dejás monto o litros vacíos, ese límite queda libre.</p><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Emitir vale'}</button></form></div>}
       {canManage && ticketVoucher && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={addTicket} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setTicketVoucherId(null)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Cargar ticket · {ticketVoucher.number}</h3><input type="date" value={ticketForm.date} onChange={(event) => setTicketForm({ ...ticketForm, date: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={ticketForm.ticketNumber} onChange={(event) => setTicketForm({ ...ticketForm, ticketNumber: event.target.value })} placeholder="Número de ticket *" className="w-full px-3 py-2 border border-[#DDD5BF]" /><select value={ticketForm.fuelType} onChange={(event) => setTicketForm({ ...ticketForm, fuelType: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]"><option>Diésel común</option><option>Infinia Diésel</option><option>Nafta Súper</option><option>Nafta Infinia</option></select><div className="grid grid-cols-2 gap-3"><input type="number" min="0" step="any" value={ticketForm.liters || ''} onChange={(event) => setTicketForm({ ...ticketForm, liters: Number(event.target.value) || 0 })} placeholder="Litros" className="px-3 py-2 border border-[#DDD5BF]" /><input type="number" min="0" step="any" value={ticketForm.amount || ''} onChange={(event) => setTicketForm({ ...ticketForm, amount: Number(event.target.value) || 0 })} placeholder="Importe $ *" className="px-3 py-2 border border-[#DDD5BF]" /></div><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Vincular ticket'}</button></form></div>}
+      {canManage && voucherPendingDeletion && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"><div role="alertdialog" aria-modal="true" aria-labelledby="fuel-voucher-delete-title" className="bg-white max-w-md w-full p-5 border border-[#E3DFC8] shadow-xl"><h3 id="fuel-voucher-delete-title" className="text-lg font-bold text-[#163323]">¿Eliminar el vale {voucherPendingDeletion.number}?</h3><p className="mt-2 text-sm text-[#637568]">El vale se quitará de la cuenta corriente y no se puede recuperar.</p>{voucherPendingDeletion.tickets.length > 0 && <p className="mt-2 text-sm text-red-800">También se eliminarán sus {voucherPendingDeletion.tickets.length} ticket(s), los gastos de combustible y cualquier cobranza o movimiento de caja relacionado.</p>}{error && <p className="mt-3 text-sm text-red-700">{error}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={isDeletingVoucher} onClick={() => setVoucherPendingDeletion(null)} className="px-4 py-2 border border-[#CFDDD7] text-[#18332F] text-xs font-bold uppercase disabled:opacity-50 cursor-pointer">Volver</button><button type="button" disabled={isDeletingVoucher} onClick={deleteVoucher} className="px-4 py-2 bg-red-700 text-white text-xs font-bold uppercase disabled:opacity-50 cursor-pointer">{isDeletingVoucher ? 'Eliminando...' : 'Sí, eliminar vale'}</button></div></div></div>}
       {canManage && ticketPendingDeletion && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"><div role="alertdialog" aria-modal="true" aria-labelledby="fuel-ticket-delete-title" className="bg-white max-w-md w-full p-5 border border-[#E3DFC8] shadow-xl"><h3 id="fuel-ticket-delete-title" className="text-lg font-bold text-[#163323]">¿Eliminar el ticket {ticketPendingDeletion.ticket.ticketNumber}?</h3><p className="mt-2 text-sm text-[#637568]">Se quitará del vale y también se eliminará el gasto de combustible asociado. Si ese gasto tiene cobranzas o movimientos vinculados, también se eliminarán. Esta acción no se puede deshacer.</p>{error && <p className="mt-3 text-sm text-red-700">{error}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={isDeletingTicket} onClick={() => setTicketPendingDeletion(null)} className="px-4 py-2 border border-[#CFDDD7] text-[#18332F] text-xs font-bold uppercase disabled:opacity-50 cursor-pointer">Volver</button><button type="button" disabled={isDeletingTicket} onClick={deleteTicket} className="px-4 py-2 bg-red-700 text-white text-xs font-bold uppercase disabled:opacity-50 cursor-pointer">{isDeletingTicket ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>}
     </div>
   );
