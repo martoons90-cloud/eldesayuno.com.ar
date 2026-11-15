@@ -70,6 +70,28 @@ main > div > section {
   border-color: var(--ui-primary) !important;
 }
 
+/* Variantes antiguas del color arena también se normalizan en botones de
+   acción; el arena queda como acento decorativo en textos, iconos y selección. */
+:where(header, [data-app-workspace]) button[class*="bg-[#BFA270]"],
+:where(header, [data-app-workspace]) button[class*="bg-[#C7A96B]"],
+:where(header, [data-app-workspace]) button[class*="bg-[#D4B878]"] {
+  color: #fff !important;
+  background-color: var(--ui-primary) !important;
+  border-color: var(--ui-primary) !important;
+}
+
+:where(header, [data-app-workspace]) button[class*="bg-[#BFA270]"]:hover,
+:where(header, [data-app-workspace]) button[class*="bg-[#C7A96B]"]:hover,
+:where(header, [data-app-workspace]) button[class*="bg-[#D4B878]"]:hover {
+  background-color: var(--ui-primary-hover) !important;
+  border-color: var(--ui-primary-hover) !important;
+}
+
+:where(header, [data-app-workspace]) button[class*="text-[#BFA270]"],
+:where(header, [data-app-workspace]) button[class*="text-[#E5C378]"] {
+  color: #fff !important;
+}
+
 :where(header, [data-app-workspace]) button[class*="bg-[#18332F]"]:hover,
 :where(header, [data-app-workspace]) button[class*="bg-[#1B3B2B]"]:hover,
 :where(header, [data-app-workspace]) button[class*="bg-[#163323]"]:hover,
@@ -95,6 +117,19 @@ main > div > section {
 
 header button {
   border-radius: var(--ui-control-radius) !important;
+}
+
+/* Armoniza los paneles que todavía conservan el borde arena del diseño previo. */
+[data-app-workspace] [class*="border-[#E3DFC8]"],
+[data-app-workspace] [class*="border-[#DDD5BF]"],
+[data-app-workspace] [class*="border-[#DCD4C0]"] {
+  border-color: #dce6e1 !important;
+}
+
+[data-app-workspace] [class*="border-[#E3DFC8]"],
+[data-app-workspace] [class*="border-[#DDD5BF]"],
+[data-app-workspace] [class*="border-[#DCD4C0]"] {
+  border-radius: var(--ui-surface-radius);
 }
 
 [data-app-workspace] :is(input, select, textarea) {
