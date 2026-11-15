@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, Fuel, Plus, Printer, Receipt, Share2, Ticket, X } from 'lucide-react';
+import { Download, Fuel, Plus, Printer, Receipt, Share2, Ticket, Trash2, X } from 'lucide-react';
 import { ExpenseItem, FuelAccount, FuelTicket, FuelVoucher, TrustSettings, User, canWriteModule } from '../types';
 import { storageService } from '../services/storageService';
 
@@ -19,9 +19,12 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [ticketVoucherId, setTicketVoucherId] = useState<string | null>(null);
+  const [ticketPendingDeletion, setTicketPendingDeletion] = useState<{ voucherId: string; ticket: FuelTicket } | null>(null);
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<FuelVoucher | null>(null);
   const [recipientType, setRecipientType] = useState<'owner' | 'third_party'>('owner');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [voucherForm, setVoucherForm] = useState({
     issuedAt: today(), assignedTo: '', vehicle: '', authorizedAmount: 0, authorizedLiters: 0, fuelType: 'Diésel común',
   });
@@ -149,6 +152,58 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
     }
   };
 
+  const deleteTicket = async () => {
+    if (!ticketPendingDeletion || isDeletingTicket) return;
+    const { voucherId, ticket } = ticketPendingDeletion;
+    const voucher = account.vouchers.find((item) => item.id === voucherId);
+    if (!voucher) {
+      setTicketPendingDeletion(null);
+      return;
+    }
+
+    setIsDeletingTicket(true);
+    setError('');
+    setSuccess('');
+    const linkedExpense = ticket.expenseId
+      ? storageService.getExpenses().find((expense) => expense.id === ticket.expenseId)
+      : undefined;
+    try {
+      if (ticket.expenseId && !await storageService.deleteExpense(ticket.expenseId)) {
+        setError('No se pudo eliminar el gasto asociado. El ticket sigue vigente.');
+        return;
+      }
+
+      const remainingTickets = (voucher.tickets || []).filter((item) => item.id !== ticket.id);
+      const totalUsed = remainingTickets.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      const status: FuelVoucher['status'] = voucher.status === 'cancelled'
+        ? 'cancelled'
+        : remainingTickets.length === 0
+          ? 'issued'
+          : voucher.authorizedAmount > 0 && totalUsed >= voucher.authorizedAmount - 0.01
+            ? 'settled'
+            : 'partial';
+      const next: FuelAccount = {
+        ...account,
+        vouchers: account.vouchers.map((item) => item.id === voucherId ? { ...item, tickets: remainingTickets, status } : item),
+      };
+
+      if (await persist(next)) {
+        setTicketPendingDeletion(null);
+        setSuccess(ticket.expenseId
+          ? `Ticket ${ticket.ticketNumber} y gasto asociado eliminados.`
+          : `Ticket ${ticket.ticketNumber} eliminado.`);
+      } else if (linkedExpense) {
+        // Si no se pudo actualizar el vale, se restaura el gasto para no dejar
+        // el comprobante asociado a una deuda que ya no existe.
+        await storageService.saveExpense(linkedExpense);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el ticket.');
+    } finally {
+      setIsDeletingTicket(false);
+    }
+  };
+
   const formatVoucherDate = (value: string) => {
     const [year, month, day] = value.slice(0, 10).split('-');
     return year && month && day ? `${day}/${month}/${year}` : value;
@@ -225,6 +280,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
       </div>
 
       {error && <div className="border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm">{error}</div>}
+      {success && <div role="status" className="border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm">{success}</div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
@@ -246,7 +302,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
                   <div className="flex flex-wrap gap-2 items-center"><strong className="text-[#163323]">Vale {voucher.number}</strong><span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${statusStyle[voucher.status]}`}>{statusLabel[voucher.status]}</span></div>
                   <p className="text-xs text-[#526657] mt-1">{voucher.issuedAt} · {voucher.assignedTo}{voucher.vehicle ? ` · ${voucher.vehicle}` : ''}</p>
                   <p className="text-xs mt-2 text-[#163323]">Combustible: <strong>{voucher.fuelType || 'Diésel común'}</strong> · Importe máx.: <strong>{voucher.authorizedAmount > 0 ? `$${voucher.authorizedAmount.toLocaleString('es-AR')}` : 'Libre'}</strong> · Retirado: <strong>${used.toLocaleString('es-AR')}</strong> · Cantidad máx.: <strong>{voucher.authorizedLiters > 0 ? `${voucher.authorizedLiters} L` : 'Libre'}</strong></p>
-                  {voucher.tickets.length > 0 && <div className="mt-2 text-[11px] text-[#637568]">{voucher.tickets.map((ticket) => <span key={ticket.id} className="inline-block mr-3">Ticket {ticket.ticketNumber}: ${ticket.amount.toLocaleString('es-AR')} · {ticket.liters || 0} L · <strong className="text-amber-800">pendiente en Gastos</strong></span>)}</div>}
+                  {voucher.tickets.length > 0 && <div className="mt-3 space-y-2">{voucher.tickets.map((ticket) => <div key={ticket.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#E5E9E6] bg-[#F8FAF8] px-3 py-2 text-[11px] text-[#637568]"><span>Ticket <strong className="text-[#18332F]">{ticket.ticketNumber}</strong> · ${ticket.amount.toLocaleString('es-AR')} · {ticket.liters || 0} L · <strong className="text-amber-800">pendiente en Gastos</strong></span>{canManage && <button type="button" onClick={() => { setError(''); setTicketPendingDeletion({ voucherId: voucher.id, ticket }); }} disabled={isDeletingTicket} aria-label={`Eliminar ticket ${ticket.ticketNumber}`} title="Eliminar ticket" className="p-1 text-red-700 hover:bg-red-50 disabled:opacity-50 cursor-pointer"><Trash2 className="w-4 h-4" /></button>}</div>)}</div>}
                 </div>
                 <div className="flex flex-wrap gap-2 self-start">
                   <button type="button" onClick={() => setSelectedVoucher(voucher)} className="px-3 py-2 border border-[#CFDDD7] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Ver vale</button>
@@ -289,6 +345,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
         <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-[#526657]">Monto máximo (ARS)<input type="number" min="0" value={voucherForm.authorizedAmount || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedAmount: Number(event.target.value) || 0 })} placeholder="Libre" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label><label className="text-xs font-bold text-[#526657]">Cantidad máxima (litros)<input type="number" min="0" step="any" value={voucherForm.authorizedLiters || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedLiters: Number(event.target.value) || 0 })} placeholder="Libre" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label></div>
         <p className="text-xs text-[#637568]">Si dejás monto o litros vacíos, ese límite queda libre.</p><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Emitir vale'}</button></form></div>}
       {canManage && ticketVoucher && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={addTicket} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setTicketVoucherId(null)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Cargar ticket · {ticketVoucher.number}</h3><input type="date" value={ticketForm.date} onChange={(event) => setTicketForm({ ...ticketForm, date: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={ticketForm.ticketNumber} onChange={(event) => setTicketForm({ ...ticketForm, ticketNumber: event.target.value })} placeholder="Número de ticket *" className="w-full px-3 py-2 border border-[#DDD5BF]" /><select value={ticketForm.fuelType} onChange={(event) => setTicketForm({ ...ticketForm, fuelType: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]"><option>Diésel común</option><option>Infinia Diésel</option><option>Nafta Súper</option><option>Nafta Infinia</option></select><div className="grid grid-cols-2 gap-3"><input type="number" min="0" step="any" value={ticketForm.liters || ''} onChange={(event) => setTicketForm({ ...ticketForm, liters: Number(event.target.value) || 0 })} placeholder="Litros" className="px-3 py-2 border border-[#DDD5BF]" /><input type="number" min="0" step="any" value={ticketForm.amount || ''} onChange={(event) => setTicketForm({ ...ticketForm, amount: Number(event.target.value) || 0 })} placeholder="Importe $ *" className="px-3 py-2 border border-[#DDD5BF]" /></div><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Vincular ticket'}</button></form></div>}
+      {canManage && ticketPendingDeletion && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"><div role="alertdialog" aria-modal="true" aria-labelledby="fuel-ticket-delete-title" className="bg-white max-w-md w-full p-5 border border-[#E3DFC8] shadow-xl"><h3 id="fuel-ticket-delete-title" className="text-lg font-bold text-[#163323]">¿Eliminar el ticket {ticketPendingDeletion.ticket.ticketNumber}?</h3><p className="mt-2 text-sm text-[#637568]">Se quitará del vale y también se eliminará el gasto de combustible asociado. Si ese gasto tiene cobranzas o movimientos vinculados, también se eliminarán. Esta acción no se puede deshacer.</p>{error && <p className="mt-3 text-sm text-red-700">{error}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={isDeletingTicket} onClick={() => setTicketPendingDeletion(null)} className="px-4 py-2 border border-[#CFDDD7] text-[#18332F] text-xs font-bold uppercase disabled:opacity-50 cursor-pointer">Volver</button><button type="button" disabled={isDeletingTicket} onClick={deleteTicket} className="px-4 py-2 bg-red-700 text-white text-xs font-bold uppercase disabled:opacity-50 cursor-pointer">{isDeletingTicket ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>}
     </div>
   );
 };
