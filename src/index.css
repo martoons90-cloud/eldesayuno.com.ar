@@ -42,6 +42,26 @@ main > div > section {
   color: #30433d;
 }
 
+/* El área de trabajo y las vistas principales ocupan el ancho útil de cada
+   pantalla; los límites quedan reservados para formularios y diálogos. */
+[data-app-workspace].app-workspace {
+  width: 100%;
+  max-width: none;
+  padding-inline: clamp(1rem, 1.5vw, 2rem) !important;
+}
+
+[data-app-workspace] > :is(.max-w-6xl, .max-w-7xl, .max-w-5xl, .max-w-\[1440px\]) {
+  width: 100%;
+  max-width: none !important;
+  margin-inline: 0 !important;
+}
+
+header :is(.max-w-\[1540px\], .max-w-7xl) {
+  width: 100%;
+  max-width: none !important;
+  margin-inline: 0 !important;
+}
+
 [data-app-workspace] :where(.bg-white, .bg-\[\#FFFFFF\])[class*='border'] {
   border-color: #dce6e1 !important;
   border-radius: 14px;
