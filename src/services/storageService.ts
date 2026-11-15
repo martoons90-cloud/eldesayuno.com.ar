@@ -35,6 +35,7 @@ const CURRENT_USER_KEY = 'el_desayuno_current_user_v3';
 // Sólo guarda un número de revisión durante la pestaña actual; nunca contiene
 // registros ni es una copia de la base de datos.
 const SYNC_REVISION_KEY = 'el_desayuno_sync_revision_v1';
+const BOOKINGS_SYNC_REPAIR_KEY = 'el_desayuno_bookings_sync_repair_v1';
 
 /** Estado vacío: la interfaz nunca inventa información si la base no la devuelve. */
 export const DEFAULT_USERS: User[] = [];
@@ -202,6 +203,12 @@ class StorageService {
    */
   public async syncIfOutdated(): Promise<boolean> {
     if (typeof window === 'undefined') return false;
+    // Recupera la lista en clientes afectados por la sincronización parcial
+    // que antes podía reemplazarla por [] cuando bookings no venía en respuesta.
+    if (localStorage.getItem(BOOKINGS_SYNC_REPAIR_KEY) !== 'done') {
+      const bookingsSynced = await this.hydrateFromAppStateAsync(['bookings']);
+      if (bookingsSynced) localStorage.setItem(BOOKINGS_SYNC_REPAIR_KEY, 'done');
+    }
     const lastRevision = this.getLastSyncRevision();
     const changes = await supabaseService.getSyncChanges(lastRevision ?? undefined);
 
