@@ -189,3 +189,30 @@ textarea {
   color: #ffffff;
   background: var(--brand-petrol);
 }
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .fuel-voucher-print,
+  .fuel-voucher-print * {
+    visibility: visible !important;
+  }
+
+  .fuel-voucher-print {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    padding: 24mm !important;
+    background: #fff !important;
+    color: #18332f !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  @page {
+    margin: 0;
+  }
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Fuel, Plus, Receipt, Ticket, X } from 'lucide-react';
+import { Download, Fuel, Plus, Printer, Receipt, Share2, Ticket, X } from 'lucide-react';
 import { ExpenseItem, FuelAccount, FuelTicket, FuelVoucher, TrustSettings, User, canWriteModule } from '../types';
 import { storageService } from '../services/storageService';
 
@@ -19,6 +19,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [ticketVoucherId, setTicketVoucherId] = useState<string | null>(null);
+  const [selectedVoucher, setSelectedVoucher] = useState<FuelVoucher | null>(null);
   const [error, setError] = useState('');
   const [voucherForm, setVoucherForm] = useState({
     issuedAt: today(), assignedTo: '', vehicle: '', authorizedAmount: 0, authorizedLiters: 0,
@@ -143,6 +144,63 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
     }
   };
 
+  const formatVoucherDate = (value: string) => {
+    const [year, month, day] = value.slice(0, 10).split('-');
+    return year && month && day ? `${day}/${month}/${year}` : value;
+  };
+
+  const shareVoucher = (voucher: FuelVoucher) => {
+    const message = [
+      `VALE DE COMBUSTIBLE ${voucher.number}`,
+      `Estación: ${voucher.stationName || account.stationName || 'Estación de servicio'}`,
+      `Fecha: ${formatVoucherDate(voucher.issuedAt)}`,
+      `Autorizado para: ${voucher.assignedTo}`,
+      voucher.vehicle ? `Vehículo: ${voucher.vehicle}` : '',
+      `Importe máximo: $${Number(voucher.authorizedAmount).toLocaleString('es-AR')} ARS`,
+      voucher.authorizedLiters > 0 ? `Límite: ${voucher.authorizedLiters} litros` : '',
+    ].filter(Boolean).join('\n');
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const downloadVoucherImage = async (voucher: FuelVoucher) => {
+    const escapeXml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]!));
+    const lines: string[][] = [
+      ['Vale', voucher.number],
+      ['Estación', voucher.stationName || account.stationName || 'Estación de servicio'],
+      ['Fecha', formatVoucherDate(voucher.issuedAt)],
+      ['Autorizado para', voucher.assignedTo],
+      ...(voucher.vehicle ? [['Vehículo', voucher.vehicle]] : []),
+      ['Importe máximo', `$${Number(voucher.authorizedAmount).toLocaleString('es-AR')} ARS`],
+      ...(voucher.authorizedLiters > 0 ? [['Límite', `${voucher.authorizedLiters} litros`]] : []),
+    ];
+    const height = 330 + lines.length * 66;
+    const rows = lines.map(([label, value], index) => `<text x="72" y="${230 + index * 66}" fill="#66756e" font-family="Arial,sans-serif" font-size="19" font-weight="700">${escapeXml(label.toUpperCase())}</text><text x="72" y="${258 + index * 66}" fill="#18332f" font-family="Arial,sans-serif" font-size="25">${escapeXml(value)}</text>`).join('');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="${height}" viewBox="0 0 1000 ${height}"><rect width="100%" height="100%" fill="#f4f1e9"/><rect x="28" y="28" width="944" height="${height - 56}" rx="28" fill="#fff" stroke="#dce6e1" stroke-width="3"/><path d="M28 56a28 28 0 0 1 28-28h888a28 28 0 0 1 28 28v112H28z" fill="#18332f"/><text x="72" y="92" fill="#fff" font-family="Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="3">EL DESAYUNO · CUENTA CORRIENTE</text><text x="72" y="140" fill="#fff" font-family="Arial,sans-serif" font-size="32" font-weight="700">VALE DE COMBUSTIBLE</text>${rows}<text x="72" y="${height - 72}" fill="#7a8e7e" font-family="Arial,sans-serif" font-size="16">Emitido por ${escapeXml(voucher.createdBy || currentUser.name)}</text></svg>`;
+    const image = new Image();
+    const imageUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('No se pudo preparar la imagen del vale.'));
+        image.src = imageUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = height;
+      canvas.getContext('2d')?.drawImage(image, 0, 0);
+      const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!png) throw new Error('No se pudo descargar la imagen del vale.');
+      const downloadUrl = URL.createObjectURL(png);
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = `${voucher.number.toLowerCase()}-vale-combustible.png`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  };
+
   const statusLabel: Record<FuelVoucher['status'], string> = { issued: 'Emitido', partial: 'Con ticket', settled: 'Rendido', cancelled: 'Anulado' };
   const statusStyle: Record<FuelVoucher['status'], string> = { issued: 'bg-amber-100 text-amber-800', partial: 'bg-blue-100 text-blue-800', settled: 'bg-emerald-100 text-emerald-800', cancelled: 'bg-neutral-200 text-neutral-700' };
   const ticketVoucher = account.vouchers.find((voucher) => voucher.id === ticketVoucherId) || null;
@@ -183,12 +241,34 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
                   <p className="text-xs mt-2 text-[#163323]">Autorizado: <strong>${voucher.authorizedAmount.toLocaleString('es-AR')}</strong> · Retirado: <strong>${used.toLocaleString('es-AR')}</strong>{voucher.authorizedLiters > 0 ? ` · Máx. ${voucher.authorizedLiters} L` : ''}</p>
                   {voucher.tickets.length > 0 && <div className="mt-2 text-[11px] text-[#637568]">{voucher.tickets.map((ticket) => <span key={ticket.id} className="inline-block mr-3">Ticket {ticket.ticketNumber}: ${ticket.amount.toLocaleString('es-AR')} · {ticket.liters || 0} L · <strong className="text-amber-800">pendiente en Gastos</strong></span>)}</div>}
                 </div>
-                {canManage && <button type="button" onClick={() => { setTicketVoucherId(voucher.id); setError(''); }} disabled={voucher.status === 'cancelled'} className="self-start px-3 py-2 border border-[#1B3B2B] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] disabled:opacity-50 cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Cargar ticket</button>}
+                <div className="flex flex-wrap gap-2 self-start">
+                  <button type="button" onClick={() => setSelectedVoucher(voucher)} className="px-3 py-2 border border-[#CFDDD7] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Ver vale</button>
+                  {canManage && <button type="button" onClick={() => { setTicketVoucherId(voucher.id); setError(''); }} disabled={voucher.status === 'cancelled'} className="px-3 py-2 border border-[#1B3B2B] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] disabled:opacity-50 cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Cargar ticket</button>}
+                </div>
               </div>;
             })}
           </div>
         )}
       </div>
+
+      {selectedVoucher && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+        <div className="bg-white max-w-xl w-full border border-[#DCE6E1] shadow-xl relative my-auto">
+          <div className="px-5 py-4 bg-[#18332F] text-white flex items-center justify-between print:hidden"><div><h3 className="font-bold">Vale de combustible {selectedVoucher.number}</h3><p className="text-xs text-white/75 mt-1">Podés imprimirlo, guardarlo como PDF o descargarlo como imagen.</p></div><button type="button" onClick={() => setSelectedVoucher(null)} className="p-1 cursor-pointer" aria-label="Cerrar"><X className="w-5 h-5" /></button></div>
+          <div className="p-6 sm:p-8 fuel-voucher-print">
+            <div className="text-center border-b border-[#DCE6E1] pb-5"><p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#7A8E7E]">{selectedVoucher.stationName || account.stationName || 'Estación de servicio'}</p><h2 className="text-2xl font-bold text-[#18332F] mt-2">VALE DE COMBUSTIBLE</h2><p className="text-sm text-[#637568] mt-1">N.º {selectedVoucher.number}</p></div>
+            <dl className="grid grid-cols-[minmax(120px,0.7fr)_1fr] gap-x-4 gap-y-4 py-6 text-sm">
+              <dt className="font-bold text-[#637568]">Fecha de emisión</dt><dd className="text-[#18332F]">{formatVoucherDate(selectedVoucher.issuedAt)}</dd>
+              <dt className="font-bold text-[#637568]">Autorizado para</dt><dd className="text-[#18332F]">{selectedVoucher.assignedTo}</dd>
+              {selectedVoucher.vehicle && <><dt className="font-bold text-[#637568]">Vehículo / patente</dt><dd className="text-[#18332F]">{selectedVoucher.vehicle}</dd></>}
+              <dt className="font-bold text-[#637568]">Importe máximo</dt><dd className="text-[#18332F] font-bold">${Number(selectedVoucher.authorizedAmount).toLocaleString('es-AR')} ARS</dd>
+              {selectedVoucher.authorizedLiters > 0 && <><dt className="font-bold text-[#637568]">Límite de combustible</dt><dd className="text-[#18332F]">{selectedVoucher.authorizedLiters} litros</dd></>}
+            </dl>
+            <div className="border-t border-dashed border-[#B7C5BC] pt-4 flex justify-between text-xs text-[#637568]"><span>Firma de quien retira</span><span>Firma de la estación</span></div>
+            <p className="mt-6 text-[10px] text-[#7A8E7E]">Emitido por {selectedVoucher.createdBy || currentUser.name}</p>
+          </div>
+          <div className="px-5 py-4 border-t border-[#DCE6E1] flex flex-wrap justify-end gap-2 print:hidden"><button type="button" onClick={() => shareVoucher(selectedVoucher)} className="px-3 py-2 border border-[#CFDDD7] text-[#18332F] text-xs font-bold uppercase cursor-pointer flex items-center gap-2"><Share2 className="w-4 h-4" /> WhatsApp</button><button type="button" onClick={() => downloadVoucherImage(selectedVoucher).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'No se pudo descargar la imagen del vale.'))} className="px-3 py-2 border border-[#CFDDD7] text-[#18332F] text-xs font-bold uppercase cursor-pointer flex items-center gap-2"><Download className="w-4 h-4" /> Imagen</button><button type="button" onClick={() => window.print()} className="px-3 py-2 bg-[#18332F] text-white text-xs font-bold uppercase cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> Imprimir / PDF</button></div>
+        </div>
+      </div>}
 
       {canManage && isAccountOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={async (event) => { event.preventDefault(); if (await saveAccountData()) setIsAccountOpen(false); }} className="bg-white max-w-md w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setIsAccountOpen(false)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Configurar cuenta de estación</h3><p className="text-xs text-[#637568]">Estos datos sólo se usan para identificar la cuenta al emitir vales; no quedan expuestos en el listado.</p><input value={account.stationName} onChange={(event) => setAccount({ ...account, stationName: event.target.value })} placeholder="Nombre de la estación" className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={account.accountNumber} onChange={(event) => setAccount({ ...account, accountNumber: event.target.value })} placeholder="Número interno de cuenta (opcional)" className="w-full px-3 py-2 border border-[#DDD5BF]" /><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Guardar configuración'}</button></form></div>}
       {canManage && isVoucherOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={createVoucher} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setIsVoucherOpen(false)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Emitir vale de combustible</h3><input type="date" value={voucherForm.issuedAt} onChange={(event) => setVoucherForm({ ...voucherForm, issuedAt: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]" /><select value={voucherForm.assignedTo} onChange={(event) => setVoucherForm({ ...voucherForm, assignedTo: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]"><option value="">Entregar a...</option>{users.filter((user) => user.active !== false).map((user) => <option key={user.id} value={user.name}>{user.name} ({user.partName})</option>)}</select><input value={voucherForm.vehicle} onChange={(event) => setVoucherForm({ ...voucherForm, vehicle: event.target.value })} placeholder="Vehículo / patente (opcional)" className="w-full px-3 py-2 border border-[#DDD5BF]" /><div className="grid grid-cols-2 gap-3"><input type="number" min="0" value={voucherForm.authorizedAmount || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedAmount: Number(event.target.value) || 0 })} placeholder="Máximo $ ARS *" className="px-3 py-2 border border-[#DDD5BF]" /><input type="number" min="0" value={voucherForm.authorizedLiters || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedLiters: Number(event.target.value) || 0 })} placeholder="Máximo litros" className="px-3 py-2 border border-[#DDD5BF]" /></div><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Emitir vale'}</button></form></div>}
