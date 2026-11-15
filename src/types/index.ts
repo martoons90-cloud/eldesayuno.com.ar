@@ -324,6 +324,7 @@ export interface FuelVoucher {
   purpose: string;
   authorizedAmount: number;
   authorizedLiters: number;
+  fuelType?: string;
   status: 'issued' | 'partial' | 'settled' | 'cancelled';
   createdBy: string;
   createdAt: string;
@@ -333,6 +334,7 @@ export interface FuelVoucher {
 export interface FuelAccount {
   stationName: string;
   accountNumber: string;
+  knownVehicles?: string[];
   vouchers: FuelVoucher[];
 }
 

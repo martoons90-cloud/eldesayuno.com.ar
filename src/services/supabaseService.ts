@@ -147,6 +147,7 @@ class SupabaseService {
       logoUrl: settings.logo_url,
       wifiSsid: settings.wifi_ssid,
       wifiPassword: settings.wifi_password,
+      fuelAccount: settings.fuel_account || { stationName: '', accountNumber: '', knownVehicles: [], vouchers: [] },
       updatedAt: settings.updated_at,
     };
   }
@@ -250,13 +251,32 @@ class SupabaseService {
         cbu: settings.cbu || '', alias_bancario: settings.aliasBancario || '', banco_nombre: settings.bancoNombre || '',
         location: settings.location || '', check_in_time: settings.checkInTime || '', check_out_time: settings.checkOutTime || '',
         logo_url: settings.logoUrl || '', wifi_ssid: settings.wifiSsid || '', wifi_password: settings.wifiPassword || '',
-        fuel_account: settings.fuelAccount || { stationName: '', accountNumber: '', vouchers: [] },
+        fuel_account: settings.fuelAccount || { stationName: '', accountNumber: '', knownVehicles: [], vouchers: [] },
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
       .select()
       .single();
     if (error || !data) throw new Error(error?.message || 'La base de datos no confirmó los ajustes.');
-    return (await this.getSettingsFromSupabase()) || {};
+    // El upsert ya devuelve la fila guardada. Evitamos una segunda consulta
+    // completa de ajustes para que el vale aparezca apenas se confirma el guardado.
+    return {
+      ...settings,
+      houseName: data.house_name,
+      slogan: data.slogan,
+      cuitFideicomiso: data.cuit_fideicomiso,
+      titularCuenta: data.titular_cuenta,
+      cbu: data.cbu,
+      aliasBancario: data.alias_bancario,
+      bancoNombre: data.banco_nombre,
+      location: data.location,
+      checkInTime: data.check_in_time,
+      checkOutTime: data.check_out_time,
+      logoUrl: data.logo_url,
+      wifiSsid: data.wifi_ssid,
+      wifiPassword: data.wifi_password,
+      fuelAccount: data.fuel_account || settings.fuelAccount || { stationName: '', accountNumber: '', knownVehicles: [], vouchers: [] },
+      updatedAt: data.updated_at,
+    };
   }
 
   public async testConnection(customUrl?: string, customKey?: string): Promise<{

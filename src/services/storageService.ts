@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: TrustSettings = {
   houseName: '', location: '', wifiSsid: '', wifiPassword: '', checkInTime: '', checkOutTime: '',
   autoCleaningBufferHours: 0, cancellationMinDays: 0, maxGuestsLimit: 0, emergencyAddress: '',
   expenseCategories: [], cashFlowCategories: [], feeCategories: [], inventoryCategories: [],
-  fuelAccount: { stationName: '', accountNumber: '', vouchers: [] },
+  fuelAccount: { stationName: '', accountNumber: '', knownVehicles: [], vouchers: [] },
 };
 export const DEFAULT_BOOKINGS: Booking[] = [];
 export const DEFAULT_BLOCKS: DateBlock[] = [];
@@ -90,6 +90,7 @@ export function normalizeSettings(s: any): TrustSettings {
     fuelAccount: {
       stationName: s.fuelAccount?.stationName ?? s.fuel_account?.stationName ?? '',
       accountNumber: s.fuelAccount?.accountNumber ?? s.fuel_account?.accountNumber ?? '',
+      knownVehicles: Array.isArray(s.fuelAccount?.knownVehicles) ? s.fuelAccount.knownVehicles : Array.isArray(s.fuel_account?.knownVehicles) ? s.fuel_account.knownVehicles : [],
       vouchers: Array.isArray(s.fuelAccount?.vouchers) ? s.fuelAccount.vouchers : Array.isArray(s.fuel_account?.vouchers) ? s.fuel_account.vouchers : [],
     },
   };

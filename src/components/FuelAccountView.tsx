@@ -9,7 +9,7 @@ interface FuelAccountViewProps {
   users: User[];
 }
 
-const emptyAccount = (): FuelAccount => ({ stationName: '', accountNumber: '', vouchers: [] });
+const emptyAccount = (): FuelAccount => ({ stationName: '', accountNumber: '', knownVehicles: [], vouchers: [] });
 const today = () => new Date().toISOString().slice(0, 10);
 
 export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, settings, users }) => {
@@ -20,11 +20,12 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [ticketVoucherId, setTicketVoucherId] = useState<string | null>(null);
   const [selectedVoucher, setSelectedVoucher] = useState<FuelVoucher | null>(null);
+  const [recipientType, setRecipientType] = useState<'owner' | 'third_party'>('owner');
   const [error, setError] = useState('');
   const [voucherForm, setVoucherForm] = useState({
-    issuedAt: today(), assignedTo: '', vehicle: '', authorizedAmount: 0, authorizedLiters: 0,
+    issuedAt: today(), assignedTo: '', vehicle: '', authorizedAmount: 0, authorizedLiters: 0, fuelType: 'Diésel común',
   });
-  const [ticketForm, setTicketForm] = useState({ date: today(), ticketNumber: '', fuelType: 'Diésel', liters: 0, amount: 0 });
+  const [ticketForm, setTicketForm] = useState({ date: today(), ticketNumber: '', fuelType: 'Diésel común', liters: 0, amount: 0 });
 
   useEffect(() => setAccount(settings.fuelAccount || emptyAccount()), [settings.fuelAccount]);
 
@@ -59,8 +60,8 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
 
   const createVoucher = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!voucherForm.assignedTo.trim() || Number(voucherForm.authorizedAmount) <= 0) {
-      setError('Indicá a quién se entrega el vale y el importe máximo autorizado.');
+    if (!voucherForm.assignedTo.trim()) {
+      setError('Indicá a quién se entrega el vale.');
       return;
     }
     const number = `V-${new Date().getFullYear()}-${String(account.vouchers.length + 1).padStart(4, '0')}`;
@@ -70,19 +71,23 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
       issuedAt: voucherForm.issuedAt,
       stationName: account.stationName || 'Estación de servicio',
       assignedTo: voucherForm.assignedTo.trim(),
-      vehicle: voucherForm.vehicle.trim(),
+      vehicle: voucherForm.vehicle.trim().toUpperCase(),
       purpose: '',
       authorizedAmount: Number(voucherForm.authorizedAmount),
       authorizedLiters: Number(voucherForm.authorizedLiters) || 0,
+      fuelType: voucherForm.fuelType,
       status: 'issued',
       createdBy: currentUser.name,
       createdAt: new Date().toISOString(),
       tickets: [],
     };
-    const next = { ...account, vouchers: [voucher, ...account.vouchers] };
+    const vehicle = voucherForm.vehicle.trim().toUpperCase();
+    const knownVehicles = Array.from(new Set([...(account.knownVehicles || []), ...(vehicle ? [vehicle] : [])]));
+    const next = { ...account, knownVehicles, vouchers: [voucher, ...account.vouchers] };
     if (await persist(next)) {
       setIsVoucherOpen(false);
-      setVoucherForm({ issuedAt: today(), assignedTo: '', vehicle: '', authorizedAmount: 0, authorizedLiters: 0 });
+      setVoucherForm({ issuedAt: today(), assignedTo: '', vehicle: '', authorizedAmount: 0, authorizedLiters: 0, fuelType: 'Diésel común' });
+      setRecipientType('owner');
     }
   };
 
@@ -138,7 +143,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
     };
     if (await persist(next)) {
       setTicketVoucherId(null);
-      setTicketForm({ date: today(), ticketNumber: '', fuelType: 'Diésel', liters: 0, amount: 0 });
+      setTicketForm({ date: today(), ticketNumber: '', fuelType: 'Diésel común', liters: 0, amount: 0 });
     } else {
       await storageService.deleteExpense(fuelExpense.id);
     }
@@ -156,8 +161,9 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
       `Fecha: ${formatVoucherDate(voucher.issuedAt)}`,
       `Autorizado para: ${voucher.assignedTo}`,
       voucher.vehicle ? `Vehículo: ${voucher.vehicle}` : '',
-      `Importe máximo: $${Number(voucher.authorizedAmount).toLocaleString('es-AR')} ARS`,
-      voucher.authorizedLiters > 0 ? `Límite: ${voucher.authorizedLiters} litros` : '',
+      `Combustible: ${voucher.fuelType || 'Diésel común'}`,
+      `Importe máximo: ${voucher.authorizedAmount > 0 ? `$${Number(voucher.authorizedAmount).toLocaleString('es-AR')} ARS` : 'Libre'}`,
+      `Cantidad máxima: ${voucher.authorizedLiters > 0 ? `${voucher.authorizedLiters} litros` : 'Libre'}`,
     ].filter(Boolean).join('\n');
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   };
@@ -170,8 +176,9 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
       ['Fecha', formatVoucherDate(voucher.issuedAt)],
       ['Autorizado para', voucher.assignedTo],
       ...(voucher.vehicle ? [['Vehículo', voucher.vehicle]] : []),
-      ['Importe máximo', `$${Number(voucher.authorizedAmount).toLocaleString('es-AR')} ARS`],
-      ...(voucher.authorizedLiters > 0 ? [['Límite', `${voucher.authorizedLiters} litros`]] : []),
+      ['Combustible', voucher.fuelType || 'Diésel común'],
+      ['Importe máximo', voucher.authorizedAmount > 0 ? `$${Number(voucher.authorizedAmount).toLocaleString('es-AR')} ARS` : 'Libre'],
+      ['Cantidad máxima', voucher.authorizedLiters > 0 ? `${voucher.authorizedLiters} litros` : 'Libre'],
     ];
     const height = 330 + lines.length * 66;
     const rows = lines.map(([label, value], index) => `<text x="72" y="${230 + index * 66}" fill="#66756e" font-family="Arial,sans-serif" font-size="19" font-weight="700">${escapeXml(label.toUpperCase())}</text><text x="72" y="${258 + index * 66}" fill="#18332f" font-family="Arial,sans-serif" font-size="25">${escapeXml(value)}</text>`).join('');
@@ -238,12 +245,12 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
                 <div>
                   <div className="flex flex-wrap gap-2 items-center"><strong className="text-[#163323]">Vale {voucher.number}</strong><span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${statusStyle[voucher.status]}`}>{statusLabel[voucher.status]}</span></div>
                   <p className="text-xs text-[#526657] mt-1">{voucher.issuedAt} · {voucher.assignedTo}{voucher.vehicle ? ` · ${voucher.vehicle}` : ''}</p>
-                  <p className="text-xs mt-2 text-[#163323]">Autorizado: <strong>${voucher.authorizedAmount.toLocaleString('es-AR')}</strong> · Retirado: <strong>${used.toLocaleString('es-AR')}</strong>{voucher.authorizedLiters > 0 ? ` · Máx. ${voucher.authorizedLiters} L` : ''}</p>
+                  <p className="text-xs mt-2 text-[#163323]">Combustible: <strong>{voucher.fuelType || 'Diésel común'}</strong> · Importe máx.: <strong>{voucher.authorizedAmount > 0 ? `$${voucher.authorizedAmount.toLocaleString('es-AR')}` : 'Libre'}</strong> · Retirado: <strong>${used.toLocaleString('es-AR')}</strong> · Cantidad máx.: <strong>{voucher.authorizedLiters > 0 ? `${voucher.authorizedLiters} L` : 'Libre'}</strong></p>
                   {voucher.tickets.length > 0 && <div className="mt-2 text-[11px] text-[#637568]">{voucher.tickets.map((ticket) => <span key={ticket.id} className="inline-block mr-3">Ticket {ticket.ticketNumber}: ${ticket.amount.toLocaleString('es-AR')} · {ticket.liters || 0} L · <strong className="text-amber-800">pendiente en Gastos</strong></span>)}</div>}
                 </div>
                 <div className="flex flex-wrap gap-2 self-start">
                   <button type="button" onClick={() => setSelectedVoucher(voucher)} className="px-3 py-2 border border-[#CFDDD7] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Ver vale</button>
-                  {canManage && <button type="button" onClick={() => { setTicketVoucherId(voucher.id); setError(''); }} disabled={voucher.status === 'cancelled'} className="px-3 py-2 border border-[#1B3B2B] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] disabled:opacity-50 cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Cargar ticket</button>}
+                  {canManage && <button type="button" onClick={() => { setTicketVoucherId(voucher.id); setTicketForm((old) => ({ ...old, fuelType: voucher.fuelType || 'Diésel común' })); setError(''); }} disabled={voucher.status === 'cancelled'} className="px-3 py-2 border border-[#1B3B2B] text-[#163323] text-xs font-bold uppercase tracking-wide hover:bg-[#F4F1E9] disabled:opacity-50 cursor-pointer flex items-center gap-1"><Receipt className="w-3.5 h-3.5" /> Cargar ticket</button>}
                 </div>
               </div>;
             })}
@@ -260,8 +267,9 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
               <dt className="font-bold text-[#637568]">Fecha de emisión</dt><dd className="text-[#18332F]">{formatVoucherDate(selectedVoucher.issuedAt)}</dd>
               <dt className="font-bold text-[#637568]">Autorizado para</dt><dd className="text-[#18332F]">{selectedVoucher.assignedTo}</dd>
               {selectedVoucher.vehicle && <><dt className="font-bold text-[#637568]">Vehículo / patente</dt><dd className="text-[#18332F]">{selectedVoucher.vehicle}</dd></>}
-              <dt className="font-bold text-[#637568]">Importe máximo</dt><dd className="text-[#18332F] font-bold">${Number(selectedVoucher.authorizedAmount).toLocaleString('es-AR')} ARS</dd>
-              {selectedVoucher.authorizedLiters > 0 && <><dt className="font-bold text-[#637568]">Límite de combustible</dt><dd className="text-[#18332F]">{selectedVoucher.authorizedLiters} litros</dd></>}
+              <dt className="font-bold text-[#637568]">Combustible</dt><dd className="text-[#18332F]">{selectedVoucher.fuelType || 'Diésel común'}</dd>
+              <dt className="font-bold text-[#637568]">Importe máximo</dt><dd className="text-[#18332F] font-bold">{selectedVoucher.authorizedAmount > 0 ? `$${Number(selectedVoucher.authorizedAmount).toLocaleString('es-AR')} ARS` : 'Libre'}</dd>
+              <dt className="font-bold text-[#637568]">Cantidad máxima</dt><dd className="text-[#18332F]">{selectedVoucher.authorizedLiters > 0 ? `${selectedVoucher.authorizedLiters} litros` : 'Libre'}</dd>
             </dl>
             <div className="border-t border-dashed border-[#B7C5BC] pt-4 flex justify-between text-xs text-[#637568]"><span>Firma de quien retira</span><span>Firma de la estación</span></div>
             <p className="mt-6 text-[10px] text-[#7A8E7E]">Emitido por {selectedVoucher.createdBy || currentUser.name}</p>
@@ -271,8 +279,16 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
       </div>}
 
       {canManage && isAccountOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={async (event) => { event.preventDefault(); if (await saveAccountData()) setIsAccountOpen(false); }} className="bg-white max-w-md w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setIsAccountOpen(false)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Configurar cuenta de estación</h3><p className="text-xs text-[#637568]">Estos datos sólo se usan para identificar la cuenta al emitir vales; no quedan expuestos en el listado.</p><input value={account.stationName} onChange={(event) => setAccount({ ...account, stationName: event.target.value })} placeholder="Nombre de la estación" className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={account.accountNumber} onChange={(event) => setAccount({ ...account, accountNumber: event.target.value })} placeholder="Número interno de cuenta (opcional)" className="w-full px-3 py-2 border border-[#DDD5BF]" /><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Guardar configuración'}</button></form></div>}
-      {canManage && isVoucherOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={createVoucher} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setIsVoucherOpen(false)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Emitir vale de combustible</h3><input type="date" value={voucherForm.issuedAt} onChange={(event) => setVoucherForm({ ...voucherForm, issuedAt: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]" /><select value={voucherForm.assignedTo} onChange={(event) => setVoucherForm({ ...voucherForm, assignedTo: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]"><option value="">Entregar a...</option>{users.filter((user) => user.active !== false).map((user) => <option key={user.id} value={user.name}>{user.name} ({user.partName})</option>)}</select><input value={voucherForm.vehicle} onChange={(event) => setVoucherForm({ ...voucherForm, vehicle: event.target.value })} placeholder="Vehículo / patente (opcional)" className="w-full px-3 py-2 border border-[#DDD5BF]" /><div className="grid grid-cols-2 gap-3"><input type="number" min="0" value={voucherForm.authorizedAmount || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedAmount: Number(event.target.value) || 0 })} placeholder="Máximo $ ARS *" className="px-3 py-2 border border-[#DDD5BF]" /><input type="number" min="0" value={voucherForm.authorizedLiters || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedLiters: Number(event.target.value) || 0 })} placeholder="Máximo litros" className="px-3 py-2 border border-[#DDD5BF]" /></div><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Emitir vale'}</button></form></div>}
-      {canManage && ticketVoucher && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={addTicket} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setTicketVoucherId(null)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Cargar ticket · {ticketVoucher.number}</h3><input type="date" value={ticketForm.date} onChange={(event) => setTicketForm({ ...ticketForm, date: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={ticketForm.ticketNumber} onChange={(event) => setTicketForm({ ...ticketForm, ticketNumber: event.target.value })} placeholder="Número de ticket *" className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={ticketForm.fuelType} onChange={(event) => setTicketForm({ ...ticketForm, fuelType: event.target.value })} placeholder="Tipo de combustible" className="w-full px-3 py-2 border border-[#DDD5BF]" /><div className="grid grid-cols-2 gap-3"><input type="number" min="0" step="any" value={ticketForm.liters || ''} onChange={(event) => setTicketForm({ ...ticketForm, liters: Number(event.target.value) || 0 })} placeholder="Litros" className="px-3 py-2 border border-[#DDD5BF]" /><input type="number" min="0" step="any" value={ticketForm.amount || ''} onChange={(event) => setTicketForm({ ...ticketForm, amount: Number(event.target.value) || 0 })} placeholder="Importe $ *" className="px-3 py-2 border border-[#DDD5BF]" /></div><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Vincular ticket'}</button></form></div>}
+      {canManage && isVoucherOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={createVoucher} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3 max-h-[90vh] overflow-y-auto"><button type="button" onClick={() => setIsVoucherOpen(false)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Emitir vale de combustible</h3>
+        <label className="block text-xs font-bold text-[#526657]">Fecha de emisión<input type="date" value={voucherForm.issuedAt} onChange={(event) => setVoucherForm({ ...voucherForm, issuedAt: event.target.value })} className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label>
+        <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-[#526657]">Entregar a<select value={recipientType} onChange={(event) => { setRecipientType(event.target.value as 'owner' | 'third_party'); setVoucherForm({ ...voucherForm, assignedTo: '' }); }} className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]"><option value="owner">Socio</option><option value="third_party">Tercero</option></select></label>
+          {recipientType === 'owner' ? <label className="text-xs font-bold text-[#526657]">Socio<select required value={voucherForm.assignedTo} onChange={(event) => setVoucherForm({ ...voucherForm, assignedTo: event.target.value })} className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]"><option value="">Seleccionar socio...</option>{users.filter((user) => user.active !== false).map((user) => <option key={user.id} value={user.name}>{user.name} ({user.partName})</option>)}</select></label> : <label className="text-xs font-bold text-[#526657]">Nombre del tercero<input required value={voucherForm.assignedTo} onChange={(event) => setVoucherForm({ ...voucherForm, assignedTo: event.target.value })} placeholder="Nombre y apellido" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label>}
+        </div>
+        <label className="block text-xs font-bold text-[#526657]">Vehículo / patente (opcional)<input list="fuel-known-vehicles" value={voucherForm.vehicle} onChange={(event) => setVoucherForm({ ...voucherForm, vehicle: event.target.value.toUpperCase() })} placeholder="Ej.: AB123CD" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /><datalist id="fuel-known-vehicles">{(account.knownVehicles || []).map((vehicle) => <option key={vehicle} value={vehicle} />)}</datalist><span className="mt-1 block font-normal text-[#7A8E7E]">Las patentes ingresadas quedan guardadas para próximos vales.</span></label>
+        <label className="block text-xs font-bold text-[#526657]">Tipo de combustible<select value={voucherForm.fuelType} onChange={(event) => setVoucherForm({ ...voucherForm, fuelType: event.target.value })} className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]"><option>Diésel común</option><option>Infinia Diésel</option><option>Nafta Súper</option><option>Nafta Infinia</option></select></label>
+        <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-[#526657]">Monto máximo (ARS)<input type="number" min="0" value={voucherForm.authorizedAmount || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedAmount: Number(event.target.value) || 0 })} placeholder="Libre" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label><label className="text-xs font-bold text-[#526657]">Cantidad máxima (litros)<input type="number" min="0" step="any" value={voucherForm.authorizedLiters || ''} onChange={(event) => setVoucherForm({ ...voucherForm, authorizedLiters: Number(event.target.value) || 0 })} placeholder="Libre" className="mt-1 w-full px-3 py-2 border border-[#DDD5BF]" /></label></div>
+        <p className="text-xs text-[#637568]">Si dejás monto o litros vacíos, ese límite queda libre.</p><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Emitir vale'}</button></form></div>}
+      {canManage && ticketVoucher && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={addTicket} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setTicketVoucherId(null)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Cargar ticket · {ticketVoucher.number}</h3><input type="date" value={ticketForm.date} onChange={(event) => setTicketForm({ ...ticketForm, date: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={ticketForm.ticketNumber} onChange={(event) => setTicketForm({ ...ticketForm, ticketNumber: event.target.value })} placeholder="Número de ticket *" className="w-full px-3 py-2 border border-[#DDD5BF]" /><select value={ticketForm.fuelType} onChange={(event) => setTicketForm({ ...ticketForm, fuelType: event.target.value })} className="w-full px-3 py-2 border border-[#DDD5BF]"><option>Diésel común</option><option>Infinia Diésel</option><option>Nafta Súper</option><option>Nafta Infinia</option></select><div className="grid grid-cols-2 gap-3"><input type="number" min="0" step="any" value={ticketForm.liters || ''} onChange={(event) => setTicketForm({ ...ticketForm, liters: Number(event.target.value) || 0 })} placeholder="Litros" className="px-3 py-2 border border-[#DDD5BF]" /><input type="number" min="0" step="any" value={ticketForm.amount || ''} onChange={(event) => setTicketForm({ ...ticketForm, amount: Number(event.target.value) || 0 })} placeholder="Importe $ *" className="px-3 py-2 border border-[#DDD5BF]" /></div><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Vincular ticket'}</button></form></div>}
     </div>
   );
 };
