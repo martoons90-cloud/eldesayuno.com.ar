@@ -243,18 +243,24 @@ class StorageService {
         const data = { success: true, data: result.data };
         let hasChanges = false;
 
-        const currentBookingsRaw = localStorage.getItem(BOOKINGS_KEY) || '[]';
-        const serverBookingsRaw = JSON.stringify(data.data.bookings || []);
-        if (currentBookingsRaw !== serverBookingsRaw) {
-          localStorage.setItem(BOOKINGS_KEY, serverBookingsRaw);
-          hasChanges = true;
+        // Una sincronización por alcance puede omitir bookings. La ausencia de
+        // esa propiedad significa "sin consultar", no "reservas vacías".
+        if (Array.isArray(data.data.bookings)) {
+          const currentBookingsRaw = localStorage.getItem(BOOKINGS_KEY) || '[]';
+          const serverBookingsRaw = JSON.stringify(data.data.bookings);
+          if (currentBookingsRaw !== serverBookingsRaw) {
+            localStorage.setItem(BOOKINGS_KEY, serverBookingsRaw);
+            hasChanges = true;
+          }
         }
 
-        const currentUsersRaw = localStorage.getItem(USERS_KEY) || '[]';
-        const serverUsersRaw = JSON.stringify(data.data.users || []);
-        if (currentUsersRaw !== serverUsersRaw && Array.isArray(data.data.users)) {
-          localStorage.setItem(USERS_KEY, serverUsersRaw);
-          hasChanges = true;
+        if (Array.isArray(data.data.users)) {
+          const currentUsersRaw = localStorage.getItem(USERS_KEY) || '[]';
+          const serverUsersRaw = JSON.stringify(data.data.users);
+          if (currentUsersRaw !== serverUsersRaw) {
+            localStorage.setItem(USERS_KEY, serverUsersRaw);
+            hasChanges = true;
+          }
         }
 
         if (Array.isArray(data.data.blocks)) {
