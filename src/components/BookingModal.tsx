@@ -54,11 +54,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const eligibleReservationUsers = useMemo(
     () => {
       const activeOwners = users.filter((user) => user.active !== false && user.role !== 'intendente');
-      if (isIntendente) return activeOwners;
+      if (isIntendente) {
+        // El Intendente puede asignar a cualquier socio y también reservar
+        // para sí mismo. Su propio rol lo excluía de activeOwners.
+        return activeOwners.some((user) => user.id === currentUser.id)
+          ? activeOwners
+          : [currentUser, ...activeOwners];
+      }
       if (isGroupLeader) return activeOwners.filter((user) => user.cabezaNumber === currentUser.cabezaNumber);
       return [];
     },
-    [users, isIntendente, isGroupLeader, currentUser.cabezaNumber]
+    [users, isIntendente, isGroupLeader, currentUser]
   );
   const reservationOwner = (canCreateForOthers
     ? eligibleReservationUsers.find((user) => user.id === reservationForUserId)
