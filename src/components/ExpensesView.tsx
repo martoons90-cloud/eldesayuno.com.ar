@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, ExpenseItem, ExpenseCategory, ExpensePayerShare, TrustSettings, FeeCollection, OwnerFeeAllocation, DistributionMode, UsefulContact, canUploadExpenses } from '../types';
 import { storageService } from '../services/storageService';
 import { r2Service } from '../services/r2Service';
-import { formatDateDisplay, formatPeriodDisplay } from '../utils/date';
+import { formatDateDisplay } from '../utils/date';
 import { CustomDialogModal } from './CustomDialogModal';
 import { ReceiptPreviewModal, ReceiptPreviewData } from './ReceiptPreviewModal';
 import {
@@ -276,22 +276,33 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   if (!availablePeriods.includes('2026-10')) availablePeriods.unshift('2026-10');
 
   // Filtered Expenses
-  const filteredExpenses = expenses.filter((exp) => {
-    if (selectedPeriod !== 'all' && exp.periodMonth !== selectedPeriod) return false;
-    if (categoryFilter !== 'all' && exp.category !== categoryFilter) return false;
-    if (statusFilter !== 'all' && exp.status !== statusFilter) return false;
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
-      const match =
-        exp.concept.toLowerCase().includes(q) ||
-        (exp.provider && exp.provider.toLowerCase().includes(q)) ||
-        (exp.invoiceNumber && exp.invoiceNumber.toLowerCase().includes(q)) ||
-        (exp.userName && exp.userName.toLowerCase().includes(q)) ||
-        (exp.notes && exp.notes.toLowerCase().includes(q));
-      if (!match) return false;
-    }
-    return true;
-  });
+  const filteredExpenses = expenses
+    .filter((exp) => {
+      if (selectedPeriod !== 'all' && exp.periodMonth !== selectedPeriod) return false;
+      if (categoryFilter !== 'all' && exp.category !== categoryFilter) return false;
+      if (statusFilter !== 'all' && exp.status !== statusFilter) return false;
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        const match =
+          exp.concept.toLowerCase().includes(q) ||
+          (exp.provider && exp.provider.toLowerCase().includes(q)) ||
+          (exp.invoiceNumber && exp.invoiceNumber.toLowerCase().includes(q)) ||
+          (exp.userName && exp.userName.toLowerCase().includes(q)) ||
+          (exp.notes && exp.notes.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  const formatExpenseMonthName = (expense: ExpenseItem): string => {
+    const sourceMonth = expense.periodMonth || expense.date?.slice(0, 7);
+    const match = String(sourceMonth || '').match(/^(\d{4})-(\d{2})$/);
+    if (!match) return '';
+    const monthName = new Intl.DateTimeFormat('es-AR', { month: 'long', timeZone: 'UTC' })
+      .format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)));
+    return monthName.charAt(0).toLocaleUpperCase('es-AR') + monthName.slice(1);
+  };
 
   const transferableExpenses = filteredExpenses.filter((expense) => !isExpenseAlreadyTransferred(expense));
   const transferablePeriodTotal = transferableExpenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -1266,7 +1277,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     <tr key={exp.id} className={`hover:${expPalette.bg} transition-colors border-l-4 ${expPalette.bar}`}>
                       <td className="py-3 px-3 whitespace-nowrap font-mono text-[#56685B]">
                         {formatDateDisplay(exp.date)}
-                        <span className="block text-[10px] text-[#7A8E7E]">Mes: {formatPeriodDisplay(exp.periodMonth)}</span>
+                        <span className="block text-[10px] text-[#7A8E7E]">{formatExpenseMonthName(exp)}</span>
                       </td>
                       <td className="py-3 px-3 font-semibold text-[#163323]">
                         <div className="flex items-center gap-2 flex-wrap">
