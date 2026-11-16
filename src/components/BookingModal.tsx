@@ -150,11 +150,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       }
     }
 
-    // Capacity check
-    if (!isMaintenanceBlock && guestsCount > 12) {
-      return 'La capacidad máxima de la propiedad es de 12 huéspedes según reglamento.';
-    }
-
     return null;
   };
 
@@ -352,14 +347,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <input
                   type="number"
                   min="1"
-                  max="12"
                   value={guestsCount}
                   onChange={(e) => setGuestsCount(parseInt(e.target.value) || 1)}
                   required
                   className="w-full pl-9 pr-3 py-2 bg-[#FAF8F5] border border-[#DCD4C0] text-[#19231A] text-sm focus:outline-none focus:border-[#1E3F20]"
                 />
               </div>
-              <span className="text-[10px] text-[#7A8E7E] block mt-1">Máximo 12 pax pernoctando</span>
+              <span className="text-[10px] text-[#7A8E7E] block mt-1">Sin límite de huéspedes</span>
             </div>
 
             <div>
