@@ -310,6 +310,8 @@ export interface FuelTicket {
   liters: number;
   amount: number;
   expenseId?: string;
+  receiptUrl?: string;
+  observation?: string;
   createdBy: string;
   createdAt: string;
 }
@@ -336,6 +338,8 @@ export interface FuelAccount {
   accountNumber: string;
   knownVehicles?: string[];
   vouchers: FuelVoucher[];
+  /** Tickets importados directamente de un resumen de cuenta, sin vale emitido. */
+  accountEntries?: FuelTicket[];
 }
 
 // -------------------------------------------------------------

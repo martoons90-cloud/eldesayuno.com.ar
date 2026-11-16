@@ -92,6 +92,7 @@ export function normalizeSettings(s: any): TrustSettings {
       accountNumber: s.fuelAccount?.accountNumber ?? s.fuel_account?.accountNumber ?? '',
       knownVehicles: Array.isArray(s.fuelAccount?.knownVehicles) ? s.fuelAccount.knownVehicles : Array.isArray(s.fuel_account?.knownVehicles) ? s.fuel_account.knownVehicles : [],
       vouchers: Array.isArray(s.fuelAccount?.vouchers) ? s.fuelAccount.vouchers : Array.isArray(s.fuel_account?.vouchers) ? s.fuel_account.vouchers : [],
+      accountEntries: Array.isArray(s.fuelAccount?.accountEntries) ? s.fuelAccount.accountEntries : Array.isArray(s.fuel_account?.accountEntries) ? s.fuel_account.accountEntries : [],
     },
   };
 }
