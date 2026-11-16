@@ -323,16 +323,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     storageService.approveBooking(bookingId, `${currentUser.name} (Admin)`);
   };
 
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const getDisplayBookingStatus = (booking: Booking): Booking['status'] =>
+    booking.status !== 'cancelled' && booking.checkOutDate < todayIso ? 'completed' : booking.status;
+  const getDaysUntilCheckIn = (checkInDate: string): number => {
+    const [year, month, day] = checkInDate.split('-').map(Number);
+    const [todayYear, todayMonth, todayDay] = todayIso.split('-').map(Number);
+    return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(todayYear, todayMonth - 1, todayDay)) / 86_400_000);
+  };
+
   // Pending bookings count & list
   const pendingBookings = bookings
-    .filter((b) => b.status === 'pending')
+    .filter((b) => b.status === 'pending' && getDisplayBookingStatus(b) === 'pending')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // Filtered Bookings for consolidated list
   const filteredBookings = bookings
     .filter((b) => {
       if (filterOwner !== 'all' && b.userId !== filterOwner) return false;
-      if (filterStatus !== 'all' && b.status !== filterStatus) return false;
+      if (filterStatus !== 'all' && getDisplayBookingStatus(b) !== filterStatus) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const match =
@@ -1442,7 +1452,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <option value="all">Todos los estados</option>
                 <option value="pending">Pendientes de Aprobación</option>
                 <option value="confirmed">Confirmadas</option>
-                <option value="completed">Completadas / Pasadas</option>
+                <option value="completed">Finalizadas / Pasadas</option>
                 <option value="cancelled">Canceladas</option>
               </select>
             </div>
@@ -1505,6 +1515,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </td>
                       <td className="py-3 px-3 font-semibold text-[#19231A] whitespace-nowrap">
                         {formatDateDisplay(b.checkInDate)} <span className="text-[#BFA270]">→</span> {formatDateDisplay(b.checkOutDate)}
+                        {getDisplayBookingStatus(b) === 'completed' ? (
+                          <span className="block mt-1 text-[10px] font-medium text-blue-800">Estadía finalizada</span>
+                        ) : getDaysUntilCheckIn(b.checkInDate) > 0 ? (
+                          <span className="block mt-1 text-[10px] font-medium text-[#637568]">
+                            Faltan {getDaysUntilCheckIn(b.checkInDate)} {getDaysUntilCheckIn(b.checkInDate) === 1 ? 'día' : 'días'} para el ingreso
+                          </span>
+                        ) : getDaysUntilCheckIn(b.checkInDate) === 0 ? (
+                          <span className="block mt-1 text-[10px] font-semibold text-emerald-800">Ingreso hoy</span>
+                        ) : (
+                          <span className="block mt-1 text-[10px] font-semibold text-emerald-800">Estadía en curso</span>
+                        )}
                       </td>
                       <td className="py-3 px-3 font-mono font-bold tabular-nums">
                         {b.totalDays} noches
@@ -1522,21 +1543,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <td className="py-3 px-3">
                         <span
                           className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 ${
-                            b.status === 'confirmed'
+                            getDisplayBookingStatus(b) === 'confirmed'
                               ? 'bg-emerald-50 text-emerald-800'
-                              : b.status === 'pending'
+                              : getDisplayBookingStatus(b) === 'pending'
                               ? 'bg-amber-50 text-amber-900 border border-amber-300'
-                              : b.status === 'completed'
+                              : getDisplayBookingStatus(b) === 'completed'
                               ? 'bg-blue-50 text-blue-800'
                               : 'bg-red-50 text-red-800 line-through'
                           }`}
                         >
-                          {b.status === 'confirmed'
+                          {getDisplayBookingStatus(b) === 'confirmed'
                             ? 'Confirmada'
-                            : b.status === 'pending'
+                            : getDisplayBookingStatus(b) === 'pending'
                             ? 'Pendiente'
-                            : b.status === 'completed'
-                            ? 'Completada'
+                            : getDisplayBookingStatus(b) === 'completed'
+                            ? 'Finalizada'
                             : 'Cancelada'}
                         </span>
                       </td>
@@ -1544,7 +1565,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {b.notes || '-'}
                       </td>
                       <td className="py-3 px-3 text-right">
-                        {b.status === 'pending' && (
+                        {getDisplayBookingStatus(b) === 'pending' && (
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => handleAdminApproveBooking(b.id)}
@@ -1565,7 +1586,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                           </div>
                         )}
-                        {b.status === 'confirmed' && (
+                        {getDisplayBookingStatus(b) === 'confirmed' && (
                           <button
                             onClick={() => {
                               setAdminCancelBookingId(b.id);
