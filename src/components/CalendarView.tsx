@@ -39,6 +39,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+  const availableYears = [2026, 2027, 2028];
 
   const monthNames = [
     'Enero',
@@ -254,22 +255,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           {/* Year selector */}
           <div className="inline-flex p-1 bg-[#F4EFE6] border border-[#DCD4C0]">
-            <button
-              onClick={() => setCurrentDate(new Date(2026, month, 1))}
-              className={`px-2.5 py-1.5 text-xs font-bold uppercase transition-colors cursor-pointer ${
-                year === 2026 ? 'bg-[#1B3B2B] text-white shadow-xs' : 'text-[#4F6254] hover:text-[#19231A]'
-              }`}
-            >
-              2026
-            </button>
-            <button
-              onClick={() => setCurrentDate(new Date(2027, month, 1))}
-              className={`px-2.5 py-1.5 text-xs font-bold uppercase transition-colors cursor-pointer ${
-                year === 2027 ? 'bg-[#1B3B2B] text-white shadow-xs' : 'text-[#4F6254] hover:text-[#19231A]'
-              }`}
-            >
-              2027
-            </button>
+            {availableYears.map((availableYear) => (
+              <button
+                key={availableYear}
+                onClick={() => setCurrentDate(new Date(availableYear, month, 1))}
+                className={`px-2.5 py-1.5 text-xs font-bold uppercase transition-colors cursor-pointer ${
+                  year === availableYear ? 'bg-[#1B3B2B] text-white shadow-xs' : 'text-[#4F6254] hover:text-[#19231A]'
+                }`}
+              >
+                {availableYear}
+              </button>
+            ))}
           </div>
 
           {/* Segmented control month / year */}
@@ -570,22 +566,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 Vista Consolidada Anual {year} (12 Meses)
               </h3>
               <div className="inline-flex p-0.5 bg-[#F4EFE6] border border-[#DCD4C0]">
-                <button
-                  onClick={() => setCurrentDate(new Date(2026, month, 1))}
-                  className={`px-2 py-1 text-[11px] font-bold uppercase transition-colors cursor-pointer ${
-                    year === 2026 ? 'bg-[#1B3B2B] text-white' : 'text-[#4F6254]'
-                  }`}
-                >
-                  2026
-                </button>
-                <button
-                  onClick={() => setCurrentDate(new Date(2027, month, 1))}
-                  className={`px-2 py-1 text-[11px] font-bold uppercase transition-colors cursor-pointer ${
-                    year === 2027 ? 'bg-[#1B3B2B] text-white' : 'text-[#4F6254]'
-                  }`}
-                >
-                  2027
-                </button>
+                {availableYears.map((availableYear) => (
+                  <button
+                    key={availableYear}
+                    onClick={() => setCurrentDate(new Date(availableYear, month, 1))}
+                    className={`px-2 py-1 text-[11px] font-bold uppercase transition-colors cursor-pointer ${
+                      year === availableYear ? 'bg-[#1B3B2B] text-white' : 'text-[#4F6254]'
+                    }`}
+                  >
+                    {availableYear}
+                  </button>
+                ))}
               </div>
             </div>
             <span className="text-xs text-[#7A8E7E]">

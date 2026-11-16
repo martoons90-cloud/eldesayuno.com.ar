@@ -305,7 +305,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 type="date"
                 value={checkInDate}
                 min="2026-01-01"
-                max="2026-12-31"
+                max="2028-12-31"
                 onChange={(e) => {
                   setCheckInDate(e.target.value);
                   setError(null);
@@ -324,7 +324,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 type="date"
                 value={checkOutDate}
                 min={checkInDate || '2026-01-01'}
-                max="2026-12-31"
+                max="2028-12-31"
                 onChange={(e) => {
                   setCheckOutDate(e.target.value);
                   setError(null);
