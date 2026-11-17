@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Fuel, Plus, Printer, Receipt, Share2, Ticket, Trash2, X } from 'lucide-react';
 import { ExpenseItem, FuelAccount, FuelTicket, FuelVoucher, TrustSettings, User, canWriteModule } from '../types';
 import { storageService } from '../services/storageService';
+import { ReceiptPreviewData, ReceiptPreviewModal } from './ReceiptPreviewModal';
 
 interface FuelAccountViewProps {
   currentUser: User;
@@ -24,6 +25,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
   const [isDeletingTicket, setIsDeletingTicket] = useState(false);
   const [isDeletingVoucher, setIsDeletingVoucher] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<FuelVoucher | null>(null);
+  const [previewReceipt, setPreviewReceipt] = useState<ReceiptPreviewData | null>(null);
   const [recipientType, setRecipientType] = useState<'owner' | 'third_party'>('owner');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -391,7 +393,7 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
       </div>
 
       {(account.accountEntries || []).length > 0 && <div className="bg-white border border-[#E3DFC8] overflow-hidden">
-        <div className="p-4 border-b border-[#E3DFC8]"><h2 className="font-bold text-sm text-[#163323]">Movimientos importados de cuenta corriente</h2><p className="text-xs text-[#637568] mt-1">Cargos tomados del resumen de la estación que no están asociados a un vale emitido.</p></div>
+        <div className="p-4 border-b border-[#E3DFC8]"><h2 className="font-bold text-sm text-[#163323]">Tickets cargados</h2><p className="text-xs text-[#637568] mt-1">Comprobantes de combustible registrados en la cuenta corriente.</p></div>
         <div className="divide-y divide-[#E3DFC8]">
           {(account.accountEntries || []).slice().sort((a, b) => b.date.localeCompare(a.date)).map((entry) => (
             <div key={entry.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
@@ -399,8 +401,9 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
                 <div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-[#163323]">{entry.ticketNumber}</strong><span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">Pendiente de pago</span></div>
                 <p className="text-xs text-[#637568] mt-1">{formatVoucherDate(entry.date)} · {entry.fuelType || 'Combustible no especificado'} · {entry.liters > 0 ? `${entry.liters} L` : 'Litros no informados'}</p>
                 {entry.observation && <p className="text-xs text-[#637568] mt-1">{entry.observation}</p>}
+                {entry.createdBy && <p className="text-[11px] text-[#7A8E7E] mt-1">Cargado por {entry.createdBy}</p>}
               </div>
-              <div className="flex items-center gap-3"><strong className="font-mono text-[#163323]">${Number(entry.amount).toLocaleString('es-AR')} ARS</strong>{entry.receiptUrl && <a href={entry.receiptUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#1B3B2B] underline">Ver resumen</a>}{canManage && <button type="button" onClick={() => { setError(''); setTicketPendingDeletion({ voucherId: '', ticket: entry, accountEntry: true }); }} disabled={isDeletingTicket} aria-label={`Eliminar movimiento ${entry.ticketNumber}`} title="Eliminar movimiento" className="p-2 border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50 cursor-pointer"><Trash2 className="w-4 h-4" /></button>}</div>
+              <div className="flex items-center gap-3"><strong className="font-mono text-[#163323]">${Number(entry.amount).toLocaleString('es-AR')} ARS</strong>{entry.receiptUrl && <button type="button" onClick={() => setPreviewReceipt({ url: entry.receiptUrl!, title: `Ticket ${entry.ticketNumber}`, subtitle: entry.observation, provider: account.stationName || 'Cuenta corriente de combustible', amount: Number(entry.amount), date: entry.date })} className="text-xs font-semibold text-[#1B3B2B] underline cursor-pointer">Ver ticket</button>}{canManage && <button type="button" onClick={() => { setError(''); setTicketPendingDeletion({ voucherId: '', ticket: entry, accountEntry: true }); }} disabled={isDeletingTicket} aria-label={`Eliminar ticket ${entry.ticketNumber}`} title="Eliminar ticket" className="p-2 border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50 cursor-pointer"><Trash2 className="w-4 h-4" /></button>}</div>
             </div>
           ))}
         </div>
@@ -425,6 +428,8 @@ export const FuelAccountView: React.FC<FuelAccountViewProps> = ({ currentUser, s
           <div className="px-5 py-4 border-t border-[#DCE6E1] flex flex-wrap justify-end gap-2 print:hidden"><button type="button" onClick={() => shareVoucher(selectedVoucher)} className="px-3 py-2 border border-[#CFDDD7] text-[#18332F] text-xs font-bold uppercase cursor-pointer flex items-center gap-2"><Share2 className="w-4 h-4" /> WhatsApp</button><button type="button" onClick={() => downloadVoucherImage(selectedVoucher).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'No se pudo descargar la imagen del vale.'))} className="px-3 py-2 border border-[#CFDDD7] text-[#18332F] text-xs font-bold uppercase cursor-pointer flex items-center gap-2"><Download className="w-4 h-4" /> Imagen</button><button type="button" onClick={() => window.print()} className="px-3 py-2 bg-[#18332F] text-white text-xs font-bold uppercase cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> Imprimir / PDF</button></div>
         </div>
       </div>}
+
+      <ReceiptPreviewModal receipt={previewReceipt} onClose={() => setPreviewReceipt(null)} />
 
       {canManage && isAccountOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={async (event) => { event.preventDefault(); if (await saveAccountData()) setIsAccountOpen(false); }} className="bg-white max-w-md w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3"><button type="button" onClick={() => setIsAccountOpen(false)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Configurar cuenta de estación</h3><p className="text-xs text-[#637568]">Estos datos sólo se usan para identificar la cuenta al emitir vales; no quedan expuestos en el listado.</p><input value={account.stationName} onChange={(event) => setAccount({ ...account, stationName: event.target.value })} placeholder="Nombre de la estación" className="w-full px-3 py-2 border border-[#DDD5BF]" /><input value={account.accountNumber} onChange={(event) => setAccount({ ...account, accountNumber: event.target.value })} placeholder="Número interno de cuenta (opcional)" className="w-full px-3 py-2 border border-[#DDD5BF]" /><button disabled={isSaving} className="w-full px-4 py-2 bg-[#1B3B2B] text-white text-xs font-bold uppercase tracking-wide disabled:opacity-60 cursor-pointer">{isSaving ? 'Guardando...' : 'Guardar configuración'}</button></form></div>}
       {canManage && isVoucherOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={createVoucher} className="bg-white max-w-lg w-full p-5 border border-[#E3DFC8] shadow-xl relative space-y-3 max-h-[90vh] overflow-y-auto"><button type="button" onClick={() => setIsVoucherOpen(false)} className="absolute top-3 right-3 p-1 cursor-pointer"><X className="w-5 h-5" /></button><h3 className="text-lg font-bold text-[#163323]">Emitir vale de combustible</h3>
